@@ -694,10 +694,10 @@ export const useUIStore = create<UIStore>()(
         isSidebarOpen: true,
         sidebarWidth: LEFT_SIDEBAR_MIN_WIDTH,
         hasManuallyResizedLeftSidebar: false,
-        isRightSidebarOpen: false,
+        isRightSidebarOpen: true,
         rightSidebarWidth: RIGHT_SIDEBAR_MIN_WIDTH,
         hasManuallyResizedRightSidebar: false,
-        rightSidebarTab: 'git',
+        rightSidebarTab: 'files',
         contextPanelByDirectory: {},
         isBottomTerminalOpen: false,
         isBottomTerminalExpanded: false,
@@ -1745,7 +1745,7 @@ export const useUIStore = create<UIStore>()(
       {
         name: 'ui-store',
         storage: createJSONStorage(() => getSafeStorage()),
-        version: 7,
+        version: 9,
         migrate: (persistedState, version) => {
           if (!persistedState || typeof persistedState !== 'object') {
             return persistedState;
@@ -1786,7 +1786,19 @@ export const useUIStore = create<UIStore>()(
           }
 
           if (typeof state.rightSidebarTab !== 'string' || (state.rightSidebarTab !== 'git' && state.rightSidebarTab !== 'files')) {
-            state.rightSidebarTab = 'git';
+            state.rightSidebarTab = 'files';
+          }
+
+          if (version < 8 && state.rightSidebarTab === 'git') {
+            state.rightSidebarTab = 'files';
+          }
+
+          if (typeof state.isRightSidebarOpen !== 'boolean') {
+            state.isRightSidebarOpen = true;
+          }
+
+          if (version < 9 && state.isRightSidebarOpen === false) {
+            state.isRightSidebarOpen = true;
           }
 
           state.contextPanelByDirectory = sanitizeContextPanelByDirectory(state.contextPanelByDirectory);

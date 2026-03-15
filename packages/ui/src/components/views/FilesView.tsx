@@ -77,6 +77,7 @@ import { getDefaultTheme } from '@/lib/theme/themes';
 import { openDesktopPath, openDesktopProjectInApp } from '@/lib/desktop';
 import { OPEN_DIRECTORY_APP_IDS } from '@/lib/openInApps';
 import { useOpenInAppsStore } from '@/stores/useOpenInAppsStore';
+import { setChatInputFileReferenceOnDataTransfer, type ChatInputFileReferencePayload } from '@/lib/chatInputDragDrop';
 
 type FileNode = {
   name: string;
@@ -263,6 +264,19 @@ const isMarkdownFile = (path: string): boolean => {
   return ext === 'md' || ext === 'markdown';
 };
 
+const getRelativePathFromRoot = (root: string, path: string): string | undefined => {
+  const normalizedRoot = normalizePath(root);
+  const normalizedPath = normalizePath(path);
+  if (!normalizedRoot || !normalizedPath || normalizedPath === normalizedRoot) {
+    return undefined;
+  }
+
+  const rootWithSlash = `${normalizedRoot}/`;
+  return normalizedPath.startsWith(rootWithSlash)
+    ? normalizedPath.slice(rootWithSlash.length)
+    : undefined;
+};
+
 interface FileRowProps {
   node: FileNode;
   isExpanded: boolean;
@@ -270,6 +284,7 @@ interface FileRowProps {
   isMobile: boolean;
   status?: FileStatus | null;
   badge?: { modified: number; added: number } | null;
+  dragReference?: ChatInputFileReferencePayload | null;
   permissions: {
     canRename: boolean;
     canCreateFile: boolean;
@@ -292,6 +307,7 @@ const FileRow: React.FC<FileRowProps> = ({
   isMobile,
   status,
   badge,
+  dragReference,
   permissions,
   contextMenuPath,
   setContextMenuPath,
@@ -324,6 +340,16 @@ const FileRow: React.FC<FileRowProps> = ({
     setContextMenuPath(node.path);
   }, [node.path, setContextMenuPath]);
 
+  const handleDragStart = React.useCallback((event: React.DragEvent<HTMLButtonElement>) => {
+    if (!dragReference) {
+      event.preventDefault();
+      return;
+    }
+
+    setChatInputFileReferenceOnDataTransfer(event.dataTransfer, dragReference);
+    event.dataTransfer.effectAllowed = 'copy';
+  }, [dragReference]);
+
   return (
     <div
       className="group relative flex items-center"
@@ -333,6 +359,8 @@ const FileRow: React.FC<FileRowProps> = ({
         type="button"
         onClick={handleInteraction}
         onContextMenu={!isMobile ? handleContextMenu : undefined}
+        draggable={Boolean(dragReference)}
+        onDragStart={handleDragStart}
         className={cn(
           'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-foreground transition-colors pr-8 select-none',
           isActive ? 'bg-interactive-selection/70' : 'hover:bg-interactive-hover/40'
@@ -1548,6 +1576,13 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
       const isExpanded = isDir && expandedPaths.includes(node.path);
       const isActive = selectedFile?.path === node.path;
       const isLast = index === nodes.length - 1;
+      const dragReference = !isDir
+        ? {
+          kind: 'file' as const,
+          path: node.path,
+          relativePath: node.relativePath || getRelativePathFromRoot(root, node.path),
+        }
+        : null;
 
       return (
         <li key={node.path} className="relative">
@@ -1566,6 +1601,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
             isMobile={isMobile}
             status={!isDir ? getFileStatus(node.path) : undefined}
             badge={isDir ? getFolderBadge(node.path) : undefined}
+            dragReference={dragReference}
             permissions={{ canRename, canCreateFile, canCreateFolder, canDelete, canReveal }}
             contextMenuPath={contextMenuPath}
             setContextMenuPath={setContextMenuPath}
@@ -2712,11 +2748,21 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
           ) : searchResults.length > 0 ? (
             searchResults.map((node) => {
               const isActive = selectedFile?.path === node.path;
+              const dragReference = {
+                kind: 'file' as const,
+                path: node.path,
+                relativePath: node.relativePath || getRelativePathFromRoot(root, node.path),
+              };
               return (
                 <li key={node.path}>
                   <button
                     type="button"
                     onClick={() => void handleSelectFile(node)}
+                    draggable
+                    onDragStart={(event) => {
+                      setChatInputFileReferenceOnDataTransfer(event.dataTransfer, dragReference);
+                      event.dataTransfer.effectAllowed = 'copy';
+                    }}
                     className={cn(
                       'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-foreground transition-colors',
                       isActive ? 'bg-interactive-selection/70' : 'hover:bg-interactive-hover/40'

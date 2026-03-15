@@ -27,6 +27,7 @@ import { hasPendingUserSendAnimation, consumePendingUserSendAnimation } from '@/
 import { useAssistantStatus } from '@/hooks/useAssistantStatus';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { StatusRow } from './StatusRow';
+import { useMobileChatShell } from '@/components/mobile/MobileChatShellContext';
 
 const MESSAGE_VIRTUALIZE_THRESHOLD = 40;
 const MESSAGE_VIRTUAL_OVERSCAN_MOBILE = 2;
@@ -800,6 +801,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
     scrollRef,
 }, ref) => {
     const { isMobile } = useDeviceInfo();
+    const isMobileChatShell = useMobileChatShell();
     const { isWorking: sessionIsWorking } = useCurrentSessionActivity();
     const { working } = useAssistantStatus();
     const currentAgentName = useConfigStore((state) => state.currentAgentName);
@@ -1447,7 +1449,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
                 </div>
 
                 {/* Bottom spacer */}
-                <div className="flex-shrink-0" style={{ height: isMobile ? '40px' : '10vh' }} aria-hidden="true" />
+                <div className="flex-shrink-0" style={{ height: isMobileChatShell ? '0px' : (isMobile ? '40px' : '10vh') }} aria-hidden="true" />
         </div>
     );
 });

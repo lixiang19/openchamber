@@ -33,6 +33,7 @@ import { StatusRow } from './StatusRow';
 import { MobileAgentButton } from './MobileAgentButton';
 import { MobileModelButton } from './MobileModelButton';
 import { MobileSessionStatusBar } from './MobileSessionStatusBar';
+import { useMobileChatShell } from '@/components/mobile/MobileChatShellContext';
 import { useAssistantStatus } from '@/hooks/useAssistantStatus';
 import { useCurrentSessionActivity } from '@/hooks/useSessionActivity';
 import { toast } from '@/components/ui';
@@ -54,6 +55,10 @@ import { GitHubIssuePickerDialog } from '@/components/session/GitHubIssuePickerD
 import { GitHubPrPickerDialog } from '@/components/session/GitHubPrPickerDialog';
 import { useChatSearchDirectory } from '@/hooks/useChatSearchDirectory';
 import { opencodeClient } from '@/lib/opencode/client';
+import {
+    getChatInputFileReferenceFromDataTransfer,
+    hasChatInputFileReferenceType,
+} from '@/lib/chatInputDragDrop';
 
 const MAX_VISIBLE_TEXTAREA_LINES = 8;
 const EMPTY_QUEUE: QueuedMessage[] = [];
@@ -70,6 +75,8 @@ type AutocompleteOverlayPosition = {
     place: 'above' | 'below';
     maxHeight: number;
 };
+
+type ChatDropIntent = 'attach' | 'insert-path';
 
 // Per-session draft key — preserves in-progress messages across project switches
 const getDraftKey = (sessionId: string | null): string =>
@@ -113,7 +120,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
         return draft;
     });
     const [inputMode, setInputMode] = React.useState<'normal' | 'shell'>('normal');
-    const [isDragging, setIsDragging] = React.useState(false);
+    const [dragIntent, setDragIntent] = React.useState<ChatDropIntent | null>(null);
     const [showFileMention, setShowFileMention] = React.useState(false);
     const [mentionQuery, setMentionQuery] = React.useState('');
     const [showCommandAutocomplete, setShowCommandAutocomplete] = React.useState(false);
@@ -136,6 +143,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
     const skillRef = React.useRef<SkillAutocompleteHandle>(null);
     // Ref to track current message value without triggering re-renders in effects
     const messageRef = React.useRef(message);
+    const isDragging = dragIntent !== null;
 
     const sendMessage = useSessionStore((state) => state.sendMessage);
     const currentSessionId = useSessionStore((state) => state.currentSessionId);
@@ -158,6 +166,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
     const { isMobile, inputBarOffset, isKeyboardOpen, setTimelineDialogOpen, cornerRadius, persistChatDraft, inputSpellcheckEnabled, isExpandedInput, setExpandedInput } = useUIStore();
     const { working } = useAssistantStatus();
     const { currentTheme } = useThemeSystem();
+    const isMobileChatShell = useMobileChatShell();
     const chatSearchDirectory = useChatSearchDirectory();
     const [showAbortStatus, setShowAbortStatus] = React.useState(false);
     const [textareaScrollTop, setTextareaScrollTop] = React.useState(0);
@@ -1733,6 +1742,18 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
         return typeof uriList === 'string' && uriList.toLowerCase().includes('file://');
     }, []);
 
+    const getDragIntent = React.useCallback((dataTransfer: DataTransfer | null | undefined): ChatDropIntent | null => {
+        if (hasChatInputFileReferenceType(dataTransfer)) {
+            return 'insert-path';
+        }
+
+        if (hasDraggedFiles(dataTransfer)) {
+            return 'attach';
+        }
+
+        return null;
+    }, [hasDraggedFiles]);
+
     const collectDroppedFiles = React.useCallback((dataTransfer: DataTransfer | null | undefined): File[] => {
         if (!dataTransfer) return [];
 
@@ -1868,26 +1889,55 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
         return normalizedAbsolutePath;
     }, [chatSearchDirectory]);
 
+    const insertDroppedFileReference = React.useCallback((absolutePath: string, relativePath?: string) => {
+        const normalizedRelativePath = typeof relativePath === 'string' ? relativePath.trim() : '';
+        const mentionPath = chatSearchDirectory
+            ? toProjectRelativeMentionPath(absolutePath)
+            : (normalizedRelativePath || toProjectRelativeMentionPath(absolutePath));
+        if (!mentionPath) {
+            return;
+        }
+
+        const textarea = textareaRef.current;
+        const currentMessage = messageRef.current;
+        const selectionStart = textarea?.selectionStart ?? currentMessage.length;
+        const selectionEnd = textarea?.selectionEnd ?? currentMessage.length;
+        const textBefore = currentMessage.slice(0, selectionStart);
+        const textAfter = currentMessage.slice(selectionEnd);
+        const lastCharBefore = textBefore.slice(-1);
+        const firstCharAfter = textAfter.slice(0, 1);
+        const needsLeadingSpace = textBefore.length > 0 && !/(\s|\(|\[|\{|"|'|`)$/.test(lastCharBefore);
+        const needsTrailingSpace = textAfter.length === 0 || !/^[\s)\],.;:!?}]/.test(firstCharAfter);
+        const mentionText = `${needsLeadingSpace ? ' ' : ''}@${mentionPath}${needsTrailingSpace ? ' ' : ''}`;
+
+        insertTextAtSelection(mentionText);
+        requestAnimationFrame(() => {
+            textareaRef.current?.focus();
+        });
+    }, [chatSearchDirectory, insertTextAtSelection, toProjectRelativeMentionPath]);
+
     const handleDragEnter = (e: React.DragEvent) => {
-        if (!hasDraggedFiles(e.dataTransfer)) {
+        const nextDragIntent = getDragIntent(e.dataTransfer);
+        if (!nextDragIntent) {
             return;
         }
         e.preventDefault();
         e.stopPropagation();
-        if ((currentSessionId || newSessionDraftOpen) && !isDragging) {
-            setIsDragging(true);
+        if (currentSessionId || newSessionDraftOpen) {
+            setDragIntent(nextDragIntent);
         }
     };
 
     const handleDragOver = (e: React.DragEvent) => {
-        if (!hasDraggedFiles(e.dataTransfer)) {
+        const nextDragIntent = getDragIntent(e.dataTransfer);
+        if (!nextDragIntent) {
             return;
         }
         e.preventDefault();
         e.stopPropagation();
         e.dataTransfer.dropEffect = 'copy';
-        if ((currentSessionId || newSessionDraftOpen) && !isDragging) {
-            setIsDragging(true);
+        if (currentSessionId || newSessionDraftOpen) {
+            setDragIntent(nextDragIntent);
         }
     };
 
@@ -1895,19 +1945,26 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
         e.preventDefault();
         e.stopPropagation();
         if (e.currentTarget === e.target) {
-            setIsDragging(false);
+            setDragIntent(null);
         }
     };
 
     const handleDrop = async (e: React.DragEvent) => {
-        if (!hasDraggedFiles(e.dataTransfer)) {
+        const internalReference = getChatInputFileReferenceFromDataTransfer(e.dataTransfer);
+        const nextDragIntent = internalReference ? 'insert-path' : getDragIntent(e.dataTransfer);
+        if (!nextDragIntent) {
             return;
         }
         e.preventDefault();
         e.stopPropagation();
-        setIsDragging(false);
+        setDragIntent(null);
 
         if (!currentSessionId && !newSessionDraftOpen) return;
+
+        if (internalReference?.path) {
+            insertDroppedFileReference(internalReference.path, internalReference.relativePath);
+            return;
+        }
 
         const files = collectDroppedFiles(e.dataTransfer);
 
@@ -1981,18 +2038,18 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                         if (inZone !== null) {
                             nativeDragInsideDropZoneRef.current = inZone;
                         }
-                        setIsDragging(nativeDragInsideDropZoneRef.current);
+                        setDragIntent(nativeDragInsideDropZoneRef.current ? 'attach' : null);
                         return;
                     }
                     if (type === 'leave') {
                         nativeDragInsideDropZoneRef.current = false;
-                        setIsDragging(false);
+                        setDragIntent(null);
                         return;
                     }
                     if (type === 'drop') {
                         const shouldHandleDrop = inZone ?? nativeDragInsideDropZoneRef.current;
                         nativeDragInsideDropZoneRef.current = false;
-                        setIsDragging(false);
+                        setDragIntent(null);
                         if (!shouldHandleDrop) return;
 
                         const paths = Array.isArray(typed.paths)
@@ -2382,144 +2439,147 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
             style={isMobile && inputBarOffset > 0 && !isKeyboardOpen ? { marginBottom: `${inputBarOffset}px` } : undefined}
         >
             <div className={cn('chat-column relative overflow-visible', isDesktopExpanded && 'flex flex-1 min-h-0 flex-col')}>
-                <AttachedFilesList />
-                <QueuedMessageChips
-                    onEditMessage={(content) => {
-                        setMessage(content);
-                        setTimeout(() => {
-                            textareaRef.current?.focus();
-                        }, 0);
-                    }}
-                />
-                {hasDrafts && (
-                    <div className="pb-2">
-                        <div
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border"
-                            style={{
-                                backgroundColor: currentTheme?.colors?.surface?.elevated,
-                                borderColor: currentTheme?.colors?.interactive?.border,
+                {!isMobileChatShell && (
+                    <>
+                        <AttachedFilesList />
+                        <QueuedMessageChips
+                            onEditMessage={(content) => {
+                                setMessage(content);
+                                setTimeout(() => {
+                                    textareaRef.current?.focus();
+                                }, 0);
                             }}
-                        >
-                            <span className="text-xs font-medium text-muted-foreground">Review comments:</span>
-                            <span className="text-xs font-semibold" style={{ color: currentTheme?.colors?.status?.info }}>
-                                {draftCount}
-                            </span>
-                        </div>
-                    </div>
-                )}
+                        />
+                        {hasDrafts && (
+                            <div className="pb-2">
+                                <div
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border"
+                                    style={{
+                                        backgroundColor: currentTheme?.colors?.surface?.elevated,
+                                        borderColor: currentTheme?.colors?.interactive?.border,
+                                    }}
+                                >
+                                    <span className="text-xs font-medium text-muted-foreground">Review comments:</span>
+                                    <span className="text-xs font-semibold" style={{ color: currentTheme?.colors?.status?.info }}>
+                                        {draftCount}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
 
-                {/* Linked Issue row */}
-                {linkedIssue && !isVSCode && (
-                    <div className="pb-2 w-full px-1">
-                        <button
-                            type="button"
-                            onClick={() => setIssuePickerOpen(true)}
-                            className="flex w-full items-center gap-1.5 text-sm hover:opacity-80 transition-opacity text-left h-5 px-1"
-                        >
-                            {linkedIssue.author?.avatarUrl && (
-                                <img
-                                    src={linkedIssue.author.avatarUrl}
-                                    alt={linkedIssue.author.login}
-                                    className="h-5 w-5 rounded-full flex-shrink-0"
-                                />
-                            )}
-                            <span className="text-muted-foreground flex-shrink-0">
-                                #{linkedIssue.number}
-                                {linkedIssue.author && (
-                                    <span className="ml-1">by {linkedIssue.author.login}</span>
-                                )}
-                            </span>
-                            <span className="text-foreground truncate">
-                                {linkedIssue.title}
-                            </span>
-                            <span className="flex items-center gap-0.5 flex-shrink-0">
-                                <a
-                                    href={linkedIssue.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors"
-                                    aria-label="Open issue in browser"
+                        {linkedIssue && !isVSCode && (
+                            <div className="pb-2 w-full px-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setIssuePickerOpen(true)}
+                                    className="flex w-full items-center gap-1.5 text-sm hover:opacity-80 transition-opacity text-left h-5 px-1"
                                 >
-                                    <RiExternalLinkLine className="h-4 w-4 text-muted-foreground" />
-                                </a>
-                                <span
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setLinkedIssue(null);
-                                    }}
-                                    className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors cursor-pointer"
-                                    aria-label="Remove linked issue"
+                                    {linkedIssue.author?.avatarUrl && (
+                                        <img
+                                            src={linkedIssue.author.avatarUrl}
+                                            alt={linkedIssue.author.login}
+                                            className="h-5 w-5 rounded-full flex-shrink-0"
+                                        />
+                                    )}
+                                    <span className="text-muted-foreground flex-shrink-0">
+                                        #{linkedIssue.number}
+                                        {linkedIssue.author && (
+                                            <span className="ml-1">by {linkedIssue.author.login}</span>
+                                        )}
+                                    </span>
+                                    <span className="text-foreground truncate">
+                                        {linkedIssue.title}
+                                    </span>
+                                    <span className="flex items-center gap-0.5 flex-shrink-0">
+                                        <a
+                                            href={linkedIssue.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors"
+                                            aria-label="Open issue in browser"
+                                        >
+                                            <RiExternalLinkLine className="h-4 w-4 text-muted-foreground" />
+                                        </a>
+                                        <span
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setLinkedIssue(null);
+                                            }}
+                                            className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors cursor-pointer"
+                                            aria-label="Remove linked issue"
+                                        >
+                                            <RiCloseLine className="h-4 w-4 text-muted-foreground" />
+                                        </span>
+                                    </span>
+                                </button>
+                            </div>
+                        )}
+                        {linkedPr && !isVSCode && (
+                            <div className="pb-2 w-full px-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setPrPickerOpen(true)}
+                                    className="flex w-full items-center gap-1.5 text-sm hover:opacity-80 transition-opacity text-left h-5 px-1"
                                 >
-                                    <RiCloseLine className="h-4 w-4 text-muted-foreground" />
-                                </span>
-                            </span>
-                        </button>
-                    </div>
+                                    {linkedPr.author?.avatarUrl && (
+                                        <img
+                                            src={linkedPr.author.avatarUrl}
+                                            alt={linkedPr.author.login}
+                                            className="h-5 w-5 rounded-full flex-shrink-0"
+                                        />
+                                    )}
+                                    <span className="text-muted-foreground flex-shrink-0">
+                                        PR #{linkedPr.number}
+                                        {linkedPr.author && (
+                                            <span className="ml-1">by {linkedPr.author.login}</span>
+                                        )}
+                                    </span>
+                                    <span className="text-foreground truncate">
+                                        {linkedPr.title}
+                                    </span>
+                                    <span className="text-muted-foreground flex-shrink-0 typography-meta">
+                                        {linkedPr.head} → {linkedPr.base}
+                                    </span>
+                                    <span className="flex items-center gap-0.5 flex-shrink-0">
+                                        <a
+                                            href={linkedPr.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors"
+                                            aria-label="Open pull request in browser"
+                                        >
+                                            <RiExternalLinkLine className="h-4 w-4 text-muted-foreground" />
+                                        </a>
+                                        <span
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setLinkedPr(null);
+                                            }}
+                                            className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors cursor-pointer"
+                                            aria-label="Remove linked pull request"
+                                        >
+                                            <RiCloseLine className="h-4 w-4 text-muted-foreground" />
+                                        </span>
+                                    </span>
+                                </button>
+                            </div>
+                        )}
+                        <StatusRow
+                            isWorking={working.isWorking}
+                            statusText={workingStatusText}
+                            isGenericStatus={working.isGenericStatus}
+                            isWaitingForPermission={working.isWaitingForPermission}
+                            wasAborted={working.wasAborted}
+                            abortActive={working.abortActive}
+                            retryInfo={working.retryInfo}
+                            showAbortStatus={showAbortStatus}
+                            showAssistantStatus={false}
+                            showTodos
+                        />
+                    </>
                 )}
-                {linkedPr && !isVSCode && (
-                    <div className="pb-2 w-full px-1">
-                        <button
-                            type="button"
-                            onClick={() => setPrPickerOpen(true)}
-                            className="flex w-full items-center gap-1.5 text-sm hover:opacity-80 transition-opacity text-left h-5 px-1"
-                        >
-                            {linkedPr.author?.avatarUrl && (
-                                <img
-                                    src={linkedPr.author.avatarUrl}
-                                    alt={linkedPr.author.login}
-                                    className="h-5 w-5 rounded-full flex-shrink-0"
-                                />
-                            )}
-                            <span className="text-muted-foreground flex-shrink-0">
-                                PR #{linkedPr.number}
-                                {linkedPr.author && (
-                                    <span className="ml-1">by {linkedPr.author.login}</span>
-                                )}
-                            </span>
-                            <span className="text-foreground truncate">
-                                {linkedPr.title}
-                            </span>
-                            <span className="text-muted-foreground flex-shrink-0 typography-meta">
-                                {linkedPr.head} → {linkedPr.base}
-                            </span>
-                            <span className="flex items-center gap-0.5 flex-shrink-0">
-                                <a
-                                    href={linkedPr.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors"
-                                    aria-label="Open pull request in browser"
-                                >
-                                    <RiExternalLinkLine className="h-4 w-4 text-muted-foreground" />
-                                </a>
-                                <span
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setLinkedPr(null);
-                                    }}
-                                    className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors cursor-pointer"
-                                    aria-label="Remove linked pull request"
-                                >
-                                    <RiCloseLine className="h-4 w-4 text-muted-foreground" />
-                                </span>
-                            </span>
-                        </button>
-                    </div>
-                )}
-                <StatusRow
-                    isWorking={working.isWorking}
-                    statusText={workingStatusText}
-                    isGenericStatus={working.isGenericStatus}
-                    isWaitingForPermission={working.isWaitingForPermission}
-                    wasAborted={working.wasAborted}
-                    abortActive={working.abortActive}
-                    retryInfo={working.retryInfo}
-                    showAbortStatus={showAbortStatus}
-                    showAssistantStatus={false}
-                    showTodos
-                />
                 <div
                     className={cn(
                         "flex flex-col relative overflow-visible",
@@ -2555,7 +2615,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                         <RiAttachment2 className={cn(iconSizeClass, 'text-current')} />
                                     </button>
                                 </div>
-                                <p className="mt-2 typography-ui-label text-muted-foreground">Drop files here to attach</p>
+                                <p className="mt-2 typography-ui-label text-muted-foreground">
+                                    {dragIntent === 'insert-path' ? 'Drop here to insert @path' : 'Drop files here to attach'}
+                                </p>
                             </div>
                         </div>
                     )}
@@ -2796,7 +2858,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                     </div>
 
                     {/* Mobile Session Status Bar - above input */}
-                    {isMobile && <MobileSessionStatusBar cornerRadius={cornerRadius} />}
+                    {isMobile && !isMobileChatShell && <MobileSessionStatusBar cornerRadius={cornerRadius} />}
                 </div>
             </div>
         </form>
