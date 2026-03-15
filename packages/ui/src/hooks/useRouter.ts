@@ -39,6 +39,7 @@ export function useRouter(): void {
 
   // Get store actions (stable references)
   const setCurrentSession = useSessionStore((state) => state.setCurrentSession);
+  const setAppPage = useUIStore((state) => state.setAppPage);
   const setActiveMainTab = useUIStore((state) => state.setActiveMainTab);
   const setSettingsDialogOpen = useUIStore((state) => state.setSettingsDialogOpen);
   const setSettingsPage = useUIStore((state) => state.setSettingsPage);
@@ -62,6 +63,12 @@ export function useRouter(): void {
           if (route.sessionId !== currentSessionId) {
             await setCurrentSession(route.sessionId);
           }
+        }
+
+        if (route.page) {
+          setAppPage(route.page);
+        } else if (useUIStore.getState().appPage !== 'workspace') {
+          setAppPage('workspace');
         }
 
         // 2. Handle settings (takes precedence over tabs - it's a full-screen overlay)
@@ -90,7 +97,7 @@ export function useRouter(): void {
         isApplyingRouteRef.current = false;
       }
     },
-    [setCurrentSession, setActiveMainTab, setSettingsDialogOpen, setSettingsPage, navigateToDiff]
+    [navigateToDiff, setActiveMainTab, setAppPage, setCurrentSession, setSettingsDialogOpen, setSettingsPage]
   );
 
   /**
@@ -102,6 +109,7 @@ export function useRouter(): void {
 
     return {
       sessionId: sessionState.currentSessionId,
+      page: uiState.appPage,
       tab: uiState.activeMainTab,
       isSettingsOpen: uiState.isSettingsDialogOpen,
       settingsPath: uiState.settingsPage,
@@ -181,6 +189,7 @@ export function useRouter(): void {
       return;
     }
 
+    let prevPage = useUIStore.getState().appPage;
     let prevTab: MainTab = useUIStore.getState().activeMainTab;
     let prevSettingsOpen: boolean = useUIStore.getState().isSettingsDialogOpen;
     let prevSettingsPath: string = useUIStore.getState().settingsPage;
@@ -192,19 +201,21 @@ export function useRouter(): void {
         return;
       }
 
+      const pageChanged = state.appPage !== prevPage;
       const tabChanged = state.activeMainTab !== prevTab;
       const settingsOpenChanged = state.isSettingsDialogOpen !== prevSettingsOpen;
       const settingsPathChanged = state.settingsPage !== prevSettingsPath;
       const diffFileChanged = state.pendingDiffFile !== prevDiffFile && state.activeMainTab === 'diff';
 
       // Update tracking vars
+      prevPage = state.appPage;
       prevTab = state.activeMainTab;
       prevSettingsOpen = state.isSettingsDialogOpen;
       prevSettingsPath = state.settingsPage;
       prevDiffFile = state.pendingDiffFile;
 
       // Only sync if something relevant changed
-      if (tabChanged || settingsOpenChanged || settingsPathChanged || diffFileChanged) {
+      if (pageChanged || tabChanged || settingsOpenChanged || settingsPathChanged || diffFileChanged) {
         syncURLFromState();
       }
     });
@@ -232,6 +243,9 @@ export function useRouter(): void {
         if (uiState.isSettingsDialogOpen) {
           setSettingsDialogOpen(false);
         }
+        if (uiState.appPage !== 'workspace') {
+          setAppPage('workspace');
+        }
         // Reset to chat tab if not already there
         if (uiState.activeMainTab !== 'chat') {
           setActiveMainTab('chat');
@@ -244,7 +258,7 @@ export function useRouter(): void {
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [applyRoute, isVSCode, setActiveMainTab, setSettingsDialogOpen]);
+  }, [applyRoute, isVSCode, setActiveMainTab, setAppPage, setSettingsDialogOpen]);
 }
 
 /**
@@ -258,14 +272,17 @@ export function navigateToRoute(route: Partial<RouteState>): void {
 
   // Check VS Code context
   const win = window as { __VSCODE_CONFIG__?: unknown };
-  if (win.__VSCODE_CONFIG__ !== undefined) {
-    // In VS Code, just apply state changes directly
-    if (route.sessionId) {
-      void useSessionStore.getState().setCurrentSession(route.sessionId);
-    }
-    if (route.settingsPath) {
-      useUIStore.getState().setSettingsPage(resolveSettingsSlug(route.settingsPath));
-      useUIStore.getState().setSettingsDialogOpen(true);
+    if (win.__VSCODE_CONFIG__ !== undefined) {
+      // In VS Code, just apply state changes directly
+      if (route.sessionId) {
+        void useSessionStore.getState().setCurrentSession(route.sessionId);
+      }
+      if (route.page) {
+        useUIStore.getState().setAppPage(route.page);
+      }
+      if (route.settingsPath) {
+        useUIStore.getState().setSettingsPage(resolveSettingsSlug(route.settingsPath));
+        useUIStore.getState().setSettingsDialogOpen(true);
     } else if (route.tab) {
       useUIStore.getState().setActiveMainTab(route.tab);
     }
@@ -281,9 +298,12 @@ export function navigateToRoute(route: Partial<RouteState>): void {
   if (route.sessionId) {
     params.set('session', route.sessionId);
   }
+  if (route.page && route.page !== 'workspace') {
+    params.set('page', route.page);
+  }
   if (route.settingsPath) {
     params.set('settings', route.settingsPath);
-  } else if (route.tab && route.tab !== 'chat') {
+  } else if ((route.page ?? 'workspace') === 'workspace' && route.tab && route.tab !== 'chat') {
     if (useUIStore.getState().isSettingsDialogOpen) {
       useUIStore.getState().setSettingsDialogOpen(false);
     }
@@ -301,6 +321,9 @@ export function navigateToRoute(route: Partial<RouteState>): void {
   // Also apply to state
   if (route.sessionId) {
     void useSessionStore.getState().setCurrentSession(route.sessionId);
+  }
+  if (route.page) {
+    useUIStore.getState().setAppPage(route.page);
   }
   if (route.settingsPath) {
     useUIStore.getState().setSettingsPage(resolveSettingsSlug(route.settingsPath));
@@ -332,6 +355,10 @@ export function getShareableURL(): string {
 
   if (uiState.isSettingsDialogOpen) {
     params.set('settings', uiState.settingsPage || 'home');
+  }
+
+  if (uiState.appPage !== 'workspace') {
+    params.set('page', uiState.appPage);
   } else if (uiState.activeMainTab !== 'chat') {
     params.set('tab', uiState.activeMainTab);
   }

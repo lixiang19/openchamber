@@ -1,5 +1,5 @@
 import type { SidebarSection } from '@/constants/sidebar';
-import type { MainTab } from '@/stores/useUIStore';
+import type { AppPage, MainTab } from '@/stores/useUIStore';
 
 /**
  * Represents the current route state derived from URL parameters.
@@ -8,6 +8,8 @@ import type { MainTab } from '@/stores/useUIStore';
 export interface RouteState {
   /** Session ID to navigate to */
   sessionId: string | null;
+  /** Top-level app page to display */
+  page: AppPage | null;
   /** Main tab to display (chat, git, diff, terminal, files) */
   tab: MainTab | null;
   /** Settings section - when non-null, settings dialog should be open */
@@ -30,6 +32,7 @@ export interface RouterContext {
  * Valid main tab values for URL routing.
  */
 export const VALID_TABS: readonly MainTab[] = ['chat', 'git', 'diff', 'terminal', 'files'] as const;
+export const VALID_PAGES: readonly AppPage[] = ['workspace', 'inbox'] as const;
 
 /**
  * Valid settings section values for URL routing.
@@ -49,6 +52,7 @@ export const VALID_SETTINGS_SECTIONS: readonly SidebarSection[] = [
  */
 export const ROUTE_PARAMS = {
   SESSION: 'session',
+  PAGE: 'page',
   TAB: 'tab',
   SETTINGS: 'settings',
   FILE: 'file',

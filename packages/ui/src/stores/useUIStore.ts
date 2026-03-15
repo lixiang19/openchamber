@@ -6,6 +6,7 @@ import { SEMANTIC_TYPOGRAPHY, getTypographyVariable, type SemanticTypographyKey 
 import type { ShortcutCombo } from '@/lib/shortcuts';
 
 export type MainTab = 'chat' | 'plan' | 'git' | 'diff' | 'terminal' | 'files';
+export type AppPage = 'workspace' | 'inbox';
 export type RightSidebarTab = 'git' | 'files';
 export type ContextPanelMode = 'diff' | 'file' | 'context' | 'plan' | 'chat';
 export type MermaidRenderingMode = 'svg' | 'ascii';
@@ -473,6 +474,7 @@ interface UIStore {
   hasManuallyResizedBottomTerminal: boolean;
   isNavRailExpanded: boolean;
   isSessionSwitcherOpen: boolean;
+  appPage: AppPage;
   activeMainTab: MainTab;
   mainTabGuard: MainTabGuard | null;
   sidebarOpenBeforeFullscreenTab: boolean | null;
@@ -592,6 +594,7 @@ interface UIStore {
   setNavRailExpanded: (expanded: boolean) => void;
   toggleNavRail: () => void;
   setSessionSwitcherOpen: (open: boolean) => void;
+  setAppPage: (page: AppPage) => void;
   setActiveMainTab: (tab: MainTab) => void;
   setMainTabGuard: (guard: MainTabGuard | null) => void;
   setPendingDiffFile: (filePath: string | null) => void;
@@ -705,6 +708,7 @@ export const useUIStore = create<UIStore>()(
         hasManuallyResizedBottomTerminal: false,
         isNavRailExpanded: false,
         isSessionSwitcherOpen: false,
+        appPage: 'workspace',
         activeMainTab: 'chat',
         mainTabGuard: null,
         sidebarOpenBeforeFullscreenTab: null,
@@ -1178,6 +1182,10 @@ export const useUIStore = create<UIStore>()(
 
         setSessionSwitcherOpen: (open) => {
           set({ isSessionSwitcherOpen: open });
+        },
+
+        setAppPage: (page) => {
+          set({ appPage: page });
         },
 
         setMainTabGuard: (guard) => {
@@ -1745,7 +1753,7 @@ export const useUIStore = create<UIStore>()(
       {
         name: 'ui-store',
         storage: createJSONStorage(() => getSafeStorage()),
-        version: 9,
+        version: 10,
         migrate: (persistedState, version) => {
           if (!persistedState || typeof persistedState !== 'object') {
             return persistedState;
@@ -1799,6 +1807,13 @@ export const useUIStore = create<UIStore>()(
 
           if (version < 9 && state.isRightSidebarOpen === false) {
             state.isRightSidebarOpen = true;
+          }
+
+          if (version < 10) {
+            if (state.activeMainTab === 'inbox') {
+              state.activeMainTab = 'chat';
+            }
+            delete state.appPage;
           }
 
           state.contextPanelByDirectory = sanitizeContextPanelByDirectory(state.contextPanelByDirectory);

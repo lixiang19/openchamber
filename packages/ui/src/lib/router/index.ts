@@ -6,11 +6,13 @@
  *
  * URL Schema:
  * - `?session=<id>` - Navigate to specific session
+ * - `?page=<workspace|inbox>` - Active top-level page
  * - `?tab=<chat|git|diff|terminal|files>` - Active main tab
  * - `?settings=<section>` - Open settings to specific section
  * - `?file=<path>` - Diff view with file selected
  *
  * Examples:
+ * - `/?page=inbox` - Open inbox page
  * - `/?session=abc123` - Open session abc123
  * - `/?tab=git` - Open git tab
  * - `/?settings=providers` - Open settings to providers section
@@ -18,7 +20,7 @@
  */
 
 export type { RouteState, RouterContext } from './types';
-export { VALID_TABS, VALID_SETTINGS_SECTIONS, ROUTE_PARAMS } from './types';
+export { VALID_PAGES, VALID_TABS, VALID_SETTINGS_SECTIONS, ROUTE_PARAMS } from './types';
 
 export { parseRoute, hasRouteParams } from './parseRoute';
 

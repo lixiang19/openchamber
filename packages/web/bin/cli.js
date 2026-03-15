@@ -41,6 +41,7 @@ const TUNNEL_BOOTSTRAP_TTL_MAX_MS = 24 * 60 * 60 * 1000;
 const TUNNEL_SESSION_TTL_DEFAULT_MS = 8 * 60 * 60 * 1000;
 const TUNNEL_SESSION_TTL_MIN_MS = 5 * 60 * 1000;
 const TUNNEL_SESSION_TTL_MAX_MS = 24 * 60 * 60 * 1000;
+const CLI_BIN_NAME = 'opchat';
 const CONNECT_TTL_PICKER_OPTIONS = [
   { value: String(3 * 60 * 1000), label: '3m' },
   { value: String(TUNNEL_BOOTSTRAP_TTL_DEFAULT_MS), label: '30m' },
@@ -284,7 +285,7 @@ function buildTunnelStartReplayCommand({
   tokenViaStdin,
   tokenFileProvided,
 }) {
-  const parts = ['openchamber', 'tunnel', 'start'];
+  const parts = [CLI_BIN_NAME, 'tunnel', 'start'];
   if (Number.isFinite(port) && port > 0) {
     parts.push('--port', String(port));
   }
@@ -329,7 +330,7 @@ function buildTunnelStartReplayCommand({
 
 function buildTunnelProfileAddCommand({ provider, hostname }) {
   const parts = [
-    'openchamber',
+    CLI_BIN_NAME,
     'tunnel',
     'profile',
     'add',
@@ -779,10 +780,10 @@ function parseArgs(argv = process.argv.slice(2)) {
         removedFlagErrors.push('`--daemon` was removed. OpenChamber now always runs in daemon mode.');
         break;
       case 'try-cf-tunnel':
-        removedFlagErrors.push('`--try-cf-tunnel` was removed. Use: openchamber tunnel start --provider cloudflare --mode quick');
+        removedFlagErrors.push(`\`--try-cf-tunnel\` was removed. Use: ${CLI_BIN_NAME} tunnel start --provider cloudflare --mode quick`);
         break;
       case 'tunnel-qr':
-        removedFlagErrors.push('`--tunnel-qr` was removed. Use: openchamber tunnel start ... --qr');
+        removedFlagErrors.push(`\`--tunnel-qr\` was removed. Use: ${CLI_BIN_NAME} tunnel start ... --qr`);
         break;
       case 'tunnel-password-url':
         removedFlagErrors.push('`--tunnel-password-url` was removed. Use UI password auth directly after tunnel start.');
@@ -793,7 +794,7 @@ function parseArgs(argv = process.argv.slice(2)) {
       case 'tunnel-token':
       case 'tunnel-hostname':
       case 'tunnel':
-        removedFlagErrors.push(`\`--${name}\` was removed from top-level serve flow. Use: openchamber tunnel start ...`);
+        removedFlagErrors.push(`\`--${name}\` was removed from top-level serve flow. Use: ${CLI_BIN_NAME} tunnel start ...`);
         break;
       default:
         if (!long && name.length === 1) {
@@ -825,7 +826,7 @@ function showHelp() {
  OpenChamber - Web interface for the OpenCode AI coding agent
 
 USAGE:
-  openchamber [COMMAND] [OPTIONS]
+  ${CLI_BIN_NAME} [COMMAND] [OPTIONS]
 
 COMMANDS:
   serve          Start the web server (daemon default)
@@ -850,10 +851,10 @@ ENVIRONMENT:
   OPENCODE_SKIP_START          Skip starting OpenCode, use external server
 
 EXAMPLES:
-  openchamber                    # Start in daemon mode on default port 3000 (or free port)
-  openchamber --port 8080        # Start on port 8080 (daemon)
-  openchamber tunnel help        # Show tunnel lifecycle help
-  openchamber logs               # Follow logs for latest running instance
+  ${CLI_BIN_NAME}                    # Start in daemon mode on default port 3000 (or free port)
+  ${CLI_BIN_NAME} --port 8080        # Start on port 8080 (daemon)
+  ${CLI_BIN_NAME} tunnel help        # Show tunnel lifecycle help
+  ${CLI_BIN_NAME} logs               # Follow logs for latest running instance
 `);
 }
 
@@ -862,7 +863,7 @@ function showTunnelHelp() {
  Tunnel Lifecycle Commands
 
 USAGE:
-  openchamber tunnel <SUBCOMMAND> [OPTIONS]
+  ${CLI_BIN_NAME} tunnel <SUBCOMMAND> [OPTIONS]
 
 SUBCOMMANDS:
   help        Show this tunnel help
@@ -906,31 +907,31 @@ BEHAVIOR NOTES:
   - Connect links are one-time; generating a new link revokes the previous unused link.
 
 PROFILE USAGE:
-  openchamber tunnel profile list [--provider <id>] [--json]
-  openchamber tunnel profile show --name <name> [--provider <id>] [--json]
-  openchamber tunnel profile add --provider <id> --mode managed-remote --name <name> --hostname <host> --token <token> [--force] [--json]
-  openchamber tunnel profile add --provider <id> --mode managed-remote --name <name> --hostname <host> --token-file <path> [--force] [--json]
-  openchamber tunnel profile remove --name <name> [--provider <id>] [--json]
+  ${CLI_BIN_NAME} tunnel profile list [--provider <id>] [--json]
+  ${CLI_BIN_NAME} tunnel profile show --name <name> [--provider <id>] [--json]
+  ${CLI_BIN_NAME} tunnel profile add --provider <id> --mode managed-remote --name <name> --hostname <host> --token <token> [--force] [--json]
+  ${CLI_BIN_NAME} tunnel profile add --provider <id> --mode managed-remote --name <name> --hostname <host> --token-file <path> [--force] [--json]
+  ${CLI_BIN_NAME} tunnel profile remove --name <name> [--provider <id>] [--json]
 
 SHELL COMPLETION:
-  openchamber tunnel completion bash   Generate Bash completion script
-  openchamber tunnel completion zsh    Generate Zsh completion script
-  openchamber tunnel completion fish   Generate Fish completion script
+  ${CLI_BIN_NAME} tunnel completion bash   Generate Bash completion script
+  ${CLI_BIN_NAME} tunnel completion zsh    Generate Zsh completion script
+  ${CLI_BIN_NAME} tunnel completion fish   Generate Fish completion script
 
 EXAMPLES:
-  openchamber tunnel providers
-  openchamber tunnel ready --provider cloudflare
-  openchamber tunnel doctor --provider cloudflare
-  openchamber tunnel status
-  openchamber tunnel start --qr
-  openchamber tunnel start --profile prod-main
-  openchamber tunnel start --provider cloudflare --mode managed-remote --token-file ~/.secrets/cf-token --hostname app.example.com
-  openchamber tunnel start --provider cloudflare --mode managed-local --config ~/.cloudflared/config.yml
-  openchamber tunnel start --dry-run --provider cloudflare --mode managed-remote --token-file ~/.secrets/cf-token --hostname app.example.com
-  echo "$TOKEN" | openchamber tunnel profile add --provider cloudflare --mode managed-remote --name prod-main --hostname app.example.com --token-stdin
-  openchamber tunnel profile list --provider cloudflare
-  openchamber tunnel profile list --json --show-secrets
-  openchamber tunnel stop --port 3000
+  ${CLI_BIN_NAME} tunnel providers
+  ${CLI_BIN_NAME} tunnel ready --provider cloudflare
+  ${CLI_BIN_NAME} tunnel doctor --provider cloudflare
+  ${CLI_BIN_NAME} tunnel status
+  ${CLI_BIN_NAME} tunnel start --qr
+  ${CLI_BIN_NAME} tunnel start --profile prod-main
+  ${CLI_BIN_NAME} tunnel start --provider cloudflare --mode managed-remote --token-file ~/.secrets/cf-token --hostname app.example.com
+  ${CLI_BIN_NAME} tunnel start --provider cloudflare --mode managed-local --config ~/.cloudflared/config.yml
+  ${CLI_BIN_NAME} tunnel start --dry-run --provider cloudflare --mode managed-remote --token-file ~/.secrets/cf-token --hostname app.example.com
+  echo "$TOKEN" | ${CLI_BIN_NAME} tunnel profile add --provider cloudflare --mode managed-remote --name prod-main --hostname app.example.com --token-stdin
+  ${CLI_BIN_NAME} tunnel profile list --provider cloudflare
+  ${CLI_BIN_NAME} tunnel profile list --json --show-secrets
+  ${CLI_BIN_NAME} tunnel stop --port 3000
 `);
 }
 
@@ -938,9 +939,9 @@ function generateCompletionScript(shell) {
   const normalized = typeof shell === 'string' ? shell.trim().toLowerCase() : '';
 
   if (normalized === 'bash') {
-    return `# Bash completion for openchamber tunnel
-# Add to ~/.bashrc: eval "$(openchamber tunnel completion bash)"
-_openchamber_tunnel() {
+    return `# Bash completion for ${CLI_BIN_NAME} tunnel
+# Add to ~/.bashrc: eval "$(${CLI_BIN_NAME} tunnel completion bash)"
+_opchat_tunnel() {
   local cur prev commands tunnel_commands profile_commands common_flags start_flags
   COMPREPLY=()
   cur="\${COMP_WORDS[COMP_CWORD]}"
@@ -981,16 +982,16 @@ _openchamber_tunnel() {
   COMPREPLY=( $(compgen -W "\${common_flags}" -- "\${cur}") )
   return 0
 }
-complete -F _openchamber_tunnel openchamber
+complete -F _opchat_tunnel ${CLI_BIN_NAME}
 `;
   }
 
   if (normalized === 'zsh') {
-    return `#compdef openchamber
-# Zsh completion for openchamber tunnel
-# Add to ~/.zshrc: eval "$(openchamber tunnel completion zsh)"
+    return `#compdef ${CLI_BIN_NAME}
+# Zsh completion for ${CLI_BIN_NAME} tunnel
+# Add to ~/.zshrc: eval "$(${CLI_BIN_NAME} tunnel completion zsh)"
 
-_openchamber() {
+_opchat() {
   local -a commands tunnel_commands profile_commands
 
   commands=(
@@ -1046,42 +1047,42 @@ _openchamber() {
   esac
 }
 
-compdef _openchamber openchamber
+compdef _opchat ${CLI_BIN_NAME}
 `;
   }
 
   if (normalized === 'fish') {
-    return `# Fish completion for openchamber tunnel
-# Save to ~/.config/fish/completions/openchamber.fish
+    return `# Fish completion for ${CLI_BIN_NAME} tunnel
+# Save to ~/.config/fish/completions/${CLI_BIN_NAME}.fish
 
-complete -c openchamber -n '__fish_use_subcommand' -a 'serve' -d 'Start the web server'
-complete -c openchamber -n '__fish_use_subcommand' -a 'stop' -d 'Stop running instance(s)'
-complete -c openchamber -n '__fish_use_subcommand' -a 'restart' -d 'Stop and start the server'
-complete -c openchamber -n '__fish_use_subcommand' -a 'status' -d 'Show server status'
-complete -c openchamber -n '__fish_use_subcommand' -a 'tunnel' -d 'Tunnel lifecycle commands'
-complete -c openchamber -n '__fish_use_subcommand' -a 'logs' -d 'Tail logs'
-complete -c openchamber -n '__fish_use_subcommand' -a 'update' -d 'Check for updates'
+complete -c ${CLI_BIN_NAME} -n '__fish_use_subcommand' -a 'serve' -d 'Start the web server'
+complete -c ${CLI_BIN_NAME} -n '__fish_use_subcommand' -a 'stop' -d 'Stop running instance(s)'
+complete -c ${CLI_BIN_NAME} -n '__fish_use_subcommand' -a 'restart' -d 'Stop and start the server'
+complete -c ${CLI_BIN_NAME} -n '__fish_use_subcommand' -a 'status' -d 'Show server status'
+complete -c ${CLI_BIN_NAME} -n '__fish_use_subcommand' -a 'tunnel' -d 'Tunnel lifecycle commands'
+complete -c ${CLI_BIN_NAME} -n '__fish_use_subcommand' -a 'logs' -d 'Tail logs'
+complete -c ${CLI_BIN_NAME} -n '__fish_use_subcommand' -a 'update' -d 'Check for updates'
 
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'help' -d 'Show tunnel help'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'providers' -d 'Show providers'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'ready' -d 'Check readiness'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'doctor' -d 'Run diagnostics'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'status' -d 'Show tunnel status'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'start' -d 'Start a tunnel'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'stop' -d 'Stop tunnel'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'profile' -d 'Manage profiles'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'completion' -d 'Generate completions'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'help' -d 'Show tunnel help'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'providers' -d 'Show providers'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'ready' -d 'Check readiness'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'doctor' -d 'Run diagnostics'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'status' -d 'Show tunnel status'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'start' -d 'Start a tunnel'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'stop' -d 'Stop tunnel'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'profile' -d 'Manage profiles'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and not __fish_seen_subcommand_from help providers ready doctor status start stop profile completion' -a 'completion' -d 'Generate completions'
 
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l provider -d 'Provider id'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l mode -d 'Tunnel mode'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l profile -d 'Profile name'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l config -d 'Config path'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l token -d 'Token'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l token-file -d 'Token file path'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l token-stdin -d 'Read token from stdin'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l hostname -d 'Hostname'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l dry-run -d 'Validate without applying'
-complete -c openchamber -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l qr -d 'Show QR code'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l provider -d 'Provider id'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l mode -d 'Tunnel mode'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l profile -d 'Profile name'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l config -d 'Config path'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l token -d 'Token'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l token-file -d 'Token file path'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l token-stdin -d 'Read token from stdin'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l hostname -d 'Hostname'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l dry-run -d 'Validate without applying'
+complete -c ${CLI_BIN_NAME} -n '__fish_seen_subcommand_from tunnel; and __fish_seen_subcommand_from start' -l qr -d 'Show QR code'
 `;
   }
 
@@ -1504,7 +1505,7 @@ function resolveProfileByName(profiles, profileName, provider) {
   });
 
   if (matches.length === 0) {
-    return { profile: null, error: `No tunnel profile found for name '${profileName}'. Run 'openchamber tunnel profile list'.` };
+    return { profile: null, error: `No tunnel profile found for name '${profileName}'. Run '${CLI_BIN_NAME} tunnel profile list'.` };
   }
   if (matches.length > 1) {
     return { profile: null, error: `Profile name '${profileName}' exists for multiple providers. Use --provider <id>.` };
@@ -1896,7 +1897,7 @@ async function resolveDoctorPortStatuses(options = {}) {
         available: false,
         status: 'warning',
         line: `port ${requestedPort} not available (desktop runtime)`,
-        detail: 'Use a CLI instance port from `openchamber serve` for tunneling.',
+        detail: `Use a CLI instance port from \`${CLI_BIN_NAME} serve\` for tunneling.`,
       });
       return { statuses, availableEntries: [] };
     }
@@ -1906,7 +1907,7 @@ async function resolveDoctorPortStatuses(options = {}) {
       available: false,
       status: 'error',
       line: `port ${requestedPort} not available (no running instance)`,
-      detail: `Start one with \`openchamber serve --port ${requestedPort}\`.`,
+      detail: `Start one with \`${CLI_BIN_NAME} serve --port ${requestedPort}\`.`,
     });
     return { statuses, availableEntries: [] };
   }
@@ -1927,7 +1928,7 @@ async function resolveDoctorPortStatuses(options = {}) {
       available: false,
       status: 'warning',
       line: `port ${desktopEntry.port} not available (desktop runtime)`,
-      detail: 'Use a CLI instance port from `openchamber serve` for tunneling.',
+      detail: `Use a CLI instance port from \`${CLI_BIN_NAME} serve\` for tunneling.`,
     });
   }
 
@@ -1937,7 +1938,7 @@ async function resolveDoctorPortStatuses(options = {}) {
       available: false,
       status: 'warning',
       line: 'no CLI ports available for tunneling',
-      detail: 'Start one with `openchamber serve`.',
+      detail: `Start one with \`${CLI_BIN_NAME} serve\`.`,
     });
   }
 
@@ -2107,7 +2108,7 @@ async function resolveTargetInstance({
 
   if (options.all && requireAll) {
     if (running.length === 0) {
-      throw new Error('No running OpenChamber instance found. Start one with `openchamber serve`.');
+      throw new Error(`No running OpenChamber instance found. Start one with \`${CLI_BIN_NAME} serve\`.`);
     }
     return running;
   }
@@ -2120,7 +2121,7 @@ async function resolveTargetInstance({
         if (!attachability.attachable) {
           if (attachability.reason === 'desktop') {
             throw new Error(
-              `Port ${options.port} is used by OpenChamber Desktop app. Tunnel attach requires a CLI instance from \`openchamber serve\`.`
+              `Port ${options.port} is used by OpenChamber Desktop app. Tunnel attach requires a CLI instance from \`${CLI_BIN_NAME} serve\`.`
             );
           }
           throw new Error(
@@ -2135,7 +2136,7 @@ async function resolveTargetInstance({
       const systemInfo = await fetchSystemInfoFromPort(options.port);
       if (systemInfo?.runtime === 'desktop') {
         throw new Error(
-          `Port ${options.port} is used by OpenChamber Desktop app. Tunnel attach requires a CLI instance from \`openchamber serve\`.`
+          `Port ${options.port} is used by OpenChamber Desktop app. Tunnel attach requires a CLI instance from \`${CLI_BIN_NAME} serve\`.`
         );
       }
     }
@@ -2192,10 +2193,10 @@ async function resolveTargetInstance({
     }
 
     if (sawDesktop) {
-      throw new Error('Only OpenChamber Desktop instance(s) detected. Tunnel attach requires a CLI instance from `openchamber serve`.');
+      throw new Error(`Only OpenChamber Desktop instance(s) detected. Tunnel attach requires a CLI instance from \`${CLI_BIN_NAME} serve\`.`);
     }
 
-    throw new Error('No attachable OpenChamber instance found. Start one with `openchamber serve`.');
+    throw new Error(`No attachable OpenChamber instance found. Start one with \`${CLI_BIN_NAME} serve\`.`);
   }
 
   if (running.length === 1) {
@@ -2214,7 +2215,7 @@ async function resolveTargetInstance({
       const started = running.find((entry) => entry.port === startedPort) || getLatestInstance(running);
       if (started) return { ...started, autoStarted: true };
     }
-    throw new Error('No running OpenChamber instance found. Start one with `openchamber serve`.');
+    throw new Error(`No running OpenChamber instance found. Start one with \`${CLI_BIN_NAME} serve\`.`);
   }
 
   const ports = running.map((entry) => entry.port).join(', ');
@@ -2233,7 +2234,7 @@ async function resolveTunnelReadEntries(options) {
   }
 
   if (running.length === 0) {
-    throw new Error('No running OpenChamber instance found. Start one with `openchamber serve`.');
+    throw new Error(`No running OpenChamber instance found. Start one with \`${CLI_BIN_NAME} serve\`.`);
   }
 
   return running;
@@ -2347,10 +2348,10 @@ async function handleTunnelProfileSubcommand(options, action) {
     if (!isQuietMode(options)) {
       clackIntro('Tunnel Profile');
       logStatus('info', 'Available subcommands', 'list, show, add, remove');
-      clackLog.step('List profiles: `openchamber tunnel profile list`');
-      clackLog.step('Show one profile: `openchamber tunnel profile show --name <name>`');
-      clackLog.step('Add profile: `openchamber tunnel profile add --provider cloudflare --mode managed-remote --name <name> --hostname <host> --token <token>`');
-      clackLog.step('Remove profile: `openchamber tunnel profile remove --name <name>`');
+      clackLog.step(`List profiles: \`${CLI_BIN_NAME} tunnel profile list\``);
+      clackLog.step(`Show one profile: \`${CLI_BIN_NAME} tunnel profile show --name <name>\``);
+      clackLog.step(`Add profile: \`${CLI_BIN_NAME} tunnel profile add --provider cloudflare --mode managed-remote --name <name> --hostname <host> --token <token>\``);
+      clackLog.step(`Remove profile: \`${CLI_BIN_NAME} tunnel profile remove --name <name>\``);
       clackOutro('Choose a subcommand');
     }
     return;
@@ -2593,7 +2594,7 @@ async function handleTunnelProfileSubcommand(options, action) {
     clackIntro(boldText('Tunnel Profile Saved'));
     logStatus('success', `${added.name} (${added.provider}/${added.mode})`, `${added.hostname} ${formatProfileTokenStatus(added, options.showSecrets)}`);
     clackOutro('save complete');
-    logStatus('info', '[START_PROFILE]', `openchamber tunnel start --profile ${added.name}`);
+    logStatus('info', '[START_PROFILE]', `${CLI_BIN_NAME} tunnel start --profile ${added.name}`);
     clackOutro('');
     return;
   }
@@ -2633,7 +2634,7 @@ async function handleTunnelProfileSubcommand(options, action) {
   const suggestion = findClosestMatch(sub, knownProfileActions);
   const hint = suggestion ? ` Did you mean '${suggestion}'?` : '';
   throw new TunnelCliError(
-    `Unknown tunnel profile subcommand '${sub}'.${hint} Use 'openchamber tunnel help'.`,
+    `Unknown tunnel profile subcommand '${sub}'.${hint} Use '${CLI_BIN_NAME} tunnel help'.`,
     EXIT_CODE.USAGE_ERROR
   );
 }
@@ -2692,7 +2693,7 @@ const commands = {
           );
         }
         if (systemInfo?.runtime) {
-          throw new Error(`OpenChamber is already running on port ${targetPort}. Use \`openchamber status\` or \`openchamber stop --port ${targetPort}\`.`);
+          throw new Error(`OpenChamber is already running on port ${targetPort}. Use \`${CLI_BIN_NAME} status\` or \`${CLI_BIN_NAME} stop --port ${targetPort}\`.`);
         }
         throw new Error(`Port ${targetPort} is already in use by another process.`);
       }
@@ -2807,7 +2808,7 @@ const commands = {
       port: resolvedPort,
       pid: child.pid,
       url: buildLocalUrl(resolvedPort, '/'),
-      logs: `openchamber logs -p ${resolvedPort}`,
+      logs: `${CLI_BIN_NAME} logs -p ${resolvedPort}`,
     };
 
     if (isJsonMode(options)) {
@@ -3544,16 +3545,16 @@ const commands = {
           logStatus('error', `port ${entry.port} — No running instance`);
         }
         if (desktopUnavailablePorts.length > 0) {
-          clackLog.message('Only CLI instances (openchamber serve) support tunneling.');
+          clackLog.message(`Only CLI instances (${CLI_BIN_NAME} serve) support tunneling.`);
         }
 
         if (cliPorts.length === 0 && unavailablePorts.length === 0) {
-          logStatus('warning', 'No running instances found', 'Start one with `openchamber serve`.');
+          logStatus('warning', 'No running instances found', `Start one with \`${CLI_BIN_NAME} serve\`.`);
           clackOutro('No ports available');
           return;
         }
         if (cliPorts.length === 0) {
-          logStatus('warning', 'No CLI instances available for tunneling', 'Start one with `openchamber serve`.');
+          logStatus('warning', 'No CLI instances available for tunneling', `Start one with \`${CLI_BIN_NAME} serve\`.`);
           clackOutro('No CLI ports available');
           return;
         }
@@ -3656,7 +3657,7 @@ const commands = {
                 lines: [
                   'Cloudflare target must match the active OpenChamber CLI port.',
                   'Example: `http://127.0.0.1:<port>`',
-                  'If CLI picked a different port, update Cloudflare or run `openchamber serve --port <port>`.',
+                  `If CLI picked a different port, update Cloudflare or run \`${CLI_BIN_NAME} serve --port <port>\`.`,
                 ],
               });
             }
@@ -4026,7 +4027,7 @@ const commands = {
 
             if (attachableSafeInstances.length === 0) {
               throw new TunnelCliError(
-                'No attachable OpenChamber CLI instances found on safe ports. Start one with `openchamber serve --port 3000`.',
+                `No attachable OpenChamber CLI instances found on safe ports. Start one with \`${CLI_BIN_NAME} serve --port 3000\`.`,
                 EXIT_CODE.USAGE_ERROR,
               );
             }
@@ -4052,7 +4053,7 @@ const commands = {
           logStatus(
             'info',
             `Using auto-started instance on port ${instance.port}`,
-            `logs: openchamber logs -p ${instance.port}`,
+            `logs: ${CLI_BIN_NAME} logs -p ${instance.port}`,
           );
         }
 
@@ -4095,8 +4096,8 @@ const commands = {
             throw new Error(
               `OpenChamber on port ${instance.port} is still starting after 60s. Startup time can vary by machine performance. ` +
               `Wait another minute, then check health with \`curl -fsS ${buildLocalUrl(instance.port, '/health')}\`. ` +
-              `If health is OK, retry tunnel start with \`openchamber tunnel start --port ${instance.port}\`. ` +
-              `For diagnostics run \`openchamber logs -p ${instance.port}\`.`
+              `If health is OK, retry tunnel start with \`${CLI_BIN_NAME} tunnel start --port ${instance.port}\`. ` +
+              `For diagnostics run \`${CLI_BIN_NAME} logs -p ${instance.port}\`.`
             );
           }
           healthProgress?.stop(`Instance ${instance.port} is healthy`);
@@ -4148,12 +4149,12 @@ const commands = {
           if (error instanceof Error && /\/api\/openchamber\/tunnel\/start/.test(error.message) && /timed out/.test(error.message)) {
             spin?.error('Tunnel start timed out');
             throw new Error(
-              `Tunnel start timed out after 60s. cloudflared may still be starting; check with \`openchamber tunnel status --port ${instance.port}\`. Run \`openchamber logs -p ${instance.port}\` for details.`
+              `Tunnel start timed out after 60s. cloudflared may still be starting; check with \`${CLI_BIN_NAME} tunnel status --port ${instance.port}\`. Run \`${CLI_BIN_NAME} logs -p ${instance.port}\` for details.`
             );
           }
           spin?.error('Tunnel start failed');
           const message = error instanceof Error ? error.message : String(error);
-          throw new Error(`${message} Run \`openchamber logs -p ${instance.port}\` for details.`);
+          throw new Error(`${message} Run \`${CLI_BIN_NAME} logs -p ${instance.port}\` for details.`);
         }
 
         if (!response.ok || !body?.ok) {
@@ -4163,7 +4164,7 @@ const commands = {
           const userError = isCloudflareTimeout
             ? `Cloudflare quick tunnel request timed out. ${baseError}`
             : baseError;
-          throw new Error(`${userError} Run \`openchamber logs -p ${instance.port}\` for details.`);
+          throw new Error(`${userError} Run \`${CLI_BIN_NAME} logs -p ${instance.port}\` for details.`);
         }
 
         // Avoid duplicate "Tunnel started" lines: spinner completion is implied by
@@ -4209,15 +4210,15 @@ const commands = {
           clackOutro('');
 
           const optionalTips = [
-            { line: 'Check status', detail: 'openchamber tunnel status' },
-            { line: 'Stop tunnel', detail: 'openchamber tunnel stop' },
+            { line: 'Check status', detail: `${CLI_BIN_NAME} tunnel status` },
+            { line: 'Stop tunnel', detail: `${CLI_BIN_NAME} tunnel stop` },
             { line: 'If needed, repeat with same settings', detail: replayCommand },
           ];
 
           if (!selectedProfile && mode === 'managed-remote' && typeof hostname === 'string' && hostname.trim().length > 0) {
             const profileSaveCommand = buildTunnelProfileAddCommand({ provider, hostname });
             optionalTips.push({ line: 'Optional: save reusable profile (stores hostname + token locally)', detail: profileSaveCommand });
-            optionalTips.push({ line: 'Start from saved profile', detail: 'openchamber tunnel start --profile <name>' });
+            optionalTips.push({ line: 'Start from saved profile', detail: `${CLI_BIN_NAME} tunnel start --profile <name>` });
           }
 
           console.log('');
@@ -4320,7 +4321,7 @@ const commands = {
         const suggestion = findClosestMatch(subcommand, knownTunnelSubcommands);
         const hint = suggestion ? ` Did you mean '${suggestion}'?` : '';
         throw new TunnelCliError(
-          `Unknown tunnel subcommand '${subcommand}'.${hint} Use 'openchamber tunnel help'.`,
+          `Unknown tunnel subcommand '${subcommand}'.${hint} Use '${CLI_BIN_NAME} tunnel help'.`,
           EXIT_CODE.USAGE_ERROR
         );
       }
@@ -4357,7 +4358,7 @@ const commands = {
 
     if (isJsonMode(options)) {
       if (options.follow) {
-        throw new Error('`openchamber logs --json` requires `--no-follow` for deterministic JSON output.');
+        throw new Error(`\`${CLI_BIN_NAME} logs --json\` requires \`--no-follow\` for deterministic JSON output.`);
       }
       const entries = targets.map((target) => {
         const logPath = getLogFilePath(target.port);
@@ -4616,7 +4617,7 @@ async function main() {
   await commands[command](options);
 }
 
-const isCliExecution = isModuleCliExecution(process.argv[1], import.meta.url, fs.realpathSync, 'openchamber');
+const isCliExecution = isModuleCliExecution(process.argv[1], import.meta.url, fs.realpathSync, CLI_BIN_NAME);
 
 if (isCliExecution) {
   let isHandlingSigint = false;

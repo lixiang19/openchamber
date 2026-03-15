@@ -89,9 +89,9 @@ export function getDeviceInfo(): DeviceInfo {
   const isTabletWidth = width > BREAKPOINTS.md && width <= BREAKPOINTS.lg;
   const isMobileWidth = width <= BREAKPOINTS.md;
 
-  let isMobile = hasTouchInput && isMobileWidth;
-  let isTablet = hasTouchInput && !isMobile && isTabletWidth;
-  let isDesktop = !hasTouchInput || width > BREAKPOINTS.lg;
+  let isMobile = isMobileWidth;
+  let isTablet = !isMobile && isTabletWidth;
+  let isDesktop = !isMobile && !isTablet;
   let deviceType: DeviceType = 'desktop';
 
   if (isTauriShellRuntime) {

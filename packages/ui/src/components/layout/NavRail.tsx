@@ -20,6 +20,7 @@ import {
   RiQuestionLine,
   RiDownloadLine,
   RiInformationLine,
+  RiInboxArchiveLine,
   RiPencilLine,
   RiCloseLine,
   RiMenuFoldLine,
@@ -174,6 +175,77 @@ const NavRailActionButton: React.FC<NavRailActionButtonProps> = ({
           <p>{shortcutHint ? `${tooltipLabel} (${shortcutHint})` : tooltipLabel}</p>
         </TooltipContent>
       )}
+    </Tooltip>
+  );
+};
+
+type InboxRailButtonProps = {
+  expanded: boolean;
+  projectTextVisible: boolean;
+  isActive: boolean;
+  onClick: () => void;
+};
+
+const InboxRailButton: React.FC<InboxRailButtonProps> = ({
+  expanded,
+  projectTextVisible,
+  isActive,
+  onClick,
+}) => {
+  const button = (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'group relative flex cursor-pointer items-center overflow-hidden rounded-lg',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)]',
+        expanded ? 'h-9 w-full gap-2.5 pr-1.5 pl-[7px]' : 'h-9 w-9 justify-center',
+        !expanded && (
+          isActive
+            ? 'border border-[var(--surface-foreground)] bg-transparent'
+            : 'border border-transparent bg-transparent hover:border-[var(--interactive-border)] hover:bg-[var(--interactive-hover)]/50'
+        ),
+      )}
+      aria-label="收件箱"
+    >
+      {expanded ? (
+        <span
+          aria-hidden="true"
+          className={cn(
+            'pointer-events-none absolute inset-y-0 left-[6px] right-[5px] rounded-lg border transition-colors',
+            isActive
+              ? 'border-[var(--interactive-border)] bg-[var(--interactive-selection)]'
+              : 'border-transparent bg-transparent group-hover:border-[var(--interactive-border)] group-hover:bg-[var(--interactive-hover)]/50',
+          )}
+        />
+      ) : null}
+      <span className="relative z-10 flex size-[34px] basis-[34px] shrink-0 grow-0 items-center justify-center rounded-lg border border-dashed border-[var(--interactive-border)] bg-[var(--surface-muted)]/40 text-[var(--surface-foreground)]">
+        <RiInboxArchiveLine className="h-4 w-4 shrink-0" />
+      </span>
+      <span
+        aria-hidden={!projectTextVisible}
+        className={cn(
+          'relative z-10 min-w-0 truncate text-left text-[13px] leading-tight transition-opacity duration-[180ms] ease-in-out',
+          expanded ? 'flex-1' : 'w-0 flex-none',
+          projectTextVisible ? 'opacity-100' : 'opacity-0',
+          isActive && expanded ? 'font-medium text-[var(--interactive-selection-foreground)]' : 'text-[var(--surface-foreground)]',
+        )}
+      >
+        收件箱
+      </span>
+    </button>
+  );
+
+  if (expanded) {
+    return <div className="relative w-full">{button}</div>;
+  }
+
+  return (
+    <Tooltip delayDuration={400}>
+      <TooltipTrigger asChild>
+        <div className="relative">{button}</div>
+      </TooltipTrigger>
+      <TooltipContent side="right" sideOffset={8}>收件箱</TooltipContent>
     </Tooltip>
   );
 };
@@ -476,6 +548,8 @@ export const NavRail: React.FC<NavRailProps> = ({ className, mobile }) => {
   const setSettingsDialogOpen = useUIStore((s) => s.setSettingsDialogOpen);
   const setAboutDialogOpen = useUIStore((s) => s.setAboutDialogOpen);
   const toggleHelpDialog = useUIStore((s) => s.toggleHelpDialog);
+  const appPage = useUIStore((s) => s.appPage);
+  const setAppPage = useUIStore((s) => s.setAppPage);
   const isOverlayBlockingNavRailActions = useUIStore((s) => (
     s.isSettingsDialogOpen
     || s.isHelpDialogOpen
@@ -695,15 +769,20 @@ export const NavRail: React.FC<NavRailProps> = ({ className, mobile }) => {
         if (num >= 1 && num <= projects.length) {
           e.preventDefault();
           const target = projects[num - 1];
-          if (target && target.id !== activeProjectId) {
-            setActiveProjectIdOnly(target.id);
+          if (target) {
+            if (appPage !== 'workspace') {
+              setAppPage('workspace');
+            }
+            if (target.id !== activeProjectId) {
+              setActiveProjectIdOnly(target.id);
+            }
           }
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [projects, activeProjectId, setActiveProjectIdOnly]);
+  }, [activeProjectId, appPage, projects, setActiveProjectIdOnly, setAppPage]);
 
   // Drag-to-reorder
   const sensors = useSensors(
@@ -759,6 +838,15 @@ export const NavRail: React.FC<NavRailProps> = ({ className, mobile }) => {
           >
           <SortableContext items={projectIds} strategy={verticalListSortingStrategy}>
           <div className={cn('flex flex-col gap-3 pt-1 pb-3', showExpandedContent ? 'items-stretch px-1' : 'items-center px-1')}>
+            {!mobile ? (
+              <InboxRailButton
+                expanded={showExpandedContent}
+                projectTextVisible={projectTextVisible}
+                isActive={appPage === 'inbox'}
+                onClick={() => setAppPage('inbox')}
+              />
+            ) : null}
+
             {projects.map((project) => {
               const isActive = project.id === activeProjectId;
               const indicators = projectIndicators.get(project.id);
@@ -773,12 +861,15 @@ export const NavRail: React.FC<NavRailProps> = ({ className, mobile }) => {
                     expanded={showExpandedContent}
                     projectTextVisible={projectTextVisible}
                     onClick={() => {
+                      if (appPage !== 'workspace') {
+                        setAppPage('workspace');
+                      }
                       if (project.id !== activeProjectId) {
                         setActiveProjectIdOnly(project.id);
                       }
                     }}
-                    onEdit={() => handleEditProject(project.id)}
-                    onClose={() => handleCloseProject(project.id)}
+                     onEdit={() => handleEditProject(project.id)}
+                     onClose={() => handleCloseProject(project.id)}
                   />
                 </SortableProjectTile>
               );

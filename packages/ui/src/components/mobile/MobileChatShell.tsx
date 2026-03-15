@@ -491,7 +491,7 @@ const MobileConversationsPage: React.FC<{
             {sortedSessions.map((session) => {
               const project = resolveProjectForSession(session);
               const label = project ? getProjectDisplayName(project, homeDirectory) : (session.title?.trim() || '未命名对话');
-              const statusType = sessionStatus.get(session.id)?.type ?? 'idle';
+              const statusType = sessionStatus?.get(session.id)?.type ?? 'idle';
               const isWorking = statusType === 'busy' || statusType === 'retry';
               const needsAttention = sessionAttentionStates.get(session.id)?.needsAttention === true;
               const sessionDirectory = getSessionDirectory(session, worktreeMetadata);
@@ -692,7 +692,7 @@ export const MobileChatShell: React.FC = () => {
   const setActiveMainTab = useUIStore((state) => state.setActiveMainTab);
   const initialPage = currentSessionId || newSessionDraftOpen ? 'chat' : 'conversations';
   const [page, setPage] = React.useState<MobileShellPage>(initialPage);
-  const lastListPageRef = React.useRef<Extract<MobileShellPage, 'conversations' | 'projects'>>(initialPage === 'projects' ? 'projects' : 'conversations');
+  const lastListPageRef = React.useRef<Extract<MobileShellPage, 'conversations' | 'projects'>>('conversations');
 
   const previousSelectionRef = React.useRef<{
     sessionId: string | null;

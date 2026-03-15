@@ -1,6 +1,7 @@
-import type { MainTab } from '@/stores/useUIStore';
+import type { AppPage, MainTab } from '@/stores/useUIStore';
 import {
   type RouteState,
+  VALID_PAGES,
   VALID_TABS,
   VALID_SETTINGS_SECTIONS,
   ROUTE_PARAMS,
@@ -15,6 +16,7 @@ export function parseRoute(searchParams?: URLSearchParams): RouteState {
 
   return {
     sessionId: parseSessionId(params),
+    page: parsePage(params),
     tab: parseTab(params),
     settingsPath: parseSettingsPath(params),
     diffFile: parseDiffFile(params),
@@ -60,6 +62,20 @@ function parseTab(params: URLSearchParams): MainTab | null {
 
   const normalized = value.toLowerCase().trim() as MainTab;
   if (VALID_TABS.includes(normalized)) {
+    return normalized;
+  }
+
+  return null;
+}
+
+function parsePage(params: URLSearchParams): AppPage | null {
+  const value = params.get(ROUTE_PARAMS.PAGE);
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.toLowerCase().trim() as AppPage;
+  if (VALID_PAGES.includes(normalized)) {
     return normalized;
   }
 
@@ -126,6 +142,7 @@ export function hasRouteParams(): boolean {
     const params = new URLSearchParams(window.location.search);
     return (
       params.has(ROUTE_PARAMS.SESSION) ||
+      params.has(ROUTE_PARAMS.PAGE) ||
       params.has(ROUTE_PARAMS.TAB) ||
       params.has(ROUTE_PARAMS.SETTINGS) ||
       params.has(ROUTE_PARAMS.FILE)

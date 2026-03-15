@@ -1,4 +1,4 @@
-import type { MainTab } from '@/stores/useUIStore';
+import type { AppPage, MainTab } from '@/stores/useUIStore';
 import { ROUTE_PARAMS } from './types';
 
 /**
@@ -6,6 +6,7 @@ import { ROUTE_PARAMS } from './types';
  */
 export interface AppRouteState {
   sessionId: string | null;
+  page: AppPage;
   tab: MainTab;
   isSettingsOpen: boolean;
   settingsPath: string;
@@ -16,6 +17,7 @@ export interface AppRouteState {
  * Default tab when none is specified.
  */
 const DEFAULT_TAB: MainTab = 'chat';
+const DEFAULT_PAGE: AppPage = 'workspace';
 
 /**
  * Serialize application state to URL search parameters.
@@ -29,6 +31,10 @@ export function serializeRoute(state: AppRouteState): URLSearchParams {
     params.set(ROUTE_PARAMS.SESSION, state.sessionId);
   }
 
+  if (state.page !== DEFAULT_PAGE) {
+    params.set(ROUTE_PARAMS.PAGE, state.page);
+  }
+
   // Settings takes precedence - if open, include settings section
   if (state.isSettingsOpen) {
     const settingsPath = state.settingsPath.trim().length > 0 ? state.settingsPath : 'home';
@@ -38,12 +44,12 @@ export function serializeRoute(state: AppRouteState): URLSearchParams {
   }
 
   // Tab - only include if not the default
-  if (state.tab !== DEFAULT_TAB) {
+  if (state.page === 'workspace' && state.tab !== DEFAULT_TAB) {
     params.set(ROUTE_PARAMS.TAB, state.tab);
   }
 
   // Diff file - only include when on diff tab
-  if (state.tab === 'diff' && state.diffFile && state.diffFile.trim().length > 0) {
+  if (state.page === 'workspace' && state.tab === 'diff' && state.diffFile && state.diffFile.trim().length > 0) {
     params.set(ROUTE_PARAMS.FILE, state.diffFile);
   }
 
