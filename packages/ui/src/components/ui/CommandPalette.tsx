@@ -14,7 +14,7 @@ import { useSessionStore } from '@/stores/useSessionStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
 import { useDeviceInfo } from '@/lib/device';
-import { RiAddLine, RiChatAi3Line, RiCheckLine, RiCodeLine, RiComputerLine, RiGitBranchLine, RiLayoutLeftLine, RiLayoutRightLine, RiMoonLine, RiQuestionLine, RiSettings3Line, RiSunLine, RiTerminalBoxLine, RiTimeLine } from '@remixicon/react';
+import { RiAddLine, RiChatAi3Line, RiCheckLine, RiCheckboxMultipleLine, RiCodeLine, RiComputerLine, RiGitBranchLine, RiLayoutLeftLine, RiLayoutRightLine, RiMoonLine, RiQuestionLine, RiSettings3Line, RiSunLine, RiTerminalBoxLine, RiTimeLine } from '@remixicon/react';
 import { createWorktreeSession } from '@/lib/worktreeSessionCreator';
 import { formatShortcutForDisplay, getEffectiveShortcutCombo } from '@/lib/shortcuts';
 import { isDesktopShell, isVSCodeRuntime, isWebRuntime } from '@/lib/desktop';
@@ -157,6 +157,12 @@ export const CommandPalette: React.FC = () => {
     handleClose();
   };
 
+  const handleOpenRightSidebarTodo = () => {
+    setRightSidebarOpen(true);
+    setRightSidebarTab('todo');
+    handleClose();
+  };
+
   const handleToggleTerminalDock = () => {
     toggleBottomTerminal();
     handleClose();
@@ -221,6 +227,11 @@ export const CommandPalette: React.FC = () => {
             <RiLayoutRightLine className="mr-2 h-4 w-4" />
             <span>Open Right Sidebar Files</span>
             <CommandShortcut>{shortcut('open_right_sidebar_files')}</CommandShortcut>
+          </CommandItem>
+          <CommandItem onSelect={handleOpenRightSidebarTodo}>
+            <RiCheckboxMultipleLine className="mr-2 h-4 w-4" />
+            <span>Open Right Sidebar Todo</span>
+            <CommandShortcut>{shortcut('open_right_sidebar_todo')}</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={handleToggleTerminalDock}>
             <RiTerminalBoxLine className="mr-2 h-4 w-4" />

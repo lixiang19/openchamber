@@ -556,8 +556,7 @@ export const MainLayout: React.FC = () => {
                 }}>
                     {isInboxPage && !(isSettingsDialogOpen || isMultiRunLauncherOpen) ? (
                         <div className="flex flex-1 overflow-hidden relative">
-                            <Header />
-                            <main className="w-full h-full overflow-hidden bg-background relative" style={{ paddingTop: 'var(--oc-header-height, 56px)' }}>
+                            <main className="w-full h-full overflow-hidden bg-background relative">
                                 <div className="absolute inset-0">
                                     <ErrorBoundary><InboxView /></ErrorBoundary>
                                 </div>
@@ -748,24 +747,23 @@ export const MainLayout: React.FC = () => {
                 </DrawerProvider>
             ) : (
                 <>
-                    {/* Desktop: Header always on top, then Sidebar + Content below */}
+                    {/* Desktop: header/workspace shell or standalone inbox page */}
                     <div className="flex flex-1 flex-col overflow-hidden relative">
-                        {/* Normal view: Header above Sidebar + content (like SettingsView) */}
-                        <div className={cn('absolute inset-0 flex flex-col', isMultiRunLauncherOpen && 'invisible')}>
-                            <Header />
-                            <div className="flex flex-1 overflow-hidden">
+                        {isInboxPage ? (
+                            <div className={cn('absolute inset-0 flex overflow-hidden', isMultiRunLauncherOpen && 'invisible')}>
                                 <NavRail />
-                                <div className="flex flex-1 min-w-0 overflow-hidden border-t border-l border-border/50 rounded-tl-xl">
-                                {isInboxPage ? (
-                                    <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
-                                        <main className="flex-1 overflow-hidden bg-background relative">
-                                            <div className="absolute inset-0">
-                                                <ErrorBoundary><InboxView /></ErrorBoundary>
-                                            </div>
-                                        </main>
+                                <main className="flex-1 min-w-0 overflow-hidden bg-background relative">
+                                    <div className="absolute inset-0">
+                                        <ErrorBoundary><InboxView /></ErrorBoundary>
                                     </div>
-                                ) : (
-                                    <>
+                                </main>
+                            </div>
+                        ) : (
+                            <div className={cn('absolute inset-0 flex flex-col', isMultiRunLauncherOpen && 'invisible')}>
+                                <Header />
+                                <div className="flex flex-1 overflow-hidden">
+                                    <NavRail />
+                                    <div className="flex flex-1 min-w-0 overflow-hidden border-t border-l border-border/50 rounded-tl-xl">
                                         <Sidebar isOpen={isSidebarOpen} isMobile={isMobile}>
                                             <SessionSidebar hideProjectSelector />
                                         </Sidebar>
@@ -792,11 +790,10 @@ export const MainLayout: React.FC = () => {
                                                 <ErrorBoundary><TerminalView /></ErrorBoundary>
                                             </BottomTerminalDock>
                                         </div>
-                                    </>
-                                )}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
 
                         {/* Multi-Run Launcher: replaces tabs content only */}
                         {isMultiRunLauncherOpen && (

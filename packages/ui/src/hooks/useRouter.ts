@@ -57,14 +57,7 @@ export function useRouter(): void {
       isApplyingRouteRef.current = true;
 
       try {
-        // 1. Apply session first (may trigger async operations)
-        if (route.sessionId) {
-          const currentSessionId = useSessionStore.getState().currentSessionId;
-          if (route.sessionId !== currentSessionId) {
-            await setCurrentSession(route.sessionId);
-          }
-        }
-
+        const targetPage = route.page ?? 'workspace';
         if (route.page) {
           setAppPage(route.page);
         } else if (useUIStore.getState().appPage !== 'workspace') {
@@ -77,6 +70,18 @@ export function useRouter(): void {
           setSettingsDialogOpen(true);
           // Don't process tab when settings is open
           return;
+        }
+
+        if (targetPage === 'inbox') {
+          return;
+        }
+
+        // 1. Apply session first (may trigger async operations)
+        if (route.sessionId) {
+          const currentSessionId = useSessionStore.getState().currentSessionId;
+          if (route.sessionId !== currentSessionId) {
+            await setCurrentSession(route.sessionId);
+          }
         }
 
         // Close settings if URL has no settings section
@@ -274,11 +279,11 @@ export function navigateToRoute(route: Partial<RouteState>): void {
   const win = window as { __VSCODE_CONFIG__?: unknown };
     if (win.__VSCODE_CONFIG__ !== undefined) {
       // In VS Code, just apply state changes directly
-      if (route.sessionId) {
-        void useSessionStore.getState().setCurrentSession(route.sessionId);
-      }
       if (route.page) {
         useUIStore.getState().setAppPage(route.page);
+      }
+      if (route.page !== 'inbox' && route.sessionId) {
+        void useSessionStore.getState().setCurrentSession(route.sessionId);
       }
       if (route.settingsPath) {
         useUIStore.getState().setSettingsPage(resolveSettingsSlug(route.settingsPath));
@@ -295,7 +300,7 @@ export function navigateToRoute(route: Partial<RouteState>): void {
   // Build URL and navigate
   const params = new URLSearchParams();
 
-  if (route.sessionId) {
+  if ((route.page ?? 'workspace') === 'workspace' && route.sessionId) {
     params.set('session', route.sessionId);
   }
   if (route.page && route.page !== 'workspace') {
@@ -309,7 +314,7 @@ export function navigateToRoute(route: Partial<RouteState>): void {
     }
     params.set('tab', route.tab);
   }
-  if (route.diffFile) {
+  if ((route.page ?? 'workspace') === 'workspace' && route.diffFile) {
     params.set('file', route.diffFile);
   }
 
@@ -319,7 +324,7 @@ export function navigateToRoute(route: Partial<RouteState>): void {
   window.history.pushState({ route }, '', url);
 
   // Also apply to state
-  if (route.sessionId) {
+  if ((route.page ?? 'workspace') === 'workspace' && route.sessionId) {
     void useSessionStore.getState().setCurrentSession(route.sessionId);
   }
   if (route.page) {
@@ -328,10 +333,10 @@ export function navigateToRoute(route: Partial<RouteState>): void {
   if (route.settingsPath) {
     useUIStore.getState().setSettingsPage(resolveSettingsSlug(route.settingsPath));
     useUIStore.getState().setSettingsDialogOpen(true);
-  } else if (route.tab) {
+  } else if ((route.page ?? 'workspace') === 'workspace' && route.tab) {
     useUIStore.getState().setActiveMainTab(route.tab);
   }
-  if (route.diffFile) {
+  if ((route.page ?? 'workspace') === 'workspace' && route.diffFile) {
     useUIStore.getState().navigateToDiff(route.diffFile);
   }
 }
@@ -349,7 +354,7 @@ export function getShareableURL(): string {
 
   const params = new URLSearchParams();
 
-  if (sessionState.currentSessionId) {
+  if (uiState.appPage === 'workspace' && sessionState.currentSessionId) {
     params.set('session', sessionState.currentSessionId);
   }
 
@@ -363,7 +368,7 @@ export function getShareableURL(): string {
     params.set('tab', uiState.activeMainTab);
   }
 
-  if (uiState.activeMainTab === 'diff' && uiState.pendingDiffFile) {
+  if (uiState.appPage === 'workspace' && uiState.activeMainTab === 'diff' && uiState.pendingDiffFile) {
     params.set('file', uiState.pendingDiffFile);
   }
 

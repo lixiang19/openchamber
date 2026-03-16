@@ -187,6 +187,13 @@ const SHORTCUT_ACTIONS: ReadonlyArray<ShortcutAction> = [
     customizable: true,
   },
   {
+    id: 'open_right_sidebar_todo',
+    defaultCombo: 'mod+shift+o',
+    label: 'Open right sidebar Todo tab',
+    description: 'Open right sidebar and select Todo',
+    customizable: true,
+  },
+  {
     id: 'cycle_right_sidebar_tab',
     defaultCombo: 'mod+shift+]',
     label: 'Cycle right sidebar tab',

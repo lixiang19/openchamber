@@ -26,11 +26,6 @@ const DEFAULT_PAGE: AppPage = 'workspace';
 export function serializeRoute(state: AppRouteState): URLSearchParams {
   const params = new URLSearchParams();
 
-  // Session ID - always include if present
-  if (state.sessionId && state.sessionId.trim().length > 0) {
-    params.set(ROUTE_PARAMS.SESSION, state.sessionId);
-  }
-
   if (state.page !== DEFAULT_PAGE) {
     params.set(ROUTE_PARAMS.PAGE, state.page);
   }
@@ -41,6 +36,15 @@ export function serializeRoute(state: AppRouteState): URLSearchParams {
     params.set(ROUTE_PARAMS.SETTINGS, settingsPath);
     // Don't include tab when settings is open (it's a full-screen overlay)
     return params;
+  }
+
+  if (state.page === 'inbox') {
+    return params;
+  }
+
+  // Session ID - only include on workspace page
+  if (state.sessionId && state.sessionId.trim().length > 0) {
+    params.set(ROUTE_PARAMS.SESSION, state.sessionId);
   }
 
   // Tab - only include if not the default

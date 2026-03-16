@@ -1,7 +1,9 @@
 import React from 'react';
 import type { Session } from '@opencode-ai/sdk/v2';
-import { RiArrowRightLine, RiChat4Line, RiLoader4Line } from '@remixicon/react';
-import { Button } from '@/components/ui/button';
+import { RiChat4Line } from '@remixicon/react';
+import { ChatInput } from '@/components/chat/ChatInput';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import type { ProjectEntry } from '@/lib/api/types';
 import type { WorktreeMetadata } from '@/types/worktree';
@@ -12,6 +14,48 @@ import { useUIStore } from '@/stores/useUIStore';
 import { formatSessionDateLabel, isSessionRelatedToProject, normalizePath } from '@/components/session/sidebar/utils';
 
 const RECENT_SESSION_LIMIT = 12;
+const JUST_COMPLETED_WINDOW_MS = 90 * 1000;
+const JUST_COMPLETED_REFRESH_MS = 30 * 1000;
+
+type InboxSessionStatus = {
+  type: 'idle' | 'busy' | 'retry';
+  attempt?: number;
+  message?: string;
+  next?: number;
+  confirmedAt?: number;
+};
+
+type InboxAttentionState = {
+  needsAttention: boolean;
+  lastUserMessageAt: number | null;
+  lastStatusChangeAt: number;
+  status: 'idle' | 'busy' | 'retry';
+  isViewed: boolean;
+};
+
+type InboxStatusTone = 'info' | 'warning' | 'success';
+
+type InboxStatusBadge = {
+  label: string;
+  tone: InboxStatusTone;
+  pulse?: boolean;
+  isPending: boolean;
+};
+
+const INBOX_STATUS_STYLES: Record<InboxStatusTone, { text: string; dot: string }> = {
+  info: {
+    text: 'var(--status-info)',
+    dot: 'var(--status-info)',
+  },
+  warning: {
+    text: 'var(--status-warning)',
+    dot: 'var(--status-warning)',
+  },
+  success: {
+    text: 'var(--status-success)',
+    dot: 'var(--status-success)',
+  },
+};
 
 type SessionWithDirectory = Session & {
   directory?: string | null;
@@ -20,24 +64,6 @@ type SessionWithDirectory = Session & {
 const getSessionUpdatedAt = (session: Session): number => {
   const updated = Number(session.time?.updated ?? session.time?.created ?? 0);
   return Number.isFinite(updated) ? updated : 0;
-};
-
-const compactPath = (path: string | null | undefined, homeDirectory?: string | null): string => {
-  if (!path) {
-    return '未绑定目录';
-  }
-
-  const normalized = normalizePath(path) ?? path;
-  const display = homeDirectory
-    ? normalized.replace(new RegExp(`^${homeDirectory.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`), '~')
-    : normalized;
-  const segments = display.split('/').filter(Boolean);
-
-  if (segments.length <= 2) {
-    return display;
-  }
-
-  return `.../${segments.slice(-2).join('/')}`;
 };
 
 const getSessionDirectory = (
@@ -78,13 +104,107 @@ const resolveProjectForSession = (
   return matches[0] ?? null;
 };
 
+const resolveProjectForDraftDirectory = (
+  draftDirectory: string | null | undefined,
+  projects: ProjectEntry[],
+  activeProjectId: string | null,
+): string => {
+  const normalizedDraft = normalizePath(draftDirectory ?? null);
+  if (normalizedDraft) {
+    const exact = projects.find((project) => normalizePath(project.path) === normalizedDraft);
+    if (exact) {
+      return exact.id;
+    }
+  }
+
+  if (activeProjectId && projects.some((project) => project.id === activeProjectId)) {
+    return activeProjectId;
+  }
+
+  return projects[0]?.id ?? '';
+};
+
+const getLikelyCompletionTimestamp = (
+  sessionUpdatedAt: number,
+  attentionState?: InboxAttentionState,
+): number => {
+  if (!attentionState || attentionState.status !== 'idle' || attentionState.lastStatusChangeAt <= 0) {
+    return sessionUpdatedAt;
+  }
+
+  if (sessionUpdatedAt <= 0) {
+    return attentionState.lastStatusChangeAt;
+  }
+
+  return Math.abs(sessionUpdatedAt - attentionState.lastStatusChangeAt) <= 15_000
+    ? Math.max(sessionUpdatedAt, attentionState.lastStatusChangeAt)
+    : sessionUpdatedAt;
+};
+
+const getInboxStatusBadge = ({
+  session,
+  sessionState,
+  attentionState,
+  permissionCount,
+  questionCount,
+  now,
+}: {
+  session: Session;
+  sessionState?: InboxSessionStatus;
+  attentionState?: InboxAttentionState;
+  permissionCount: number;
+  questionCount: number;
+  now: number;
+}): InboxStatusBadge | null => {
+  const statusType = sessionState?.type ?? 'idle';
+
+  if (permissionCount > 0) {
+    return { label: 'Approval', tone: 'warning', isPending: true };
+  }
+
+  if (questionCount > 0) {
+    return { label: 'Question', tone: 'info', isPending: true };
+  }
+
+  if (statusType === 'retry') {
+    return { label: 'Retrying', tone: 'warning', pulse: true, isPending: true };
+  }
+
+  if (statusType === 'busy') {
+    return { label: 'Running', tone: 'info', pulse: true, isPending: true };
+  }
+
+  if (attentionState?.needsAttention) {
+    return { label: 'Unread', tone: 'info', isPending: true };
+  }
+
+  const completionTimestamp = getLikelyCompletionTimestamp(getSessionUpdatedAt(session), attentionState);
+  const hasRecentCompletion = Boolean(
+    attentionState?.lastUserMessageAt &&
+    statusType === 'idle' &&
+    completionTimestamp > 0 &&
+    completionTimestamp >= attentionState.lastUserMessageAt &&
+    now - completionTimestamp <= JUST_COMPLETED_WINDOW_MS,
+  );
+
+  if (hasRecentCompletion) {
+    return { label: 'Just done', tone: 'success', isPending: false };
+  }
+
+  return null;
+};
+
 export const InboxView: React.FC = () => {
   const sessions = useSessionStore((state) => state.sessions);
   const currentSessionId = useSessionStore((state) => state.currentSessionId);
   const setCurrentSession = useSessionStore((state) => state.setCurrentSession);
+  const newSessionDraft = useSessionStore((state) => state.newSessionDraft);
   const openNewSessionDraft = useSessionStore((state) => state.openNewSessionDraft);
+  const closeNewSessionDraft = useSessionStore((state) => state.closeNewSessionDraft);
   const sessionStatus = useSessionStore((state) => state.sessionStatus);
   const sessionAttentionStates = useSessionStore((state) => state.sessionAttentionStates);
+  const permissions = useSessionStore((state) => state.permissions);
+  const questions = useSessionStore((state) => state.questions);
   const worktreeMetadata = useSessionStore((state) => state.worktreeMetadata);
 
   const projects = useProjectsStore((state) => state.projects);
@@ -92,22 +212,118 @@ export const InboxView: React.FC = () => {
   const setActiveProjectIdOnly = useProjectsStore((state) => state.setActiveProjectIdOnly);
 
   const currentDirectory = useDirectoryStore((state) => state.currentDirectory);
-  const homeDirectory = useDirectoryStore((state) => state.homeDirectory);
   const setDirectory = useDirectoryStore((state) => state.setDirectory);
 
   const setAppPage = useUIStore((state) => state.setAppPage);
   const setActiveMainTab = useUIStore((state) => state.setActiveMainTab);
 
-  const [prompt, setPrompt] = React.useState('');
+  const [showPendingOnly, setShowPendingOnly] = React.useState(false);
+  const [now, setNow] = React.useState(() => Date.now());
+  const inboxOwnedDraftRef = React.useRef(false);
+  const previousSessionIdRef = React.useRef<string | null>(currentSessionId);
 
   const recentSessions = React.useMemo(
     () => [...sessions].sort((a, b) => getSessionUpdatedAt(b) - getSessionUpdatedAt(a)).slice(0, RECENT_SESSION_LIMIT),
     [sessions],
   );
 
-  const activeProject = React.useMemo(
-    () => projects.find((project) => project.id === activeProjectId) ?? null,
-    [projects, activeProjectId],
+  React.useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+    }, JUST_COMPLETED_REFRESH_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (newSessionDraft?.open) {
+      return undefined;
+    }
+
+    inboxOwnedDraftRef.current = true;
+    openNewSessionDraft({ directoryOverride: currentDirectory ?? null });
+
+    return () => undefined;
+  }, [currentDirectory, newSessionDraft?.open, openNewSessionDraft]);
+
+  React.useEffect(() => {
+    const previousSessionId = previousSessionIdRef.current;
+    if (previousSessionId === null && currentSessionId) {
+      setAppPage('workspace');
+      setActiveMainTab('chat');
+    }
+    previousSessionIdRef.current = currentSessionId;
+  }, [currentSessionId, setActiveMainTab, setAppPage]);
+
+  React.useEffect(() => {
+    return () => {
+      if (!inboxOwnedDraftRef.current) {
+        return;
+      }
+
+      const storeState = useSessionStore.getState();
+      if (storeState.newSessionDraft?.open && !storeState.currentSessionId) {
+        closeNewSessionDraft();
+      }
+    };
+  }, [closeNewSessionDraft]);
+
+  const sessionBadges = React.useMemo(() => {
+    const next = new Map<string, InboxStatusBadge | null>();
+
+    for (const session of recentSessions) {
+      next.set(session.id, getInboxStatusBadge({
+        session,
+        sessionState: sessionStatus?.get(session.id),
+        attentionState: sessionAttentionStates.get(session.id),
+        permissionCount: permissions.get(session.id)?.length ?? 0,
+        questionCount: questions.get(session.id)?.length ?? 0,
+        now,
+      }));
+    }
+
+    return next;
+  }, [now, permissions, questions, recentSessions, sessionAttentionStates, sessionStatus]);
+
+  const filteredSessions = React.useMemo(() => {
+    return recentSessions.filter((session) => {
+      const badge = sessionBadges.get(session.id);
+      return showPendingOnly ? badge?.isPending === true : true;
+    });
+  }, [recentSessions, sessionBadges, showPendingOnly]);
+
+  const selectedProjectId = React.useMemo(
+    () => resolveProjectForDraftDirectory(newSessionDraft?.directoryOverride, projects, activeProjectId),
+    [activeProjectId, newSessionDraft?.directoryOverride, projects],
+  );
+
+  const handleProjectChange = React.useCallback(
+    (projectId: string) => {
+      const project = projects.find((item) => item.id === projectId);
+      if (!project) {
+        return;
+      }
+
+      if (project.id !== activeProjectId) {
+        setActiveProjectIdOnly(project.id);
+      }
+
+      if (project.path !== currentDirectory) {
+        setDirectory(project.path, { showOverlay: false });
+      }
+
+      useSessionStore.setState((state) => ({
+        newSessionDraft: {
+          ...state.newSessionDraft,
+          open: true,
+          directoryOverride: project.path,
+          parentID: null,
+        },
+      }));
+    },
+    [activeProjectId, currentDirectory, projects, setActiveProjectIdOnly, setDirectory],
   );
 
   const handleOpenConversation = React.useCallback(
@@ -122,128 +338,137 @@ export const InboxView: React.FC = () => {
         setDirectory(sessionDirectory, { showOverlay: false });
       }
 
+      if (inboxOwnedDraftRef.current && useSessionStore.getState().newSessionDraft?.open) {
+        closeNewSessionDraft();
+      }
+
       setAppPage('workspace');
       setActiveMainTab('chat');
       await setCurrentSession(session.id);
     },
-    [activeProjectId, currentDirectory, projects, setActiveMainTab, setActiveProjectIdOnly, setAppPage, setCurrentSession, setDirectory, worktreeMetadata],
+    [activeProjectId, closeNewSessionDraft, currentDirectory, projects, setActiveMainTab, setActiveProjectIdOnly, setAppPage, setCurrentSession, setDirectory, worktreeMetadata],
   );
 
-  const handleCreateConversation = React.useCallback(() => {
-    const text = prompt.trim();
-    setAppPage('workspace');
-    setActiveMainTab('chat');
-    openNewSessionDraft({
-      directoryOverride: activeProject?.path ?? currentDirectory ?? null,
-      initialPrompt: text.length > 0 ? text : undefined,
-    });
-    setPrompt('');
-  }, [activeProject?.path, currentDirectory, openNewSessionDraft, prompt, setActiveMainTab, setAppPage]);
-
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="mx-auto flex h-full w-full max-w-5xl min-h-0 flex-col gap-6 px-8 py-8">
-        <section className="shrink-0 rounded-[28px] border border-border/60 bg-[var(--surface-elevated)] p-5 shadow-sm sm:p-6">
-          <div className="mb-4 flex items-center gap-2 text-sm font-medium text-foreground">
-            <RiChat4Line className="size-4" />
-            <span>收件箱</span>
-          </div>
-          <div className="rounded-[24px] border border-border/70 bg-background/80 p-4 sm:p-5">
-            <textarea
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              onKeyDown={(event) => {
-                if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-                  event.preventDefault();
-                  handleCreateConversation();
-                }
-              }}
-              placeholder="开始一个新对话..."
-              className="min-h-[180px] w-full resize-none bg-transparent text-lg leading-8 text-foreground outline-none placeholder:text-muted-foreground/80"
-            />
-            <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-4">
-              <p className="text-sm text-muted-foreground">
-                {activeProject?.label?.trim() || compactPath(activeProject?.path ?? currentDirectory, homeDirectory)}
-              </p>
-              <Button type="button" size="lg" onClick={handleCreateConversation}>
-                开始对话
-                <RiArrowRightLine className="size-4" />
-              </Button>
-            </div>
-          </div>
-        </section>
+    <div
+      className="flex h-full min-h-0 flex-col"
+      style={{
+        background: 'radial-gradient(ellipse 80% 40% at 50% 0%, color-mix(in srgb, var(--primary) 5%, transparent), transparent), var(--background)',
+      }}
+    >
+      <div className="mx-auto flex h-full w-full max-w-[680px] min-h-0 flex-col px-6 py-8 sm:px-10 sm:py-10">
 
-        <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-border/60 bg-[var(--surface-elevated)]">
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 px-5 py-4 sm:px-6">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">最近对话</p>
-              <h2 className="mt-1 text-2xl font-semibold text-foreground">继续上次的工作</h2>
-            </div>
-            <span className="text-xs text-muted-foreground">最近 {recentSessions.length} 条</span>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-auto px-3 py-3 sm:px-4">
-            {recentSessions.length > 0 ? (
-              <div className="space-y-3">
-                {recentSessions.map((session) => {
-                  const project = resolveProjectForSession(session, projects, worktreeMetadata);
-                  const sessionDirectory = getSessionDirectory(session, worktreeMetadata);
-                  const statusType = sessionStatus?.get(session.id)?.type ?? 'idle';
-                  const isWorking = statusType === 'busy' || statusType === 'retry';
-                  const needsAttention = sessionAttentionStates.get(session.id)?.needsAttention === true;
-                  const isActiveSession = currentSessionId === session.id;
-
-                  return (
-                    <button
-                      key={session.id}
-                      type="button"
-                      onClick={() => void handleOpenConversation(session)}
-                      className={cn(
-                        'flex w-full items-center gap-4 rounded-[22px] border px-4 py-4 text-left transition-colors',
-                        isActiveSession
-                          ? 'border-[var(--interactive-selection)] bg-[var(--interactive-selection)]/12'
-                          : 'border-border/70 bg-background/70 hover:bg-interactive-hover/40',
-                      )}
-                    >
-                      <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-[var(--surface-elevated)] text-foreground">
-                        {isWorking ? <RiLoader4Line className="size-4 animate-spin" /> : <RiChat4Line className="size-4" />}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h3 className="truncate text-[15px] font-semibold text-foreground">
-                              {session.title?.trim() || '未命名对话'}
-                            </h3>
-                            <p className="mt-1 truncate text-sm text-muted-foreground">
-                              {project?.label?.trim() || compactPath(project?.path ?? sessionDirectory, homeDirectory)}
-                            </p>
-                          </div>
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            {formatSessionDateLabel(getSessionUpdatedAt(session))}
-                          </span>
-                        </div>
-                        {needsAttention && !isWorking ? (
-                          <p className="mt-2 text-xs text-[var(--status-info)]">有未读更新</p>
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex h-full min-h-[280px] flex-col items-center justify-center px-6 text-center">
-                <div className="flex size-14 items-center justify-center rounded-2xl border border-border/70 bg-background text-foreground">
-                  <RiChat4Line className="size-6" />
-                </div>
-                <h3 className="mt-5 text-xl font-semibold text-foreground">还没有最近对话</h3>
-                <p className="mt-2 max-w-sm text-sm leading-7 text-muted-foreground">
-                  在上面的输入框里输入你的第一个任务，马上开始新的对话。
-                </p>
-              </div>
+        {/* ── Header ─────────────────────────────────────────────── */}
+        <div className="shrink-0 mb-7 flex items-baseline justify-between">
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-[20px] font-semibold tracking-[-0.03em] text-foreground leading-none">Inbox</h1>
+            {filteredSessions.length > 0 && (
+              <span className="text-[13px] tabular-nums text-muted-foreground/50">
+                {filteredSessions.length}
+              </span>
             )}
           </div>
-        </section>
+          <label className="inline-flex items-center gap-2 text-[12px] text-muted-foreground cursor-pointer select-none">
+            <span className={cn('transition-colors', showPendingOnly ? 'text-foreground' : 'text-muted-foreground/60')}>
+              Pending
+            </span>
+            <Switch checked={showPendingOnly} onCheckedChange={setShowPendingOnly} aria-label="只看待处理对话" />
+          </label>
+        </div>
+
+        {/* ── Input area — no wrapper, ChatInput's own border is the border ── */}
+        <div className="shrink-0 mb-2 [&_.chat-column]:px-0 [&_.chat-message-column]:px-0">
+          <ChatInput />
+          <div className="mt-2 flex items-center px-1">
+            <Select value={selectedProjectId} onValueChange={handleProjectChange}>
+              <SelectTrigger
+                size="lg"
+                className="h-auto w-auto min-w-0 max-w-[280px] border-0 bg-transparent p-0 text-[12px] text-muted-foreground/50 shadow-none hover:text-muted-foreground focus:ring-0"
+              >
+                <SelectValue placeholder="选择项目" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.label?.trim() || project.path}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* ── Divider ────────────────────────────────────────────── */}
+        <div className="shrink-0 mb-1 flex items-center gap-3">
+          <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/35">Recent</span>
+          <div className="flex-1 h-px bg-border/30" />
+        </div>
+
+        {/* ── Session list ───────────────────────────────────────── */}
+        <div className="min-h-0 flex-1 overflow-auto -mx-2 px-0">
+          {filteredSessions.length > 0 ? (
+            <div className="py-1">
+              {filteredSessions.map((session) => {
+                const project = resolveProjectForSession(session, projects, worktreeMetadata);
+                const sessionDirectory = getSessionDirectory(session, worktreeMetadata);
+                const statusBadge = sessionBadges.get(session.id) ?? null;
+                const badgeStyle = statusBadge ? INBOX_STATUS_STYLES[statusBadge.tone] : null;
+                const isActiveSession = currentSessionId === session.id;
+
+                return (
+                  <button
+                    key={session.id}
+                    type="button"
+                    onClick={() => void handleOpenConversation(session)}
+                    className={cn(
+                      'flex w-full flex-col gap-0.5 rounded-lg px-3 py-2.5 text-left transition-colors duration-100',
+                      isActiveSession
+                        ? 'bg-[var(--interactive-selection)]/10'
+                        : 'hover:bg-[var(--interactive-hover)]/50',
+                    )}
+                  >
+                    {/* Title row */}
+                    <div className="flex items-baseline justify-between gap-4">
+                      <span className="truncate text-[13.5px] font-medium leading-5 tracking-[-0.01em] text-foreground">
+                        {session.title?.trim() || '未命名对话'}
+                      </span>
+                      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/45">
+                        {formatSessionDateLabel(getSessionUpdatedAt(session))}
+                      </span>
+                    </div>
+
+                    {/* Subtitle row: project + status */}
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="truncate text-[12px] text-muted-foreground/50">
+                        {project?.label?.trim() || sessionDirectory || '—'}
+                      </span>
+                      {statusBadge && badgeStyle ? (
+                        <span
+                          className="shrink-0 flex items-center gap-1.5 text-[11px] font-medium"
+                          style={{ color: badgeStyle.text }}
+                        >
+                          <span
+                            className={cn('size-1.5 rounded-full', statusBadge.pulse && 'animate-pulse')}
+                            style={{ background: badgeStyle.dot }}
+                          />
+                          {statusBadge.label}
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            /* ── Empty State ─────────────────────────────────────── */
+            <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3 text-center">
+              <RiChat4Line className="size-7 text-muted-foreground/25" />
+              <p className="text-[13px] text-muted-foreground/45">
+                {showPendingOnly ? '没有待处理的对话' : '还没有对话，从上方开始新建'}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

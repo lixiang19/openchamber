@@ -12,6 +12,7 @@ import {
   RiAiAgentLine,
   RiAiGenerate2,
   RiBrainAi3Line,
+  RiCheckboxMultipleLine,
   RiCloseCircleLine,
   RiCommandLine,
   RiGitBranchLine,
@@ -144,6 +145,12 @@ export const HelpDialog: React.FC = () => {
           id: 'open_right_sidebar_files',
           description: 'Open Right Sidebar Files Tab',
           icon: RiLayoutRightLine,
+          keys: '',
+        },
+        {
+          id: 'open_right_sidebar_todo',
+          description: 'Open Right Sidebar Todo Tab',
+          icon: RiCheckboxMultipleLine,
           keys: '',
         },
         {
