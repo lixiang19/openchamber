@@ -467,8 +467,10 @@ export function createOpenCodeManager(_context: vscode.ExtensionContext): OpenCo
   let status: ConnectionStatus = 'disconnected';
   let lastError: string | undefined;
   const listeners = new Set<(status: ConnectionStatus, error?: string) => void>();
+  const normalizeWindowsDriveLetter = (p: string): string =>
+    p.replace(/^([a-z]):/, (_, letter: string) => letter.toUpperCase() + ':');
   const workspaceDirectory = (): string =>
-    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || os.homedir();
+    normalizeWindowsDriveLetter(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || os.homedir());
   let workingDirectory: string = workspaceDirectory();
   let startCount = 0;
   let restartCount = 0;
@@ -577,7 +579,7 @@ export function createOpenCodeManager(_context: vscode.ExtensionContext): OpenCo
     lastStartAttempts = startCount;
 
     if (typeof workdir === 'string' && workdir.trim().length > 0) {
-      workingDirectory = workdir.trim();
+      workingDirectory = normalizeWindowsDriveLetter(workdir.trim());
     } else {
       workingDirectory = workspaceDirectory();
     }

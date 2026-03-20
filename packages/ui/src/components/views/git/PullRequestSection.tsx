@@ -55,6 +55,7 @@ import { useSessionStore } from '@/stores/useSessionStore';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useGitHubAuthStore } from '@/stores/useGitHubAuthStore';
 import { getGitHubPrStatusKey, useGitHubPrStatusStore } from '@/stores/useGitHubPrStatusStore';
+import { openExternalUrl } from '@/lib/url';
 import type {
   GitHubPullRequest,
   GitHubCheckRun,
@@ -265,32 +266,6 @@ type ChatDispatchTarget = {
 };
 
 const pullRequestDraftSnapshots = new Map<string, PullRequestDraftSnapshot>();
-
-type TauriShell = {
-  shell?: {
-    open?: (url: string) => Promise<unknown>;
-  };
-};
-
-const openExternal = async (url: string) => {
-  if (typeof window === 'undefined') return;
-
-  const tauri = (window as unknown as { __TAURI__?: TauriShell }).__TAURI__;
-  if (tauri?.shell?.open) {
-    try {
-      await tauri.shell.open(url);
-      return;
-    } catch {
-      // fall through
-    }
-  }
-
-  try {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  } catch {
-    // ignore
-  }
-};
 
 export const PullRequestSection: React.FC<{
   directory: string;
@@ -704,6 +679,7 @@ export const PullRequestSection: React.FC<{
     const conclusion = run.conclusion ?? undefined;
     const statusText = conclusion ? `${status} / ${conclusion}` : status;
     const appName = run.app?.name || run.app?.slug;
+    const detailsUrl = run.detailsUrl ?? '';
     return (
       <div className="space-y-2">
         <div className="flex items-start justify-between gap-3">
@@ -714,9 +690,17 @@ export const PullRequestSection: React.FC<{
             </div>
           </div>
 
-          {run.detailsUrl ? (
+          {detailsUrl ? (
             <Button variant="outline" size="sm" asChild className="flex-shrink-0">
-              <a href={run.detailsUrl} target="_blank" rel="noopener noreferrer">
+              <a
+                href={detailsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void openExternalUrl(detailsUrl);
+                }}
+              >
                 <RiExternalLinkLine className="size-4" />
                 Open
               </a>
@@ -1245,7 +1229,7 @@ export const PullRequestSection: React.FC<{
       const message = e instanceof Error ? e.message : String(e);
       toast.error('Merge failed', { description: message });
       if (pr.url) {
-        void openExternal(pr.url);
+        void openExternalUrl(pr.url);
       }
     } finally {
       setIsMerging(false);
@@ -1267,7 +1251,7 @@ export const PullRequestSection: React.FC<{
       const message = e instanceof Error ? e.message : String(e);
       toast.error('Failed to mark ready', { description: message });
       if (pr.url) {
-        void openExternal(pr.url);
+        void openExternalUrl(pr.url);
       }
     } finally {
       setIsMarkingReady(false);
@@ -1355,7 +1339,7 @@ export const PullRequestSection: React.FC<{
                   <button
                     type="button"
                     className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-border/60 bg-background/70 hover:bg-interactive-hover/60"
-                    onClick={() => void openExternal(pr.url)}
+                    onClick={() => void openExternalUrl(pr.url)}
                     aria-label="Open PR on GitHub"
                   >
                     <PrStateIcon className="size-4 shrink-0" style={{ color: prColorVar }} />
@@ -1442,7 +1426,15 @@ export const PullRequestSection: React.FC<{
                 <div className="typography-meta text-muted-foreground break-words">{error}</div>
                 {repoUrl ? (
                   <Button variant="outline" size="sm" asChild className="w-fit">
-                    <a href={repoUrl} target="_blank" rel="noopener noreferrer">
+                    <a
+                      href={repoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        void openExternalUrl(repoUrl);
+                      }}
+                    >
                       <RiExternalLinkLine className="size-4" />
                       Open Repo
                     </a>
@@ -1694,7 +1686,15 @@ export const PullRequestSection: React.FC<{
                   </div>
                   {repoUrl ? (
                     <Button variant="outline" size="sm" className="h-7 px-2 py-0" asChild>
-                      <a href={repoUrl} target="_blank" rel="noopener noreferrer">
+                      <a
+                        href={repoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          void openExternalUrl(repoUrl);
+                        }}
+                      >
                         <RiExternalLinkLine className="size-4" />
                         Repo
                       </a>

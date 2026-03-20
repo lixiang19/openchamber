@@ -199,7 +199,9 @@ class OpencodeService {
       return null;
     }
 
-    const normalized = trimmed.replace(/\\/g, '/');
+    const normalized = trimmed
+      .replace(/\\/g, '/')
+      .replace(/^([a-z]):/, (_, letter: string) => letter.toUpperCase() + ':');
     const withoutTrailingSlash = normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized;
 
     return withoutTrailingSlash || null;

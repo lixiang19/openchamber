@@ -27,6 +27,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { requestFileAccess } from '@/lib/desktop';
 import { updateDesktopSettings } from '@/lib/persistence';
 import { cn } from '@/lib/utils';
+import { openExternalUrl } from '@/lib/url';
 
 type TunnelState =
   | 'checking'
@@ -357,29 +358,6 @@ export const TunnelSettings: React.FC = () => {
     }
     return null;
   }, [localPort]);
-  const openExternal = React.useCallback(async (url: string) => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    type TauriShell = { shell?: { open?: (url: string) => Promise<unknown> } };
-    const tauri = (window as unknown as { __TAURI__?: TauriShell }).__TAURI__;
-    if (tauri?.shell?.open) {
-      try {
-        await tauri.shell.open(url);
-        return;
-      } catch {
-        // fall through
-      }
-    }
-
-    try {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch {
-      // ignore
-    }
-  }, []);
-
   const checkAvailabilityAndStatus = React.useCallback(async (signal: AbortSignal) => {
     try {
       const [checkRes, statusRes, settingsRes, providersRes] = await Promise.all([
@@ -1496,7 +1474,7 @@ export const TunnelSettings: React.FC = () => {
                           type="button"
                           className="typography-meta inline-flex items-center gap-1 text-[var(--status-info)] underline underline-offset-2 hover:opacity-90"
                           onClick={() => {
-                            void openExternal(MANAGED_REMOTE_TUNNEL_DOC_URL);
+                            void openExternalUrl(MANAGED_REMOTE_TUNNEL_DOC_URL);
                           }}
                         >
                           Check the documentation on how to configure a managed remote tunnel
@@ -1513,7 +1491,7 @@ export const TunnelSettings: React.FC = () => {
                           type="button"
                           className="typography-meta inline-flex items-center gap-1 text-[var(--status-info)] underline underline-offset-2 hover:opacity-90"
                           onClick={() => {
-                            void openExternal(MANAGED_LOCAL_TUNNEL_DOC_URL);
+                            void openExternalUrl(MANAGED_LOCAL_TUNNEL_DOC_URL);
                           }}
                         >
                           Check the documentation on managed local tunnel configuration

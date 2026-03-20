@@ -18,6 +18,7 @@ import { DroppableFolderWrapper, SessionFolderDndScope } from './sessionFolderDn
 import type { GroupSearchData, SessionGroup, SessionNode } from './types';
 import { compareSessionsByPinnedAndTime, isBranchDifferentFromLabel, normalizePath, renderHighlightedText } from './utils';
 import type { SessionFolder } from '@/stores/useSessionFoldersStore';
+import { openExternalUrl } from '@/lib/url';
 
 type DeleteFolderConfirm = {
   scopeKey: string;
@@ -245,17 +246,10 @@ export function SessionGroupSection(props: Props): React.ReactNode {
     event.preventDefault();
     event.stopPropagation();
     const url = prIndicator?.url;
-    if (!url || typeof window === 'undefined') {
+    if (!url) {
       return;
     }
-    const tauri = (window as unknown as { __TAURI__?: { shell?: { open?: (target: string) => Promise<unknown> } } }).__TAURI__;
-    if (tauri?.shell?.open) {
-      void tauri.shell.open(url).catch(() => {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      });
-      return;
-    }
-    window.open(url, '_blank', 'noopener,noreferrer');
+    void openExternalUrl(url);
   };
 
   const renderOneFolderItem = (folder: SessionFolder, nodes: SessionNode[], depth: number): React.ReactNode => {

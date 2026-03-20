@@ -53,7 +53,6 @@ import { GitPage } from '@/components/sections/git-identities/GitPage';
 import { OpencodeConfigInstallPage } from '@/components/sections/opencode-config/OpencodeConfigInstallPage';
 import type { OpenAuroraSection } from '@/components/sections/openaurora/types';
 import { OpenAuroraPage } from '@/components/sections/openaurora/OpenAuroraPage';
-import { AboutSettings } from '@/components/sections/openaurora/AboutSettings';
 import { McpIcon } from '@/components/icons/McpIcon';
 import { useDeviceInfo } from '@/lib/device';
 import { isDesktopShell, isVSCodeRuntime, isWebRuntime } from '@/lib/desktop';
@@ -582,12 +581,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
                   Restart OpenCode and reload its configuration.
                 </TooltipContent>
               </Tooltip>
-            )}
-
-            {isMobile && runtimeCtx.isWeb && (
-              <div className="px-1.5 pt-2">
-                <AboutSettings />
-              </div>
             )}
           </div>
         </div>

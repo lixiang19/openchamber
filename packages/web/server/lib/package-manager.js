@@ -1,5 +1,7 @@
 import { spawnSync } from 'child_process';
+import crypto from 'crypto';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -9,6 +11,125 @@ const __dirname = path.dirname(__filename);
 const PACKAGE_NAME = '@openaurora/web';
 const NPM_REGISTRY_URL = `https://registry.npmjs.org/${PACKAGE_NAME}`;
 const CHANGELOG_URL = 'https://raw.githubusercontent.com/btriapitsyn/openaurora/main/CHANGELOG.md';
+let cachedDetectedPm = null;
+
+function getSpawnSyncBaseOptions() {
+  return process.platform === 'win32' ? { windowsHide: true } : {};
+}
+const UPDATE_CHECK_URL = process.env.OPENAURORA_UPDATE_API_URL || 'https://api.openchamber.dev/v1/update/check';
+
+function getOpenAuroraConfigDir() {
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA;
+    if (appData) return path.join(appData, 'openaurora');
+  }
+
+  return path.join(os.homedir(), '.config', 'openaurora');
+}
+
+function sanitizeInstallScope(scope) {
+  if (scope === 'desktop-tauri' || scope === 'vscode' || scope === 'web') return scope;
+  return 'web';
+}
+
+function getOrCreateInstallId(scope = 'web') {
+  const configDir = getOpenAuroraConfigDir();
+  const normalizedScope = sanitizeInstallScope(scope);
+  const idPath = path.join(configDir, `install-id-${normalizedScope}`);
+
+  try {
+    const existing = fs.readFileSync(idPath, 'utf8').trim();
+    if (existing) return existing;
+  } catch {
+    // Generate new id.
+  }
+
+  const installId = crypto.randomUUID();
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.writeFileSync(idPath, `${installId}\n`, { encoding: 'utf8', mode: 0o600 });
+  return installId;
+}
+
+function mapPlatform(value) {
+  if (value === 'darwin') return 'macos';
+  if (value === 'win32') return 'windows';
+  if (value === 'linux') return 'linux';
+  return 'web';
+}
+
+function mapArch(value) {
+  if (value === 'arm64' || value === 'aarch64') return 'arm64';
+  if (value === 'x64' || value === 'amd64') return 'x64';
+  return 'unknown';
+}
+
+function normalizeAppType(value) {
+  if (value === 'web' || value === 'desktop-tauri' || value === 'vscode') return value;
+  return 'web';
+}
+
+function normalizeDeviceClass(value) {
+  if (value === 'mobile' || value === 'tablet' || value === 'desktop' || value === 'unknown') return value;
+  return 'unknown';
+}
+
+function normalizePlatform(value) {
+  if (value === 'macos' || value === 'windows' || value === 'linux' || value === 'web') return value;
+  return mapPlatform(process.platform);
+}
+
+function normalizeArch(value) {
+  if (value === 'arm64' || value === 'x64' || value === 'unknown') return value;
+  return mapArch(process.arch);
+}
+
+async function checkForUpdatesFromApi(currentVersion, options = {}) {
+  try {
+    const appType = normalizeAppType(options.appType);
+    const hostPlatform = mapPlatform(process.platform);
+    const hostArch = mapArch(process.arch);
+    const platform = appType === 'vscode' ? normalizePlatform(options.platform) : hostPlatform;
+    const arch = appType === 'vscode' ? normalizeArch(options.arch) : hostArch;
+    const payload = {
+      appType,
+      deviceClass: normalizeDeviceClass(options.deviceClass),
+      platform,
+      arch,
+      channel: 'stable',
+      currentVersion,
+      installId: getOrCreateInstallId(appType),
+      instanceMode: options.instanceMode || 'unknown',
+      reportUsage: options.reportUsage !== false,
+    };
+
+    const response = await fetch(UPDATE_CHECK_URL, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (typeof data?.latestVersion !== 'string') return null;
+
+    return {
+      available: Boolean(data.updateAvailable),
+      version: data.latestVersion,
+      currentVersion,
+      body: typeof data.releaseNotes === 'string' ? data.releaseNotes : undefined,
+      nextSuggestedCheckInSec:
+        typeof data.nextSuggestedCheckInSec === 'number' && Number.isFinite(data.nextSuggestedCheckInSec)
+          ? data.nextSuggestedCheckInSec
+          : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Detect which package manager was used to install this package.
@@ -307,8 +428,21 @@ export async function fetchChangelogNotes(fromVersion, toVersion) {
 /**
  * Check for updates and return update info
  */
-export async function checkForUpdates() {
-  const currentVersion = getCurrentVersion();
+export async function checkForUpdates(options = {}) {
+  const currentVersion = options.currentVersion || getCurrentVersion();
+  const pm = detectPackageManager();
+
+  if (currentVersion !== 'unknown') {
+    const remote = await checkForUpdatesFromApi(currentVersion, options);
+    if (remote) {
+      return {
+        ...remote,
+        packageManager: pm,
+        updateCommand: 'openaurora update',
+      };
+    }
+  }
+
   const latestVersion = await getLatestVersion();
 
   if (!latestVersion || currentVersion === 'unknown') {
@@ -322,8 +456,6 @@ export async function checkForUpdates() {
   const currentNum = parseVersion(currentVersion);
   const latestNum = parseVersion(latestVersion);
   const available = latestNum > currentNum;
-
-  const pm = detectPackageManager();
 
   let changelog;
   if (available) {
@@ -354,6 +486,7 @@ export function executeUpdate(pm = detectPackageManager(), options = {}) {
   const result = spawnSync(command, {
     stdio: 'inherit',
     shell: true,
+    ...getSpawnSyncBaseOptions(),
   });
 
   return {

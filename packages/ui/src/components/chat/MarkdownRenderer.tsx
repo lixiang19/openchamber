@@ -20,6 +20,7 @@ import { useDeviceInfo } from '@/lib/device';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import type { EditorAPI } from '@/lib/api/types';
+import { isExternalHttpUrl, openExternalUrl } from '@/lib/url';
 
 const withStableStringId = <T extends object>(value: T, id: string): T => {
   const existingPrimitive = (value as Record<symbol, unknown>)[Symbol.toPrimitive];
@@ -689,6 +690,49 @@ interface MarkdownRendererProps {
 const MERMAID_BLOCK_SELECTOR = '[data-streamdown="mermaid-block"]';
 const FILE_LINK_SELECTOR = '[data-openaurora-file-link="true"]';
 
+const useExternalLinkInteractions = ({
+  containerRef,
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) => {
+  React.useEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const handleClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0) {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      const anchor = target.closest('a[href]');
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+
+      const href = anchor.getAttribute('href')?.trim() ?? '';
+      if (!isExternalHttpUrl(href)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      void openExternalUrl(href);
+    };
+
+    container.addEventListener('click', handleClick);
+    return () => {
+      container.removeEventListener('click', handleClick);
+    };
+  }, [containerRef]);
+};
+
 type ParsedFileReference = {
   path: string;
   line?: number;
@@ -1339,6 +1383,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   const effectiveDirectory = useEffectiveDirectory() ?? '';
   const mermaidBlocks = React.useMemo(() => extractMermaidBlocks(content), [content]);
   useMermaidInlineInteractions({ containerRef: streamdownContainerRef, mermaidBlocks, onShowPopup });
+  useExternalLinkInteractions({ containerRef: streamdownContainerRef });
   useFileReferenceInteractions({
     containerRef: streamdownContainerRef,
     effectiveDirectory,
@@ -1375,7 +1420,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
          components={streamdownComponents}
          animated={disableStreamAnimation ? undefined : streamdownAnimated}
          isAnimating={disableStreamAnimation ? false : isStreaming}
-        >
+         // @ts-expect-error Streamdown type missing linkSafety in older minor
+         linkSafety={{ enabled: false }}
+         >
         {content}
       </Streamdown>
     </div>
@@ -1424,6 +1471,7 @@ export const SimpleMarkdownRenderer: React.FC<{
     onShowPopup,
     allowWheelZoom: allowMermaidWheelZoom,
   });
+  useExternalLinkInteractions({ containerRef: streamdownContainerRef });
   useFileReferenceInteractions({
     containerRef: streamdownContainerRef,
     effectiveDirectory,

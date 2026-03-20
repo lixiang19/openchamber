@@ -113,23 +113,39 @@ export const MainLayout: React.FC = () => {
         }
     }, [isRightSidebarOpen, isMobile]);
 
-    // Trigger initial update check shortly after mount, then every hour.
+    // Trigger initial update check shortly after mount, then repeat using server-suggested cadence.
     const checkForUpdates = useUpdateStore((state) => state.checkForUpdates);
     React.useEffect(() => {
         const initialDelayMs = 3000;
-        const periodicIntervalMs = 60 * 60 * 1000;
+        const defaultIntervalMs = 60 * 60 * 1000;
+        const minIntervalMs = 5 * 60 * 1000;
+        const maxIntervalMs = 24 * 60 * 60 * 1000;
+        let disposed = false;
+        let timer: number | null = null;
 
-        const timer = window.setTimeout(() => {
-            checkForUpdates();
-        }, initialDelayMs);
+        const clampIntervalMs = (seconds: number): number => {
+            const ms = Math.round(seconds * 1000);
+            return Math.max(minIntervalMs, Math.min(maxIntervalMs, ms));
+        };
 
-        const interval = window.setInterval(() => {
-            checkForUpdates();
-        }, periodicIntervalMs);
+        const scheduleNext = (delayMs: number) => {
+            if (disposed) return;
+            timer = window.setTimeout(async () => {
+                const suggestedSec = await checkForUpdates();
+                const nextDelay = typeof suggestedSec === 'number' && Number.isFinite(suggestedSec)
+                    ? clampIntervalMs(suggestedSec)
+                    : defaultIntervalMs;
+                scheduleNext(nextDelay);
+            }, delayMs);
+        };
+
+        scheduleNext(initialDelayMs);
 
         return () => {
-            window.clearTimeout(timer);
-            window.clearInterval(interval);
+            disposed = true;
+            if (timer !== null) {
+                window.clearTimeout(timer);
+            }
         };
     }, [checkForUpdates]);
 
@@ -267,6 +283,7 @@ export const MainLayout: React.FC = () => {
         let ignoreOpenUntilZero = false;
         let previousHeight = 0;
         let keyboardAvoidTarget: HTMLElement | null = null;
+        let viewportFrameId: number | null = null;
 
         const setKeyboardOpen = useUIStore.getState().setKeyboardOpen;
 
@@ -315,7 +332,7 @@ export const MainLayout: React.FC = () => {
             setKeyboardOpen(false);
         };
 
-        const updateVisualViewport = () => {
+        const applyVisualViewport = () => {
             const viewport = window.visualViewport;
 
             const height = viewport ? Math.round(viewport.height) : window.innerHeight;
@@ -417,13 +434,24 @@ export const MainLayout: React.FC = () => {
             }
         };
 
-        updateVisualViewport();
+        const scheduleVisualViewportUpdate = () => {
+            if (viewportFrameId !== null) {
+                return;
+            }
+
+            viewportFrameId = window.requestAnimationFrame(() => {
+                viewportFrameId = null;
+                applyVisualViewport();
+            });
+        };
+
+        applyVisualViewport();
 
         const viewport = window.visualViewport;
-        viewport?.addEventListener('resize', updateVisualViewport);
-        viewport?.addEventListener('scroll', updateVisualViewport);
-        window.addEventListener('resize', updateVisualViewport);
-        window.addEventListener('orientationchange', updateVisualViewport);
+        viewport?.addEventListener('resize', scheduleVisualViewportUpdate);
+        viewport?.addEventListener('scroll', scheduleVisualViewportUpdate);
+        window.addEventListener('resize', scheduleVisualViewportUpdate);
+        window.addEventListener('orientationchange', scheduleVisualViewportUpdate);
         const isTextInputTarget = (element: HTMLElement | null) => {
             if (!element) {
                 return false;
@@ -441,7 +469,7 @@ export const MainLayout: React.FC = () => {
             if (isTextInputTarget(target)) {
                 ignoreOpenUntilZero = false;
             }
-            updateVisualViewport();
+            scheduleVisualViewportUpdate();
         };
         document.addEventListener('focusin', handleFocusIn, true);
 
@@ -474,22 +502,25 @@ export const MainLayout: React.FC = () => {
                 const rawInset = Math.max(0, layoutHeight - viewportSum);
 
                 if (rawInset > 0) {
-                    updateVisualViewport();
+                    scheduleVisualViewportUpdate();
                     return;
                 }
 
                 forceKeyboardClosed();
-                updateVisualViewport();
+                scheduleVisualViewportUpdate();
             });
         };
 
         document.addEventListener('focusout', handleFocusOut, true);
 
         return () => {
-            viewport?.removeEventListener('resize', updateVisualViewport);
-            viewport?.removeEventListener('scroll', updateVisualViewport);
-            window.removeEventListener('resize', updateVisualViewport);
-            window.removeEventListener('orientationchange', updateVisualViewport);
+            if (viewportFrameId !== null) {
+                window.cancelAnimationFrame(viewportFrameId);
+            }
+            viewport?.removeEventListener('resize', scheduleVisualViewportUpdate);
+            viewport?.removeEventListener('scroll', scheduleVisualViewportUpdate);
+            window.removeEventListener('resize', scheduleVisualViewportUpdate);
+            window.removeEventListener('orientationchange', scheduleVisualViewportUpdate);
             document.removeEventListener('focusin', handleFocusIn, true);
             document.removeEventListener('focusout', handleFocusOut, true);
             clearKeyboardAvoidTarget();
