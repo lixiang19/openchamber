@@ -14,7 +14,7 @@ bun install
 
 | Script | Description | Ports |
 |--------|-------------|-------|
-| `bun run dev:web:full` | Build watcher + Express server. No HMR — manual refresh after changes. | `3001` (server + static) |
+| `bun run dev:web:full` | Build watcher + Express server. No HMR — manual refresh after changes. | `666` (server + static) |
 | `bun run dev:web:hmr` | Vite dev server + Express API. **Open the Vite URL for HMR**, not the backend. | `5180` (Vite HMR), `3902` (API) |
 
 Both are configurable via env vars: `OPENAURORA_PORT`, `OPENAURORA_HMR_UI_PORT`, `OPENAURORA_HMR_API_PORT`.
