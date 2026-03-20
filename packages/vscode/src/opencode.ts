@@ -67,8 +67,8 @@ function isValidOpenCodePassword(password: string): boolean {
   return typeof password === 'string' && password.trim().length > 0;
 }
 
-function readOpenChamberSettings(): Record<string, unknown> {
-  const settingsPath = path.join(os.homedir(), '.config', 'openchamber', 'settings.json');
+function readOpenAuroraSettings(): Record<string, unknown> {
+  const settingsPath = path.join(os.homedir(), '.config', 'openaurora', 'settings.json');
   try {
     const raw = fs.readFileSync(settingsPath, 'utf8');
     const parsed = JSON.parse(raw) as unknown;
@@ -130,7 +130,7 @@ function appendToPath(dir: string) {
 function resolveOpencodeCliPath(): string | null {
   const configured = (() => {
     try {
-      const config = vscode.workspace.getConfiguration('openchamber');
+      const config = vscode.workspace.getConfiguration('openaurora');
       const raw = config.get<string>('opencodeBinary') || '';
       const trimmed = raw.trim();
       if (!trimmed) return null;
@@ -152,9 +152,9 @@ function resolveOpencodeCliPath(): string | null {
     return configured;
   }
 
-  const sharedFromOpenChamber = (() => {
+  const sharedFromOpenAurora = (() => {
     try {
-      const settings = readOpenChamberSettings();
+      const settings = readOpenAuroraSettings();
       const candidate = settings.opencodeBinary;
       if (typeof candidate !== 'string') {
         return null;
@@ -166,15 +166,15 @@ function resolveOpencodeCliPath(): string | null {
     }
   })();
 
-  if (sharedFromOpenChamber && isExecutable(sharedFromOpenChamber)) {
-    return sharedFromOpenChamber;
+  if (sharedFromOpenAurora && isExecutable(sharedFromOpenAurora)) {
+    return sharedFromOpenAurora;
   }
 
   const explicit = [
     process.env.OPENCODE_BINARY,
     process.env.OPENCODE_PATH,
-    process.env.OPENCHAMBER_OPENCODE_PATH,
-    process.env.OPENCHAMBER_OPENCODE_BIN,
+    process.env.OPENAURORA_OPENCODE_PATH,
+    process.env.OPENAURORA_OPENCODE_BIN,
   ]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .filter(Boolean);
@@ -302,7 +302,7 @@ async function waitForReady(
   timeoutMs = 15000,
   authHeaders: Record<string, string> = {}
 ): Promise<ReadyResult> {
-  const outputChannel = vscode.window.createOutputChannel('OpenChamberManager');
+  const outputChannel = vscode.window.createOutputChannel('OpenAuroraManager');
   const start = Date.now();
   const candidates = getCandidateBaseUrls(serverUrl);
   let attempts = 0;
@@ -486,7 +486,7 @@ export function createOpenCodeManager(_context: vscode.ExtensionContext): OpenCo
 
   let pendingOperation: Promise<void> | null = null;
 
-  const config = vscode.workspace.getConfiguration('openchamber');
+  const config = vscode.workspace.getConfiguration('openaurora');
   const configuredApiUrl = config.get<string>('apiUrl') || '';
   const useConfiguredUrl = configuredApiUrl && configuredApiUrl.trim().length > 0;
 

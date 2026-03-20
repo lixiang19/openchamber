@@ -213,7 +213,7 @@ export function OnboardingScreen({ onCliAvailable }: OnboardingScreenProps) {
       <div className="w-full space-y-4 text-center">
         <div className="space-y-4">
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            Welcome to OpenChamber
+            Welcome to OpenAurora
           </h1>
           <p className="text-muted-foreground">
             <a
@@ -235,7 +235,7 @@ export function OnboardingScreen({ onCliAvailable }: OnboardingScreenProps) {
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
               <li>Install WSL (if needed) with <code className="text-foreground/80">wsl --install</code> in PowerShell.</li>
               <li>Run the install command below inside your WSL terminal.</li>
-              <li>If OpenChamber does not detect OpenCode automatically, set the binary path below.</li>
+              <li>If OpenAurora does not detect OpenCode automatically, set the binary path below.</li>
             </ol>
           </div>
         )}
@@ -305,7 +305,7 @@ export function OnboardingScreen({ onCliAvailable }: OnboardingScreenProps) {
                 Apply
               </Button>
             </div>
-            <div className="text-xs text-muted-foreground/70">Saves to OpenChamber settings and reloads OpenCode configuration.</div>
+            <div className="text-xs text-muted-foreground/70">Saves to OpenAurora settings and reloads OpenCode configuration.</div>
           </div>
         </div>
       </div>

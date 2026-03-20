@@ -190,11 +190,11 @@ export const useOpenInAppsStore = create<OpenInAppsState>()((set, get) => ({
       applyInstalledApps(detail);
     };
 
-    window.addEventListener('openchamber:settings-synced', settingsHandler);
-    window.addEventListener('openchamber:app-ready', appReadyHandler);
-    window.addEventListener('openchamber:installed-apps-updated', updateHandler);
+    window.addEventListener('openaurora:settings-synced', settingsHandler);
+    window.addEventListener('openaurora:app-ready', appReadyHandler);
+    window.addEventListener('openaurora:installed-apps-updated', updateHandler);
 
-    const appReady = (window as unknown as { __openchamberAppReady?: boolean }).__openchamberAppReady;
+    const appReady = (window as unknown as { __openauroraAppReady?: boolean }).__openauroraAppReady;
     if (appReady) {
       void loadInstalledApps();
     }

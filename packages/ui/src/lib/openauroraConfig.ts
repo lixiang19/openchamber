@@ -1,7 +1,7 @@
 /**
- * OpenChamber project-level configuration service.
- * Stores per-project settings in ~/.config/openchamber/<projectId>.json.
- * Migrates from legacy <project>/.openchamber/openchamber.json.
+ * OpenAurora project-level configuration service.
+ * Stores per-project settings in ~/.config/openaurora/<projectId>.json.
+ * Migrates from legacy <project>/.openaurora/openaurora.json.
  */
 
 import type { FilesAPI, RuntimeAPIs } from './api/types';
@@ -10,11 +10,11 @@ import { isVSCodeRuntime } from './desktop';
 
 type ProjectRef = { id: string; path: string };
 
-const CONFIG_FILENAME = 'openchamber.json';
+const CONFIG_FILENAME = 'openaurora.json';
 // LEGACY_PROJECT_CONFIG: legacy per-project config root inside repo.
-const LEGACY_CONFIG_DIR = '.openchamber';
-const USER_CONFIG_DIR_SEGMENTS = ['.config', 'openchamber'];
-const USER_PROJECTS_DIR_SEGMENTS = ['.config', 'openchamber', 'projects'];
+const LEGACY_CONFIG_DIR = '.openaurora';
+const USER_CONFIG_DIR_SEGMENTS = ['.config', 'openaurora'];
+const USER_PROJECTS_DIR_SEGMENTS = ['.config', 'openaurora', 'projects'];
 const SETTINGS_FILENAME = 'settings.json';
 
 const projectIdCache = new Map<string, string>();
@@ -48,59 +48,59 @@ const sha1Hex = async (value: string): Promise<string | null> => {
  */
 function getRuntimeFilesAPI(): FilesAPI | null {
   if (typeof window === 'undefined') return null;
-  const apis = (window as typeof window & { __OPENCHAMBER_RUNTIME_APIS__?: RuntimeAPIs }).__OPENCHAMBER_RUNTIME_APIS__;
+  const apis = (window as typeof window & { __OPENAURORA_RUNTIME_APIS__?: RuntimeAPIs }).__OPENAURORA_RUNTIME_APIS__;
   if (apis?.files) {
     return apis.files;
   }
   return null;
 }
 
-export interface OpenChamberConfig {
+export interface OpenAuroraConfig {
   'setup-worktree'?: string[];
   projectNotes?: string;
-  projectTodos?: OpenChamberProjectTodoItem[];
-  projectActions?: OpenChamberProjectAction[];
+  projectTodos?: OpenAuroraProjectTodoItem[];
+  projectActions?: OpenAuroraProjectAction[];
   projectActionsPrimaryId?: string;
 }
 
-export type OpenChamberProjectActionPlatform = 'macos' | 'linux' | 'windows';
+export type OpenAuroraProjectActionPlatform = 'macos' | 'linux' | 'windows';
 
-export interface OpenChamberProjectAction {
+export interface OpenAuroraProjectAction {
   id: string;
   name: string;
   command: string;
   icon?: string | null;
-  platforms?: OpenChamberProjectActionPlatform[];
+  platforms?: OpenAuroraProjectActionPlatform[];
   autoOpenUrl?: boolean;
   openUrl?: string;
   desktopOpenSshForward?: string;
 }
 
-export interface OpenChamberProjectActionsState {
-  actions: OpenChamberProjectAction[];
+export interface OpenAuroraProjectActionsState {
+  actions: OpenAuroraProjectAction[];
   primaryActionId: string | null;
 }
 
-export interface OpenChamberProjectTodoItem {
+export interface OpenAuroraProjectTodoItem {
   id: string;
   text: string;
   completed: boolean;
   createdAt: number;
 }
 
-export interface OpenChamberProjectNotesTodos {
+export interface OpenAuroraProjectNotesTodos {
   notes: string;
-  todos: OpenChamberProjectTodoItem[];
+  todos: OpenAuroraProjectTodoItem[];
 }
 
-export const OPENCHAMBER_PROJECT_NOTES_MAX_LENGTH = 1000;
-export const OPENCHAMBER_PROJECT_TODO_TEXT_MAX_LENGTH = 120;
-export const OPENCHAMBER_PROJECT_ACTION_NAME_MAX_LENGTH = 80;
-export const OPENCHAMBER_PROJECT_ACTION_COMMAND_MAX_LENGTH = 4000;
-export const OPENCHAMBER_PROJECT_ACTION_OPEN_URL_MAX_LENGTH = 2000;
-export const OPENCHAMBER_PROJECT_ACTION_DESKTOP_FORWARD_MAX_LENGTH = 300;
+export const OPENAURORA_PROJECT_NOTES_MAX_LENGTH = 1000;
+export const OPENAURORA_PROJECT_TODO_TEXT_MAX_LENGTH = 120;
+export const OPENAURORA_PROJECT_ACTION_NAME_MAX_LENGTH = 80;
+export const OPENAURORA_PROJECT_ACTION_COMMAND_MAX_LENGTH = 4000;
+export const OPENAURORA_PROJECT_ACTION_OPEN_URL_MAX_LENGTH = 2000;
+export const OPENAURORA_PROJECT_ACTION_DESKTOP_FORWARD_MAX_LENGTH = 300;
 
-const OPENCHAMBER_ACTION_PLATFORM_SET = new Set<OpenChamberProjectActionPlatform>(['macos', 'linux', 'windows']);
+const OPENAURORA_ACTION_PLATFORM_SET = new Set<OpenAuroraProjectActionPlatform>(['macos', 'linux', 'windows']);
 
 const normalize = (value: string): string => {
   if (!value) return '';
@@ -204,8 +204,8 @@ const writeTextFile = async (path: string, content: string): Promise<boolean> =>
 };
 
 const resolveHomeDirectory = async (): Promise<string | null> => {
-  // VSCode webview sets __OPENCHAMBER_HOME__ to workspace folder (not OS home).
-  // For user config (~/.config/openchamber), always use /api/fs/home in VSCode.
+  // VSCode webview sets __OPENAURORA_HOME__ to workspace folder (not OS home).
+  // For user config (~/.config/openaurora), always use /api/fs/home in VSCode.
   if (!isVSCodeRuntime()) {
     const desktopHome = await getDesktopHomeDirectory().catch(() => null);
     if (desktopHome && desktopHome.trim().length > 0) {
@@ -324,15 +324,15 @@ const sanitizeProjectNotes = (value: unknown): string => {
   if (typeof value !== 'string') {
     return '';
   }
-  return trimToMaxLength(value, OPENCHAMBER_PROJECT_NOTES_MAX_LENGTH);
+  return trimToMaxLength(value, OPENAURORA_PROJECT_NOTES_MAX_LENGTH);
 };
 
-const sanitizeProjectTodoItems = (value: unknown): OpenChamberProjectTodoItem[] => {
+const sanitizeProjectTodoItems = (value: unknown): OpenAuroraProjectTodoItem[] => {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  const sanitized: OpenChamberProjectTodoItem[] = [];
+  const sanitized: OpenAuroraProjectTodoItem[] = [];
   for (const entry of value) {
     if (!entry || typeof entry !== 'object') {
       continue;
@@ -347,7 +347,7 @@ const sanitizeProjectTodoItems = (value: unknown): OpenChamberProjectTodoItem[] 
 
     const id = typeof record.id === 'string' ? record.id.trim() : '';
     const textRaw = typeof record.text === 'string' ? record.text : '';
-    const text = trimToMaxLength(textRaw.trim(), OPENCHAMBER_PROJECT_TODO_TEXT_MAX_LENGTH);
+    const text = trimToMaxLength(textRaw.trim(), OPENAURORA_PROJECT_TODO_TEXT_MAX_LENGTH);
     if (!id || !text) {
       continue;
     }
@@ -370,19 +370,19 @@ const sanitizeProjectTodoItems = (value: unknown): OpenChamberProjectTodoItem[] 
   return sanitized;
 };
 
-const sanitizeProjectActionPlatforms = (value: unknown): OpenChamberProjectActionPlatform[] => {
+const sanitizeProjectActionPlatforms = (value: unknown): OpenAuroraProjectActionPlatform[] => {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  const unique: OpenChamberProjectActionPlatform[] = [];
-  const seen = new Set<OpenChamberProjectActionPlatform>();
+  const unique: OpenAuroraProjectActionPlatform[] = [];
+  const seen = new Set<OpenAuroraProjectActionPlatform>();
   for (const entry of value) {
     if (typeof entry !== 'string') {
       continue;
     }
-    const normalized = entry.trim().toLowerCase() as OpenChamberProjectActionPlatform;
-    if (!OPENCHAMBER_ACTION_PLATFORM_SET.has(normalized) || seen.has(normalized)) {
+    const normalized = entry.trim().toLowerCase() as OpenAuroraProjectActionPlatform;
+    if (!OPENAURORA_ACTION_PLATFORM_SET.has(normalized) || seen.has(normalized)) {
       continue;
     }
     seen.add(normalized);
@@ -392,12 +392,12 @@ const sanitizeProjectActionPlatforms = (value: unknown): OpenChamberProjectActio
   return unique;
 };
 
-const sanitizeProjectActions = (value: unknown): OpenChamberProjectAction[] => {
+const sanitizeProjectActions = (value: unknown): OpenAuroraProjectAction[] => {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  const sanitized: OpenChamberProjectAction[] = [];
+  const sanitized: OpenAuroraProjectAction[] = [];
   const seenIds = new Set<string>();
 
   for (const entry of value) {
@@ -417,8 +417,8 @@ const sanitizeProjectActions = (value: unknown): OpenChamberProjectAction[] => {
     };
 
     const id = typeof record.id === 'string' ? record.id.trim() : '';
-    const name = trimToMaxLength(typeof record.name === 'string' ? record.name.trim() : '', OPENCHAMBER_PROJECT_ACTION_NAME_MAX_LENGTH);
-    const command = trimToMaxLength(typeof record.command === 'string' ? record.command.trim() : '', OPENCHAMBER_PROJECT_ACTION_COMMAND_MAX_LENGTH);
+    const name = trimToMaxLength(typeof record.name === 'string' ? record.name.trim() : '', OPENAURORA_PROJECT_ACTION_NAME_MAX_LENGTH);
+    const command = trimToMaxLength(typeof record.command === 'string' ? record.command.trim() : '', OPENAURORA_PROJECT_ACTION_COMMAND_MAX_LENGTH);
 
     if (!id || !name || !command || seenIds.has(id)) {
       continue;
@@ -429,13 +429,13 @@ const sanitizeProjectActions = (value: unknown): OpenChamberProjectAction[] => {
     const platforms = sanitizeProjectActionPlatforms(record.platforms);
     const autoOpenUrl = record.autoOpenUrl === true;
     const openUrlRaw = typeof record.openUrl === 'string' ? record.openUrl.trim() : '';
-    const openUrl = trimToMaxLength(openUrlRaw, OPENCHAMBER_PROJECT_ACTION_OPEN_URL_MAX_LENGTH);
+    const openUrl = trimToMaxLength(openUrlRaw, OPENAURORA_PROJECT_ACTION_OPEN_URL_MAX_LENGTH);
     const desktopOpenSshForwardRaw = typeof record.desktopOpenSshForward === 'string'
       ? record.desktopOpenSshForward.trim()
       : '';
     const desktopOpenSshForward = trimToMaxLength(
       desktopOpenSshForwardRaw,
-      OPENCHAMBER_PROJECT_ACTION_DESKTOP_FORWARD_MAX_LENGTH
+      OPENAURORA_PROJECT_ACTION_DESKTOP_FORWARD_MAX_LENGTH
     );
 
     sanitized.push({
@@ -456,7 +456,7 @@ const sanitizeProjectActions = (value: unknown): OpenChamberProjectAction[] => {
 const sanitizeProjectActionsState = (value: {
   actions?: unknown;
   primaryActionId?: unknown;
-} | null | undefined): OpenChamberProjectActionsState => {
+} | null | undefined): OpenAuroraProjectActionsState => {
   const actions = sanitizeProjectActions(value?.actions);
   const primaryRaw = typeof value?.primaryActionId === 'string' ? value.primaryActionId.trim() : '';
   const primaryActionId = primaryRaw && actions.some((entry) => entry.id === primaryRaw)
@@ -472,7 +472,7 @@ const sanitizeProjectActionsState = (value: {
 const sanitizeProjectNotesAndTodos = (value: {
   notes?: unknown;
   todos?: unknown;
-} | null | undefined): OpenChamberProjectNotesTodos => {
+} | null | undefined): OpenAuroraProjectNotesTodos => {
   return {
     notes: sanitizeProjectNotes(value?.notes),
     todos: sanitizeProjectTodoItems(value?.todos),
@@ -483,7 +483,7 @@ const sanitizeProjectNotesAndTodos = (value: {
  * Read the config for a project.
  * Returns null if file doesn't exist or is invalid.
  */
-export async function readOpenChamberConfig(project: ProjectRef): Promise<OpenChamberConfig | null> {
+export async function readOpenAuroraConfig(project: ProjectRef): Promise<OpenAuroraConfig | null> {
   const projectDirectory = typeof project?.path === 'string' ? project.path.trim() : '';
   if (!projectDirectory) {
     return null;
@@ -500,7 +500,7 @@ export async function readOpenChamberConfig(project: ProjectRef): Promise<OpenCh
     return text;
   };
 
-  const parseConfig = (text: string | null): OpenChamberConfig | null => {
+  const parseConfig = (text: string | null): OpenAuroraConfig | null => {
     if (typeof text !== 'string') {
       return null;
     }
@@ -513,7 +513,7 @@ export async function readOpenChamberConfig(project: ProjectRef): Promise<OpenCh
       if (!parsed || typeof parsed !== 'object') {
         return null;
       }
-      return parsed as OpenChamberConfig;
+      return parsed as OpenAuroraConfig;
     } catch {
       return null;
     }
@@ -527,8 +527,8 @@ export async function readOpenChamberConfig(project: ProjectRef): Promise<OpenCh
     }
   }
 
-  // 2) Migrate legacy <project>/.openchamber/openchamber.json.
-  // LEGACY_PROJECT_CONFIG: migrate project-local openchamber.json -> ~/.config/openchamber/projects/<projectId>.json
+  // 2) Migrate legacy <project>/.openaurora/openaurora.json.
+  // LEGACY_PROJECT_CONFIG: migrate project-local openaurora.json -> ~/.config/openaurora/projects/<projectId>.json
   const legacyPath = getLegacyConfigPath(projectDirectory);
   const legacyConfig = parseConfig(await readText(legacyPath));
   if (!legacyConfig) {
@@ -537,9 +537,9 @@ export async function readOpenChamberConfig(project: ProjectRef): Promise<OpenCh
 
   // Best-effort write + delete legacy.
   try {
-    const wrote = await writeOpenChamberConfig(project, legacyConfig);
+    const wrote = await writeOpenAuroraConfig(project, legacyConfig);
     if (wrote) {
-      await deleteLegacyOpenChamberConfig(projectDirectory);
+      await deleteLegacyOpenAuroraConfig(projectDirectory);
     }
   } catch {
     // Ignore migration failures; still return legacy content.
@@ -551,9 +551,9 @@ export async function readOpenChamberConfig(project: ProjectRef): Promise<OpenCh
 /**
  * Write the per-user config for a project.
  */
-export async function writeOpenChamberConfig(
+export async function writeOpenAuroraConfig(
   project: ProjectRef,
-  config: OpenChamberConfig
+  config: OpenAuroraConfig
 ): Promise<boolean> {
   const projectDirectory = typeof project?.path === 'string' ? project.path.trim() : '';
   if (!projectDirectory) {
@@ -576,7 +576,7 @@ export async function writeOpenChamberConfig(
     const content = JSON.stringify(config, null, 2);
     return await writeTextFile(configPath, content);
   } catch (error) {
-    console.error('Failed to write openchamber config:', error);
+    console.error('Failed to write openaurora config:', error);
     return false;
   }
 }
@@ -584,30 +584,30 @@ export async function writeOpenChamberConfig(
 /**
  * Update specific keys in the config, preserving other values.
  */
-export async function updateOpenChamberConfig(
+export async function updateOpenAuroraConfig(
   project: ProjectRef,
-  updates: Partial<OpenChamberConfig>
+  updates: Partial<OpenAuroraConfig>
 ): Promise<boolean> {
-  const existing = await readOpenChamberConfig(project) || {};
+  const existing = await readOpenAuroraConfig(project) || {};
   const merged = { ...existing, ...updates };
-  return writeOpenChamberConfig(project, merged);
+  return writeOpenAuroraConfig(project, merged);
 }
 
 /**
  * Get worktree setup commands from config.
  */
 export async function getWorktreeSetupCommands(project: ProjectRef): Promise<string[]> {
-  const config = await readOpenChamberConfig(project);
+  const config = await readOpenAuroraConfig(project);
   return config?.['setup-worktree'] ?? [];
 }
 
 export async function saveWorktreeSetupCommands(project: ProjectRef, commands: string[]): Promise<boolean> {
   const filtered = commands.filter((cmd) => cmd.trim().length > 0);
-  return updateOpenChamberConfig(project, { 'setup-worktree': filtered });
+  return updateOpenAuroraConfig(project, { 'setup-worktree': filtered });
 }
 
-export async function getProjectNotesAndTodos(project: ProjectRef): Promise<OpenChamberProjectNotesTodos> {
-  const config = await readOpenChamberConfig(project);
+export async function getProjectNotesAndTodos(project: ProjectRef): Promise<OpenAuroraProjectNotesTodos> {
+  const config = await readOpenAuroraConfig(project);
   return sanitizeProjectNotesAndTodos({
     notes: config?.projectNotes,
     todos: config?.projectTodos,
@@ -616,21 +616,21 @@ export async function getProjectNotesAndTodos(project: ProjectRef): Promise<Open
 
 export async function saveProjectNotesAndTodos(
   project: ProjectRef,
-  value: OpenChamberProjectNotesTodos
+  value: OpenAuroraProjectNotesTodos
 ): Promise<boolean> {
   const sanitized = sanitizeProjectNotesAndTodos({
     notes: value.notes,
     todos: value.todos,
   });
 
-  return updateOpenChamberConfig(project, {
+  return updateOpenAuroraConfig(project, {
     projectNotes: sanitized.notes,
     projectTodos: sanitized.todos,
   });
 }
 
-export async function getProjectActionsState(project: ProjectRef): Promise<OpenChamberProjectActionsState> {
-  const config = await readOpenChamberConfig(project);
+export async function getProjectActionsState(project: ProjectRef): Promise<OpenAuroraProjectActionsState> {
+  const config = await readOpenAuroraConfig(project);
   return sanitizeProjectActionsState({
     actions: config?.projectActions,
     primaryActionId: config?.projectActionsPrimaryId,
@@ -639,14 +639,14 @@ export async function getProjectActionsState(project: ProjectRef): Promise<OpenC
 
 export async function saveProjectActionsState(
   project: ProjectRef,
-  value: OpenChamberProjectActionsState
+  value: OpenAuroraProjectActionsState
 ): Promise<boolean> {
   const sanitized = sanitizeProjectActionsState({
     actions: value.actions,
     primaryActionId: value.primaryActionId,
   });
 
-  return updateOpenChamberConfig(project, {
+  return updateOpenAuroraConfig(project, {
     projectActions: sanitized.actions,
     projectActionsPrimaryId: sanitized.primaryActionId ?? undefined,
   });
@@ -671,7 +671,7 @@ export function substituteCommandVariables(
     .replace(/\$\{ROOT_WORKTREE_PATH\}/g, variables.rootWorktreePath);
 }
 
-async function deleteLegacyOpenChamberConfig(projectDirectory: string): Promise<void> {
+async function deleteLegacyOpenAuroraConfig(projectDirectory: string): Promise<void> {
   const legacyPath = getLegacyConfigPath(projectDirectory);
   const runtimeFiles = getRuntimeFilesAPI();
 

@@ -6,9 +6,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PACKAGE_NAME = '@openchamber/web';
+const PACKAGE_NAME = '@openaurora/web';
 const NPM_REGISTRY_URL = `https://registry.npmjs.org/${PACKAGE_NAME}`;
-const CHANGELOG_URL = 'https://raw.githubusercontent.com/btriapitsyn/openchamber/main/CHANGELOG.md';
+const CHANGELOG_URL = 'https://raw.githubusercontent.com/btriapitsyn/openaurora/main/CHANGELOG.md';
 
 /**
  * Detect which package manager was used to install this package.
@@ -19,7 +19,7 @@ const CHANGELOG_URL = 'https://raw.githubusercontent.com/btriapitsyn/openchamber
  * 4. Fall back to npm
  */
 export function detectPackageManager() {
-  const forcedPm = process.env.OPENCHAMBER_PACKAGE_MANAGER?.trim();
+  const forcedPm = process.env.OPENAURORA_PACKAGE_MANAGER?.trim();
   if (forcedPm && ['npm', 'pnpm', 'yarn', 'bun'].includes(forcedPm)) {
     const forcedPmCommand = resolvePackageManagerCommand(forcedPm);
     if (isCommandAvailable(forcedPmCommand)) {
@@ -205,7 +205,7 @@ function isPackageInstalledWith(pm) {
     });
 
     if (result.status !== 0) return false;
-    return result.stdout.includes(PACKAGE_NAME) || result.stdout.includes('openchamber');
+    return result.stdout.includes(PACKAGE_NAME) || result.stdout.includes('openaurora');
   } catch {
     return false;
   }
@@ -337,7 +337,7 @@ export async function checkForUpdates() {
     body: changelog,
     packageManager: pm,
     // Show our CLI command, not raw package manager command
-    updateCommand: 'openchamber update',
+    updateCommand: 'openaurora update',
   };
 }
 

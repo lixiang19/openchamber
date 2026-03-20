@@ -35,7 +35,7 @@ export function getWebviewHtml(options: WebviewHtmlOptions): string {
   // Use VS Code CSS variables for proper theme integration
   // These variables are automatically provided by VS Code to webviews
   // 
-  // Logo geometry matches OpenChamberLogo.tsx:
+  // Logo geometry matches OpenAuroraLogo.tsx:
   // edge=48, cos30=0.866, sin30=0.5, centerY=50
   // top=(50, 2), left=(8.432, 26), right=(91.568, 26), center=(50, 50)
   // bottomLeft=(8.432, 74), bottomRight=(91.568, 74), bottom=(50, 98)
@@ -87,7 +87,7 @@ export function getWebviewHtml(options: WebviewHtmlOptions): string {
       fill: var(--vscode-foreground);
       opacity: 0.4;
     }
-    /* Animation on inner logo only, like OpenChamberLogo.tsx */
+    /* Animation on inner logo only, like OpenAuroraLogo.tsx */
     #initial-loading .logo-inner {
       animation: logoPulse 3s ease-in-out infinite;
     }
@@ -107,10 +107,10 @@ export function getWebviewHtml(options: WebviewHtmlOptions): string {
       50% { opacity: 1; }
     }
   </style>
-  <title>OpenChamber</title>
+  <title>OpenAurora</title>
 </head>
 <body>
-  <!-- Initial loading screen with simplified OpenChamber logo -->
+  <!-- Initial loading screen with simplified OpenAurora logo -->
   <div id="initial-loading">
     <svg class="logo" width="70" height="70" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
       <!-- Left face -->
@@ -146,7 +146,7 @@ export function getWebviewHtml(options: WebviewHtmlOptions): string {
       viewMode: "${viewMode}",
       initialSessionId: ${initialSessionId ? `"${initialSessionId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : 'null'},
     };
-    window.__OPENCHAMBER_HOME__ = "${workspaceFolder.replace(/\\/g, '\\\\')}";
+    window.__OPENAURORA_HOME__ = "${workspaceFolder.replace(/\\/g, '\\\\')}";
     
     // Handle connection status updates to update loading screen
     window.addEventListener('message', function(event) {

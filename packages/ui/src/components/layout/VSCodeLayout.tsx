@@ -107,7 +107,7 @@ export const VSCodeLayout: React.FC = () => {
   const openNewSessionDraft = useSessionStore((state) => state.openNewSessionDraft);
   const [connectionStatus, setConnectionStatus] = React.useState<'connecting' | 'connected' | 'error' | 'disconnected'>(
     () => (typeof window !== 'undefined'
-      ? (window as { __OPENCHAMBER_CONNECTION__?: { status?: string } }).__OPENCHAMBER_CONNECTION__?.status as
+      ? (window as { __OPENAURORA_CONNECTION__?: { status?: string } }).__OPENAURORA_CONNECTION__?.status as
         'connecting' | 'connected' | 'error' | 'disconnected' | undefined
       : 'connecting') || 'connecting'
   );
@@ -133,7 +133,7 @@ export const VSCodeLayout: React.FC = () => {
       return;
     }
 
-    void vscodeApi.executeCommand('openchamber.setActiveSession', currentSessionId, activeSessionTitle);
+    void vscodeApi.executeCommand('openaurora.setActiveSession', currentSessionId, activeSessionTitle);
   }, [activeSessionTitle, currentSessionId, runtimeApis.vscode]);
 
   // If the active session disappears (e.g., deleted), go back to sessions list
@@ -185,7 +185,7 @@ export const VSCodeLayout: React.FC = () => {
     // before this component registered the event listener.
     const current =
       (typeof window !== 'undefined'
-        ? (window as { __OPENCHAMBER_CONNECTION__?: { status?: string } }).__OPENCHAMBER_CONNECTION__?.status
+        ? (window as { __OPENAURORA_CONNECTION__?: { status?: string } }).__OPENAURORA_CONNECTION__?.status
         : undefined) as 'connecting' | 'connected' | 'error' | 'disconnected' | undefined;
     if (current === 'connected' || current === 'connecting' || current === 'error' || current === 'disconnected') {
       setConnectionStatus(current);
@@ -198,8 +198,8 @@ export const VSCodeLayout: React.FC = () => {
         setConnectionStatus(status);
       }
     };
-    window.addEventListener('openchamber:connection-status', handler as EventListener);
-    return () => window.removeEventListener('openchamber:connection-status', handler as EventListener);
+    window.addEventListener('openaurora:connection-status', handler as EventListener);
+    return () => window.removeEventListener('openaurora:connection-status', handler as EventListener);
   }, []);
 
   // Listen for navigation events from VS Code extension title bar buttons
@@ -215,8 +215,8 @@ export const VSCodeLayout: React.FC = () => {
         setCurrentView('sessions');
       }
     };
-    window.addEventListener('openchamber:navigate', handler as EventListener);
-    return () => window.removeEventListener('openchamber:navigate', handler as EventListener);
+    window.addEventListener('openaurora:navigate', handler as EventListener);
+    return () => window.removeEventListener('openaurora:navigate', handler as EventListener);
   }, []);
 
   // Bootstrap config and sessions when connected
@@ -235,13 +235,13 @@ export const VSCodeLayout: React.FC = () => {
         const debugEnabled = (() => {
           if (typeof window === 'undefined') return false;
           try {
-            return window.localStorage.getItem('openchamber_stream_debug') === '1';
+            return window.localStorage.getItem('openaurora_stream_debug') === '1';
           } catch {
             return false;
           }
         })();
 
-        if (debugEnabled) console.log('[OpenChamber][VSCode][bootstrap] attempt', { configInitialized });
+        if (debugEnabled) console.log('[OpenAurora][VSCode][bootstrap] attempt', { configInitialized });
         if (!configInitialized) {
           await initializeConfig();
         }
@@ -265,7 +265,7 @@ export const VSCodeLayout: React.FC = () => {
         }
         await loadSessions();
         const sessionsError = useSessionStore.getState().error;
-        if (debugEnabled) console.log('[OpenChamber][VSCode][bootstrap] post-load', {
+        if (debugEnabled) console.log('[OpenAurora][VSCode][bootstrap] post-load', {
           providers: configState.providers.length,
           agents: configState.agents.length,
           sessions: useSessionStore.getState().sessions.length,

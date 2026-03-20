@@ -346,7 +346,7 @@ export function SessionGroupSection(props: Props): React.ReactNode {
       {visibleSessions.map((node) => renderSessionNode(node, 0, group.directory, projectId, group.isArchivedBucket === true))}
       {totalSessions === 0 && allFoldersForGroup.length === 0 ? (
         <div className="py-1 text-left typography-micro text-muted-foreground">
-          {group.isArchivedBucket ? 'No archived sessions yet.' : 'No sessions in this workspace yet.'}
+          {group.isArchivedBucket ? 'No archived conversations yet.' : 'No conversations in this workspace yet.'}
         </div>
       ) : null}
       {remainingCount > 0 && !isExpanded ? (
@@ -355,7 +355,7 @@ export function SessionGroupSection(props: Props): React.ReactNode {
           onClick={() => toggleGroupSessionLimit(groupKey)}
           className="mt-0.5 flex items-center justify-start rounded-md px-1.5 py-0.5 text-left text-xs text-muted-foreground/70 leading-tight hover:text-foreground hover:underline"
         >
-          Show {remainingCount} more {remainingCount === 1 ? 'session' : 'sessions'}
+          Show {remainingCount} more {remainingCount === 1 ? 'conversation' : 'conversations'}
         </button>
       ) : null}
       {isExpanded && totalSessions > maxVisible ? (
@@ -364,7 +364,7 @@ export function SessionGroupSection(props: Props): React.ReactNode {
           onClick={() => toggleGroupSessionLimit(groupKey)}
           className="mt-0.5 flex items-center justify-start rounded-md px-1.5 py-0.5 text-left text-xs text-muted-foreground/70 leading-tight hover:text-foreground hover:underline"
         >
-          Show fewer sessions
+          Show fewer conversations
         </button>
       ) : null}
     </SessionFolderDndScope>

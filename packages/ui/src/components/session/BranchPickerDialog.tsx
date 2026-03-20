@@ -25,7 +25,7 @@ import type { GitBranch, GitWorktreeInfo } from '@/lib/api/types';
 import type { WorktreeMetadata } from '@/types/worktree';
 import { createWorktreeWithDefaults } from '@/lib/worktrees/worktreeCreate';
 import { getRootBranch } from '@/lib/worktrees/worktreeStatus';
-import { getWorktreeSetupCommands } from '@/lib/openchamberConfig';
+import { getWorktreeSetupCommands } from '@/lib/openauroraConfig';
 import { sessionEvents } from '@/lib/sessionEvents';
 import { useSessionStore } from '@/stores/useSessionStore';
 

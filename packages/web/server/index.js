@@ -11,6 +11,18 @@ import crypto from 'crypto';
 import { createUiAuth } from './lib/opencode/ui-auth.js';
 import { createTunnelAuth } from './lib/opencode/tunnel-auth.js';
 import {
+  installBundledOpencodeConfig,
+  installOpencodeConfigFromDirectory,
+  installOpencodeConfigFromUpload,
+} from './lib/opencode/install.js';
+import {
+  createBundledProjectFromTemplate,
+  DEFAULT_STARTER_PROJECT_NAME,
+  getDefaultStarterProjectPath,
+  normalizeProjectTemplateName,
+  STARTER_PROJECT_TEMPLATE_VERSION,
+} from './lib/projects/template.js';
+import {
   printTunnelWarning,
 } from './lib/cloudflare-tunnel.js';
 import { createTunnelService } from './lib/tunnels/index.js';
@@ -45,7 +57,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const DEFAULT_PORT = 3000;
-const DESKTOP_NOTIFY_PREFIX = '[OpenChamberDesktopNotify] ';
+const DESKTOP_NOTIFY_PREFIX = '[OpenAuroraDesktopNotify] ';
 const uiNotificationClients = new Set();
 const HEALTH_CHECK_INTERVAL = 15000;
 const SHUTDOWN_TIMEOUT = 10000;
@@ -60,7 +72,7 @@ const TUNNEL_BOOTSTRAP_TTL_MAX_MS = 24 * 60 * 60 * 1000;
 const TUNNEL_SESSION_TTL_DEFAULT_MS = 8 * 60 * 60 * 1000;
 const TUNNEL_SESSION_TTL_MIN_MS = 5 * 60 * 1000;
 const TUNNEL_SESSION_TTL_MAX_MS = 24 * 60 * 60 * 1000;
-const OPENCHAMBER_VERSION = (() => {
+const OPENAURORA_VERSION = (() => {
   try {
     const packagePath = path.resolve(__dirname, '..', 'package.json');
     const raw = fs.readFileSync(packagePath, 'utf8');
@@ -111,8 +123,8 @@ const normalizeDirectoryPath = (value) => {
   return trimmed;
 };
 
-const OPENCHAMBER_USER_CONFIG_ROOT = path.join(os.homedir(), '.config', 'openchamber');
-const OPENCHAMBER_USER_THEMES_DIR = path.join(OPENCHAMBER_USER_CONFIG_ROOT, 'themes');
+const OPENAURORA_USER_CONFIG_ROOT = path.join(os.homedir(), '.config', 'openaurora');
+const OPENAURORA_USER_THEMES_DIR = path.join(OPENAURORA_USER_CONFIG_ROOT, 'themes');
 
 const MAX_THEME_JSON_BYTES = 512 * 1024;
 
@@ -310,7 +322,7 @@ const normalizeThemeJson = (raw) => {
 
 const readCustomThemesFromDisk = async () => {
   try {
-    const entries = await fsPromises.readdir(OPENCHAMBER_USER_THEMES_DIR, { withFileTypes: true });
+    const entries = await fsPromises.readdir(OPENAURORA_USER_THEMES_DIR, { withFileTypes: true });
     const themes = [];
     const seen = new Set();
 
@@ -318,7 +330,7 @@ const readCustomThemesFromDisk = async () => {
       if (!entry.isFile()) continue;
       if (!entry.name.toLowerCase().endsWith('.json')) continue;
 
-      const filePath = path.join(OPENCHAMBER_USER_THEMES_DIR, entry.name);
+      const filePath = path.join(OPENAURORA_USER_THEMES_DIR, entry.name);
       try {
         const stat = await fsPromises.stat(filePath);
         if (!stat.isFile()) continue;
@@ -381,10 +393,10 @@ const resolveWorkspacePath = (targetPath, baseDirectory) => {
     return { ok: true, base: resolvedBase, resolved };
   }
 
-  // Allow writing OpenChamber per-project config under ~/.config/openchamber.
+  // Allow writing OpenAurora per-project config under ~/.config/openaurora.
   // LEGACY_PROJECT_CONFIG: migration target root; allowed outside workspace.
-  if (isPathWithinRoot(resolved, OPENCHAMBER_USER_CONFIG_ROOT)) {
-    return { ok: true, base: path.resolve(OPENCHAMBER_USER_CONFIG_ROOT), resolved };
+  if (isPathWithinRoot(resolved, OPENAURORA_USER_CONFIG_ROOT)) {
+    return { ok: true, base: path.resolve(OPENAURORA_USER_CONFIG_ROOT), resolved };
   }
 
   return { ok: false, error: 'Path is outside of active workspace' };
@@ -1158,15 +1170,15 @@ const buildTemplateVariables = async (payload, sessionId) => {
   };
 };
 
-const OPENCHAMBER_DATA_DIR = process.env.OPENCHAMBER_DATA_DIR
-  ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-  : path.join(os.homedir(), '.config', 'openchamber');
-const SETTINGS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'settings.json');
-const PUSH_SUBSCRIPTIONS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'push-subscriptions.json');
-const CLOUDFLARE_MANAGED_REMOTE_TUNNELS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'cloudflare-managed-remote-tunnels.json');
-const CLOUDFLARE_LEGACY_NAMED_TUNNELS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'cloudflare-named-tunnels.json');
+const OPENAURORA_DATA_DIR = process.env.OPENAURORA_DATA_DIR
+  ? path.resolve(process.env.OPENAURORA_DATA_DIR)
+  : path.join(os.homedir(), '.config', 'openaurora');
+const SETTINGS_FILE_PATH = path.join(OPENAURORA_DATA_DIR, 'settings.json');
+const PUSH_SUBSCRIPTIONS_FILE_PATH = path.join(OPENAURORA_DATA_DIR, 'push-subscriptions.json');
+const CLOUDFLARE_MANAGED_REMOTE_TUNNELS_FILE_PATH = path.join(OPENAURORA_DATA_DIR, 'cloudflare-managed-remote-tunnels.json');
+const CLOUDFLARE_LEGACY_NAMED_TUNNELS_FILE_PATH = path.join(OPENAURORA_DATA_DIR, 'cloudflare-named-tunnels.json');
 const CLOUDFLARE_MANAGED_REMOTE_TUNNELS_VERSION = 1;
-const PROJECT_ICONS_DIR_PATH = path.join(OPENCHAMBER_DATA_DIR, 'project-icons');
+const PROJECT_ICONS_DIR_PATH = path.join(OPENAURORA_DATA_DIR, 'project-icons');
 const PROJECT_ICON_MIME_TO_EXTENSION = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -1179,6 +1191,7 @@ const PROJECT_ICON_EXTENSION_TO_MIME = Object.fromEntries(
 );
 const PROJECT_ICON_SUPPORTED_MIMES = new Set(Object.keys(PROJECT_ICON_MIME_TO_EXTENSION));
 const PROJECT_ICON_MAX_BYTES = 5 * 1024 * 1024;
+const STARTER_PROJECT_BOOTSTRAP_KEY = 'starterProjectBootstrap';
 const PROJECT_ICON_THEME_COLORS = {
   light: '#111111',
   dark: '#f5f5f5',
@@ -1310,7 +1323,7 @@ const applyProjectIconSvgTheme = (svgMarkup, themeVariant, iconColor) => {
     return svgMarkup;
   }
 
-  const overrideStyle = `<style data-openchamber-theme-icon="1">:root{color:${color}!important;}</style>`;
+  const overrideStyle = `<style data-openaurora-theme-icon="1">:root{color:${color}!important;}</style>`;
   return `${svgMarkup.slice(0, svgOpenTagEndIndex + 1)}${overrideStyle}${svgMarkup.slice(svgOpenTagEndIndex + 1)}`;
 };
 
@@ -1353,6 +1366,7 @@ const writeSettingsToDisk = async (settings) => {
 const PUSH_SUBSCRIPTIONS_VERSION = 1;
 let persistPushSubscriptionsLock = Promise.resolve();
 let persistManagedRemoteTunnelConfigLock = Promise.resolve();
+let starterProjectBootstrapLock = Promise.resolve();
 
 const readPushSubscriptionsFromDisk = async () => {
   try {
@@ -1591,6 +1605,17 @@ const resolveDirectoryCandidate = (value) => {
   }
   const normalized = normalizeDirectoryPath(trimmed);
   return path.resolve(normalized);
+};
+
+const isExplicitDirectoryInput = (value) => {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return trimmed.startsWith('~') || path.isAbsolute(trimmed) || /^[A-Za-z]:[\\/]/.test(trimmed);
 };
 
 const validateDirectoryPath = async (candidate) => {
@@ -1862,7 +1887,7 @@ const sanitizeProjects = (input) => {
   return result;
 };
 
-const DEFAULT_PWA_APP_NAME = 'OpenChamber - AI Coding Assistant';
+const DEFAULT_PWA_APP_NAME = 'OpenAurora - AI Coding Assistant';
 const PWA_APP_NAME_MAX_LENGTH = 64;
 
 const normalizePwaAppName = (value, fallback = '') => {
@@ -2418,6 +2443,88 @@ const formatSettingsResponse = (settings) => {
           ? sanitized.showReasoningTraces
           : false
   };
+};
+
+const createProjectRegistryEntry = (projectPath, label) => {
+  const now = Date.now();
+  return {
+    id: typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `proj_${now}_${Math.random().toString(36).slice(2, 8)}`,
+    path: projectPath,
+    label,
+    addedAt: now,
+    lastOpenedAt: now,
+  };
+};
+
+const buildStarterProjectBootstrapState = (overrides = {}) => ({
+  completed: true,
+  templateVersion: STARTER_PROJECT_TEMPLATE_VERSION,
+  updatedAt: Date.now(),
+  ...overrides,
+});
+
+const withStarterProjectBootstrapState = (settings, state) => ({
+  ...settings,
+  [STARTER_PROJECT_BOOTSTRAP_KEY]: state,
+});
+
+const persistStarterProjectBootstrapState = async (state) => {
+  const current = await readSettingsFromDisk();
+  const next = withStarterProjectBootstrapState(current, state);
+  await writeSettingsToDisk(next);
+  return next;
+};
+
+const ensureStarterProjectBootstrapped = async () => {
+  starterProjectBootstrapLock = starterProjectBootstrapLock.then(async () => {
+    const current = await readSettingsFromDiskMigrated();
+    const bootstrapState = current?.[STARTER_PROJECT_BOOTSTRAP_KEY];
+    if (bootstrapState && typeof bootstrapState === 'object' && bootstrapState.completed === true) {
+      return current;
+    }
+
+    const projects = sanitizeProjects(current.projects) || [];
+    if (projects.length > 0) {
+      return await persistStarterProjectBootstrapState(
+        buildStarterProjectBootstrapState({ reason: 'existing-projects' })
+      );
+    }
+
+    const targetPath = getDefaultStarterProjectPath();
+    let created = false;
+
+    try {
+      await createBundledProjectFromTemplate(targetPath);
+      created = true;
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== 'Target directory already exists and is not empty') {
+        throw error;
+      }
+
+      const validation = await validateDirectoryPath(targetPath);
+      if (!validation.ok) {
+        throw error;
+      }
+    }
+
+    const projectEntry = createProjectRegistryEntry(targetPath, DEFAULT_STARTER_PROJECT_NAME);
+    await persistSettings({
+      projects: [projectEntry],
+      activeProjectId: projectEntry.id,
+    });
+
+    return await persistStarterProjectBootstrapState(
+      buildStarterProjectBootstrapState({
+        reason: created ? 'created' : 'reused-existing-directory',
+        projectId: projectEntry.id,
+        projectPath: targetPath,
+      })
+    );
+  });
+
+  return starterProjectBootstrapLock;
 };
 
 const validateProjectEntries = async (projects) => {
@@ -3090,7 +3197,7 @@ const updateSessionState = (sessionId, status, eventId, metadata = {}) => {
     for (const res of uiNotificationClients) {
       try {
         writeSseEvent(res, {
-          type: 'openchamber:session-status',
+          type: 'openaurora:session-status',
           properties: {
             sessionId,
             status: state.status,
@@ -3196,7 +3303,7 @@ const markSessionViewed = (sessionId, clientId) => {
       for (const res of uiNotificationClients) {
         try {
           writeSseEvent(res, {
-            type: 'openchamber:session-status',
+            type: 'openaurora:session-status',
             properties: {
               sessionId,
               status: state.status,
@@ -3346,17 +3453,17 @@ const resetAllSessionActivityToIdle = () => {
 };
 
 const resolveVapidSubject = async () => {
-  const configured = process.env.OPENCHAMBER_VAPID_SUBJECT;
+  const configured = process.env.OPENAURORA_VAPID_SUBJECT;
   if (typeof configured === 'string' && configured.trim().length > 0) {
     return configured.trim();
   }
 
-  const originEnv = process.env.OPENCHAMBER_PUBLIC_ORIGIN;
+  const originEnv = process.env.OPENAURORA_PUBLIC_ORIGIN;
   if (typeof originEnv === 'string' && originEnv.trim().length > 0) {
     const trimmed = originEnv.trim();
     // Convert http://localhost to mailto for VAPID compatibility
     if (trimmed.startsWith('http://localhost')) {
-      return 'mailto:openchamber@localhost';
+      return 'mailto:openaurora@localhost';
     }
     return trimmed;
   }
@@ -3368,7 +3475,7 @@ const resolveVapidSubject = async () => {
       const trimmed = stored.trim();
       // Convert http://localhost to mailto for VAPID compatibility
       if (trimmed.startsWith('http://localhost')) {
-        return 'mailto:openchamber@localhost';
+        return 'mailto:openaurora@localhost';
       }
       return trimmed;
     }
@@ -3376,7 +3483,7 @@ const resolveVapidSubject = async () => {
     // ignore
   }
 
-  return 'mailto:openchamber@localhost';
+  return 'mailto:openaurora@localhost';
 };
 
 const ensurePushInitialized = async () => {
@@ -3384,8 +3491,8 @@ const ensurePushInitialized = async () => {
   const keys = await getOrCreateVapidKeys();
   const subject = await resolveVapidSubject();
 
-  if (subject === 'mailto:openchamber@localhost') {
-    console.warn('[Push] No public origin configured for VAPID; set OPENCHAMBER_VAPID_SUBJECT or enable push once from a real origin.');
+  if (subject === 'mailto:openaurora@localhost') {
+    console.warn('[Push] No public origin configured for VAPID; set OPENAURORA_VAPID_SUBJECT or enable push once from a real origin.');
   }
 
   webPush.setVapidDetails(subject, keys.publicKey, keys.privateKey);
@@ -3456,7 +3563,7 @@ const persistSettings = async (changes) => {
 
 // HMR-persistent state via globalThis
 // These values survive Vite HMR reloads to prevent zombie OpenCode processes
-const HMR_STATE_KEY = '__openchamberHmrState';
+const HMR_STATE_KEY = '__openauroraHmrState';
 const getHmrState = () => {
   if (!globalThis[HMR_STATE_KEY]) {
     globalThis[HMR_STATE_KEY] = {
@@ -3620,8 +3727,8 @@ async function probeExternalOpenCode(port, origin) {
 const ENV_CONFIGURED_OPENCODE_PORT = (() => {
   const raw =
     process.env.OPENCODE_PORT ||
-    process.env.OPENCHAMBER_OPENCODE_PORT ||
-    process.env.OPENCHAMBER_INTERNAL_PORT;
+    process.env.OPENAURORA_OPENCODE_PORT ||
+    process.env.OPENAURORA_INTERNAL_PORT;
   if (!raw) {
     return null;
   }
@@ -3664,15 +3771,15 @@ const ENV_CONFIGURED_OPENCODE_HOST = (() => {
 const ENV_EFFECTIVE_PORT = ENV_CONFIGURED_OPENCODE_HOST?.port ?? ENV_CONFIGURED_OPENCODE_PORT;
 
 const ENV_SKIP_OPENCODE_START = process.env.OPENCODE_SKIP_START === 'true' ||
-                                    process.env.OPENCHAMBER_SKIP_OPENCODE_START === 'true';
-const ENV_DESKTOP_NOTIFY = process.env.OPENCHAMBER_DESKTOP_NOTIFY === 'true';
+                                    process.env.OPENAURORA_SKIP_OPENCODE_START === 'true';
+const ENV_DESKTOP_NOTIFY = process.env.OPENAURORA_DESKTOP_NOTIFY === 'true';
 const ENV_CONFIGURED_OPENCODE_WSL_DISTRO =
   typeof process.env.OPENCODE_WSL_DISTRO === 'string' && process.env.OPENCODE_WSL_DISTRO.trim().length > 0
     ? process.env.OPENCODE_WSL_DISTRO.trim()
     : (
-      typeof process.env.OPENCHAMBER_OPENCODE_WSL_DISTRO === 'string' &&
-      process.env.OPENCHAMBER_OPENCODE_WSL_DISTRO.trim().length > 0
-        ? process.env.OPENCHAMBER_OPENCODE_WSL_DISTRO.trim()
+      typeof process.env.OPENAURORA_OPENCODE_WSL_DISTRO === 'string' &&
+      process.env.OPENAURORA_OPENCODE_WSL_DISTRO.trim().length > 0
+        ? process.env.OPENAURORA_OPENCODE_WSL_DISTRO.trim()
         : null
     );
 
@@ -3908,7 +4015,7 @@ function applyLoginShellEnvSnapshot() {
 applyLoginShellEnvSnapshot();
 
 const ENV_CONFIGURED_API_PREFIX = normalizeApiPrefix(
-  process.env.OPENCODE_API_PREFIX || process.env.OPENCHAMBER_API_PREFIX || ''
+  process.env.OPENCODE_API_PREFIX || process.env.OPENAURORA_API_PREFIX || ''
 );
 
   if (ENV_CONFIGURED_API_PREFIX && ENV_CONFIGURED_API_PREFIX !== '') {
@@ -3982,7 +4089,7 @@ function resolveWslExecutablePath() {
     return null;
   }
 
-  const explicit = [process.env.WSL_BINARY, process.env.OPENCHAMBER_WSL_BINARY]
+  const explicit = [process.env.WSL_BINARY, process.env.OPENAURORA_WSL_BINARY]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .filter(Boolean);
 
@@ -4097,8 +4204,8 @@ function resolveOpencodeCliPath() {
   const explicit = [
     process.env.OPENCODE_BINARY,
     process.env.OPENCODE_PATH,
-    process.env.OPENCHAMBER_OPENCODE_PATH,
-    process.env.OPENCHAMBER_OPENCODE_BIN,
+    process.env.OPENAURORA_OPENCODE_PATH,
+    process.env.OPENAURORA_OPENCODE_BIN,
   ]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .filter(Boolean);
@@ -4216,7 +4323,7 @@ function resolveOpencodeCliPath() {
 }
 
 function resolveNodeCliPath() {
-  const explicit = [process.env.NODE_BINARY, process.env.OPENCHAMBER_NODE_BINARY]
+  const explicit = [process.env.NODE_BINARY, process.env.OPENAURORA_NODE_BINARY]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .filter(Boolean);
 
@@ -4286,7 +4393,7 @@ function resolveNodeCliPath() {
 }
 
 function resolveBunCliPath() {
-  const explicit = [process.env.BUN_BINARY, process.env.OPENCHAMBER_BUN_BINARY]
+  const explicit = [process.env.BUN_BINARY, process.env.OPENAURORA_BUN_BINARY]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .filter(Boolean);
 
@@ -4982,7 +5089,7 @@ function broadcastUiNotification(payload) {
   for (const res of uiNotificationClients) {
     try {
       writeSseEvent(res, {
-        type: 'openchamber:notification',
+        type: 'openaurora:notification',
         properties: {
           ...payload,
           // Tell the UI whether the sidecar stdout notification channel is active.
@@ -5560,18 +5667,18 @@ function scheduleOpenCodeApiDetection() {
 function parseArgs(argv = process.argv.slice(2)) {
   const args = Array.isArray(argv) ? [...argv] : [];
   const envPassword =
-    process.env.OPENCHAMBER_UI_PASSWORD ||
+    process.env.OPENAURORA_UI_PASSWORD ||
     process.env.OPENCODE_UI_PASSWORD ||
     null;
-  const envCfTunnel = process.env.OPENCHAMBER_TRY_CF_TUNNEL === 'true';
-  const envTunnelProvider = process.env.OPENCHAMBER_TUNNEL_PROVIDER || undefined;
-  const envTunnelMode = process.env.OPENCHAMBER_TUNNEL_MODE || undefined;
-  const envTunnelConfigRaw = process.env.OPENCHAMBER_TUNNEL_CONFIG;
+  const envCfTunnel = process.env.OPENAURORA_TRY_CF_TUNNEL === 'true';
+  const envTunnelProvider = process.env.OPENAURORA_TUNNEL_PROVIDER || undefined;
+  const envTunnelMode = process.env.OPENAURORA_TUNNEL_MODE || undefined;
+  const envTunnelConfigRaw = process.env.OPENAURORA_TUNNEL_CONFIG;
   const envTunnelConfig = typeof envTunnelConfigRaw === 'string'
     ? (envTunnelConfigRaw.trim().length > 0 ? envTunnelConfigRaw.trim() : null)
     : undefined;
-  const envTunnelToken = process.env.OPENCHAMBER_TUNNEL_TOKEN || undefined;
-  const envTunnelHostname = process.env.OPENCHAMBER_TUNNEL_HOSTNAME || undefined;
+  const envTunnelToken = process.env.OPENAURORA_TUNNEL_TOKEN || undefined;
+  const envTunnelHostname = process.env.OPENAURORA_TUNNEL_HOSTNAME || undefined;
 
   const options = {
     port: DEFAULT_PORT,
@@ -6314,7 +6421,7 @@ function setupProxy(app) {
       return upstreamPath;
     }
     try {
-      const parsed = new URL(upstreamPath, 'http://openchamber.local');
+      const parsed = new URL(upstreamPath, 'http://openaurora.local');
       const pathname = parsed.pathname || '/';
       if (pathname === '/session' || pathname.startsWith('/session/')) {
         return upstreamPath;
@@ -6714,7 +6821,7 @@ function setupProxy(app) {
           const globalPayload = globalRes.ok ? await globalRes.json().catch(() => []) : [];
           const globalSessions = Array.isArray(globalPayload) ? globalPayload : [];
 
-          const settingsPath = path.join(os.homedir(), '.config', 'openchamber', 'settings.json');
+          const settingsPath = path.join(os.homedir(), '.config', 'openaurora', 'settings.json');
           let projectDirs = [];
           try {
             const settingsRaw = fs.readFileSync(settingsPath, 'utf8');
@@ -6911,7 +7018,7 @@ async function main(options = {}) {
     exitOnShutdown = options.exitOnShutdown;
   }
 
-  console.log(`Starting OpenChamber on port ${port === 0 ? 'auto' : port}`);
+  console.log(`Starting OpenAurora on port ${port === 0 ? 'auto' : port}`);
 
   // Check macOS Say TTS availability once at startup
   let sayTTSCapability = { available: false, voices: [], reason: 'Not checked' };
@@ -6983,8 +7090,8 @@ async function main(options = {}) {
 
   app.get('/api/system/info', (req, res) => {
     res.json({
-      openchamberVersion: OPENCHAMBER_VERSION,
-      runtime: process.env.OPENCHAMBER_RUNTIME || 'web',
+      openauroraVersion: OPENAURORA_VERSION,
+      runtime: process.env.OPENAURORA_RUNTIME || 'web',
       pid: process.pid,
       startedAt: serverStartedAt,
     });
@@ -6995,6 +7102,7 @@ async function main(options = {}) {
       req.path.startsWith('/api/config/agents') ||
       req.path.startsWith('/api/config/commands') ||
       req.path.startsWith('/api/config/mcp') ||
+      req.path.startsWith('/api/config/opencode') ||
       req.path.startsWith('/api/config/settings') ||
       req.path.startsWith('/api/config/skills') ||
       req.path.startsWith('/api/projects') ||
@@ -7006,7 +7114,7 @@ async function main(options = {}) {
       req.path.startsWith('/api/push') ||
       req.path.startsWith('/api/voice') ||
       req.path.startsWith('/api/tts') ||
-      req.path.startsWith('/api/openchamber/tunnel')
+      req.path.startsWith('/api/openaurora/tunnel')
     ) {
 
       express.json({ limit: '50mb' })(req, res, next);
@@ -7556,7 +7664,7 @@ async function main(options = {}) {
     });
   });
 
-  app.get('/api/openchamber/update-check', async (_req, res) => {
+  app.get('/api/openaurora/update-check', async (_req, res) => {
     try {
       const { checkForUpdates } = await import('./lib/package-manager.js');
       const updateInfo = await checkForUpdates();
@@ -7570,7 +7678,7 @@ async function main(options = {}) {
     }
   });
 
-  app.post('/api/openchamber/update-install', async (_req, res) => {
+  app.post('/api/openaurora/update-install', async (_req, res) => {
     try {
       const { spawn: spawnChild } = await import('child_process');
       const {
@@ -7623,7 +7731,7 @@ async function main(options = {}) {
 
       // Try to read stored instance options for restart
       const tmpDir = os.tmpdir();
-      const instanceFilePath = path.join(tmpDir, `openchamber-${currentPort}.json`);
+      const instanceFilePath = path.join(tmpDir, `openaurora-${currentPort}.json`);
       let storedOptions = { port: currentPort, daemon: true };
       try {
         const content = await fs.promises.readFile(instanceFilePath, 'utf8');
@@ -7641,7 +7749,7 @@ async function main(options = {}) {
       };
 
       // Build restart command using explicit runtime + CLI path.
-      // Avoids relying on `openchamber` being in PATH for service environments.
+      // Avoids relying on `openaurora` being in PATH for service environments.
       const cliPath = path.resolve(__dirname, '..', 'bin', 'cli.js');
       const restartParts = [
         isWindows ? quoteCmd(process.execPath) : quotePosix(process.execPath),
@@ -7652,7 +7760,7 @@ async function main(options = {}) {
         '--daemon',
       ];
       let restartCmdPrimary = restartParts.join(' ');
-      let restartCmdFallback = `openchamber serve --port ${storedOptions.port} --daemon`;
+      let restartCmdFallback = `openaurora serve --port ${storedOptions.port} --daemon`;
       if (storedOptions.uiPassword) {
         if (isWindows) {
           // Escape for cmd.exe quoted argument
@@ -7693,7 +7801,7 @@ async function main(options = {}) {
             timeout /t 2 /nobreak >nul
             ${updateCmd}
             if %ERRORLEVEL% EQU 0 (
-              echo Update successful, restarting OpenChamber...
+              echo Update successful, restarting OpenAurora...
               ${restartCmd}
             ) else (
               echo Update failed
@@ -7704,7 +7812,7 @@ async function main(options = {}) {
             sleep 2
             ${updateCmd}
             if [ $? -eq 0 ]; then
-              echo "Update successful, restarting OpenChamber..."
+              echo "Update successful, restarting OpenAurora..."
               ${restartCmd}
             else
               echo "Update failed"
@@ -7714,7 +7822,7 @@ async function main(options = {}) {
 
         // Spawn detached shell to run update after we exit.
         // Capture output to disk so restart failures are diagnosable.
-        const updateLogPath = path.join(OPENCHAMBER_DATA_DIR, 'update-install.log');
+        const updateLogPath = path.join(OPENAURORA_DATA_DIR, 'update-install.log');
         let logFd = null;
         try {
           fs.mkdirSync(path.dirname(updateLogPath), { recursive: true });
@@ -7753,7 +7861,7 @@ async function main(options = {}) {
     }
   });
 
-  app.get('/api/openchamber/models-metadata', async (req, res) => {
+  app.get('/api/openaurora/models-metadata', async (req, res) => {
     const now = Date.now();
 
     if (cachedModelsMetadata && now - cachedModelsMetadataTimestamp < MODELS_METADATA_CACHE_TTL) {
@@ -8011,7 +8119,7 @@ async function main(options = {}) {
 
   // ── Tunnel API ─────────────────────────────────────────────────────
 
-  app.get('/api/openchamber/tunnel/check', async (req, res) => {
+  app.get('/api/openaurora/tunnel/check', async (req, res) => {
     try {
       const requestedProvider = typeof req?.query?.provider === 'string' && req.query.provider.trim().length > 0
         ? normalizeTunnelProvider(req.query.provider)
@@ -8114,15 +8222,15 @@ async function main(options = {}) {
       return res.status(500).json({ ok: false, error: 'Failed to run tunnel doctor' });
     }
   };
-  app.post('/api/openchamber/tunnel/doctor', handleTunnelDoctor);
-  app.get('/api/openchamber/tunnel/doctor', handleTunnelDoctor);
+  app.post('/api/openaurora/tunnel/doctor', handleTunnelDoctor);
+  app.get('/api/openaurora/tunnel/doctor', handleTunnelDoctor);
 
-  app.get('/api/openchamber/tunnel/providers', (_req, res) => {
+  app.get('/api/openaurora/tunnel/providers', (_req, res) => {
     const providers = tunnelProviderRegistry.listCapabilities();
     return res.json({ providers });
   });
 
-  app.get('/api/openchamber/tunnel/status', async (_req, res) => {
+  app.get('/api/openaurora/tunnel/status', async (_req, res) => {
     try {
       const settings = await readSettingsFromDiskMigrated();
       const normalizedMode = normalizeTunnelMode(settings?.tunnelMode);
@@ -8215,7 +8323,7 @@ async function main(options = {}) {
     }
   });
 
-  app.put('/api/openchamber/tunnel/managed-remote-token', async (req, res) => {
+  app.put('/api/openaurora/tunnel/managed-remote-token', async (req, res) => {
     try {
       // Token presets are currently Cloudflare-specific.
       const presetId = typeof req?.body?.presetId === 'string' ? req.body.presetId.trim() : '';
@@ -8241,7 +8349,7 @@ async function main(options = {}) {
     }
   });
 
-  app.post('/api/openchamber/tunnel/start', async (_req, res) => {
+  app.post('/api/openaurora/tunnel/start', async (_req, res) => {
     try {
       const settings = await readSettingsFromDiskMigrated();
       // Reject explicitly supplied unknown providers/modes early, before normalization converts them to defaults.
@@ -8378,7 +8486,7 @@ async function main(options = {}) {
     }
   });
 
-  app.post('/api/openchamber/tunnel/stop', (_req, res) => {
+  app.post('/api/openaurora/tunnel/stop', (_req, res) => {
     let revokedBootstrapCount = 0;
     let invalidatedSessionCount = 0;
     const activeTunnelId = tunnelAuthController.getActiveTunnelId();
@@ -8461,7 +8569,7 @@ async function main(options = {}) {
     req.on('error', cleanupClient);
 
     const heartbeatInterval = setInterval(() => {
-      writeSseEvent(res, { type: 'openchamber:heartbeat', timestamp: Date.now() });
+      writeSseEvent(res, { type: 'openaurora:heartbeat', timestamp: Date.now() });
     }, 15000);
 
     const decoder = new TextDecoder();
@@ -8496,7 +8604,7 @@ async function main(options = {}) {
         for (const activity of transitions) {
           if (setSessionActivityPhase(activity.sessionId, activity.phase)) {
             writeSseEvent(res, {
-              type: 'openchamber:session-activity',
+              type: 'openaurora:session-activity',
               properties: {
                 sessionId: activity.sessionId,
                 phase: activity.phase,
@@ -8604,7 +8712,7 @@ async function main(options = {}) {
     }
 
     const heartbeatInterval = setInterval(() => {
-      writeSseEvent(res, { type: 'openchamber:heartbeat', timestamp: Date.now() });
+      writeSseEvent(res, { type: 'openaurora:heartbeat', timestamp: Date.now() });
     }, 15000);
 
     const decoder = new TextDecoder();
@@ -8637,7 +8745,7 @@ async function main(options = {}) {
         for (const activity of transitions) {
           if (setSessionActivityPhase(activity.sessionId, activity.phase)) {
             writeSseEvent(res, {
-              type: 'openchamber:session-activity',
+              type: 'openaurora:session-activity',
               properties: {
                 sessionId: activity.sessionId,
                 phase: activity.phase,
@@ -8683,7 +8791,7 @@ async function main(options = {}) {
 
   app.get('/api/config/settings', async (_req, res) => {
     try {
-      const settings = await readSettingsFromDiskMigrated();
+      const settings = await ensureStarterProjectBootstrapped();
       res.json(formatSettingsResponse(settings));
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -8759,6 +8867,87 @@ async function main(options = {}) {
       console.error(`[API:PUT /api/config/settings] Failed to save settings:`, error);
       console.error(`[API:PUT /api/config/settings] Error stack:`, error.stack);
       res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to save settings' });
+    }
+  });
+
+  app.post('/api/projects/create-from-template', async (req, res) => {
+    try {
+      const projectName = normalizeProjectTemplateName(req.body?.projectName);
+      if (!isExplicitDirectoryInput(req.body?.parentDirectory)) {
+        return res.status(400).json({ success: false, error: 'Parent directory must be an absolute path' });
+      }
+
+      const parentDirectory = resolveDirectoryCandidate(req.body?.parentDirectory);
+      if (!parentDirectory) {
+        return res.status(400).json({ success: false, error: 'Parent directory is required' });
+      }
+
+      const targetDirectory = path.join(parentDirectory, projectName);
+      const created = await createBundledProjectFromTemplate(targetDirectory);
+      const settings = await readSettingsFromDiskMigrated();
+      const projects = sanitizeProjects(settings.projects) || [];
+      const projectEntry = createProjectRegistryEntry(created.targetDirectory, projectName);
+      const updatedSettings = await persistSettings({
+        projects: [...projects, projectEntry],
+        activeProjectId: projectEntry.id,
+      });
+
+      res.json({
+        success: true,
+        project: projectEntry,
+        targetDirectory: created.targetDirectory,
+        stats: created.stats,
+        settings: updatedSettings,
+      });
+    } catch (error) {
+      const statusCode = error && typeof error === 'object' && typeof error.statusCode === 'number'
+        ? error.statusCode
+        : 500;
+      res.status(statusCode).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create project from template',
+      });
+    }
+  });
+
+  app.post('/api/config/opencode/install', async (req, res) => {
+    try {
+      const source = typeof req.body?.source === 'string' ? req.body.source.trim() : '';
+      if (!source) {
+        return res.status(400).json({ success: false, error: 'Installation source is required' });
+      }
+
+      let result;
+      if (source === 'template') {
+        result = await installBundledOpencodeConfig();
+      } else if (source === 'directory') {
+        const directoryPath = typeof req.body?.directoryPath === 'string' ? req.body.directoryPath : '';
+        result = await installOpencodeConfigFromDirectory(directoryPath);
+      } else if (source === 'upload') {
+        result = await installOpencodeConfigFromUpload(req.body?.files);
+      } else {
+        return res.status(400).json({ success: false, error: 'Unsupported installation source' });
+      }
+
+      await refreshOpenCodeAfterConfigChange(`opencode config install (${source})`);
+
+      res.json({
+        success: true,
+        ...result,
+        requiresReload: true,
+        message: 'OpenCode configuration installed successfully. Refreshing interface…',
+        reloadDelayMs: CLIENT_RELOAD_DELAY_MS,
+      });
+    } catch (error) {
+      const statusCode =
+        error && typeof error === 'object' && typeof error.statusCode === 'number'
+          ? error.statusCode
+          : 500;
+      console.error('Failed to install OpenCode configuration:', error);
+      res.status(statusCode).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to install OpenCode configuration',
+      });
     }
   });
 
@@ -10097,7 +10286,7 @@ async function main(options = {}) {
 
   // ================= GitHub OAuth (Device Flow) =================
 
-  // Note: scopes may be overridden via OPENCHAMBER_GITHUB_SCOPES or settings.json (see lib/github/auth.js).
+  // Note: scopes may be overridden via OPENAURORA_GITHUB_SCOPES or settings.json (see lib/github/auth.js).
 
   let githubLibraries = null;
   const getGitHubLibraries = async () => {
@@ -10180,7 +10369,7 @@ async function main(options = {}) {
       const clientId = getGitHubClientId();
       if (!clientId) {
         return res.status(400).json({
-          error: 'GitHub OAuth client not configured. Set OPENCHAMBER_GITHUB_CLIENT_ID.',
+          error: 'GitHub OAuth client not configured. Set OPENAURORA_GITHUB_CLIENT_ID.',
         });
       }
 
@@ -10212,7 +10401,7 @@ async function main(options = {}) {
       const clientId = getGitHubClientId();
       if (!clientId) {
         return res.status(400).json({
-          error: 'GitHub OAuth client not configured. Set OPENCHAMBER_GITHUB_CLIENT_ID.',
+          error: 'GitHub OAuth client not configured. Set OPENAURORA_GITHUB_CLIENT_ID.',
         });
       }
 
@@ -12230,7 +12419,7 @@ async function main(options = {}) {
       // Worktrees are an optional feature. Avoid repeated 500s (and repeated client retries)
       // when the directory isn't a git repo or uses shell shorthand like "~/".
       console.warn('Failed to get worktrees, returning empty list:', error?.message || error);
-      res.setHeader('X-OpenChamber-Warning', 'git worktrees unavailable');
+      res.setHeader('X-OpenAurora-Warning', 'git worktrees unavailable');
       res.json([]);
     }
   });
@@ -12647,7 +12836,7 @@ async function main(options = {}) {
   const execJobs = new Map();
   const EXEC_JOB_TTL_MS = 30 * 60 * 1000;
   const COMMAND_TIMEOUT_MS = (() => {
-    const raw = Number(process.env.OPENCHAMBER_FS_EXEC_TIMEOUT_MS);
+    const raw = Number(process.env.OPENAURORA_FS_EXEC_TIMEOUT_MS);
     if (Number.isFinite(raw) && raw > 0) return raw;
     // `bun install` (common worktree setup cmd) often takes >60s.
     return 5 * 60 * 1000;
@@ -13068,7 +13257,7 @@ async function main(options = {}) {
   const getTerminalShellCandidates = () => {
     if (process.platform === 'win32') {
       const windowsCandidates = [
-        process.env.OPENCHAMBER_TERMINAL_SHELL,
+        process.env.OPENAURORA_TERMINAL_SHELL,
         process.env.SHELL,
         process.env.ComSpec,
         path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
@@ -13095,7 +13284,7 @@ async function main(options = {}) {
     }
 
     const unixCandidates = [
-      process.env.OPENCHAMBER_TERMINAL_SHELL,
+      process.env.OPENAURORA_TERMINAL_SHELL,
       process.env.SHELL,
       '/bin/zsh',
       '/bin/bash',
@@ -13679,7 +13868,7 @@ async function main(options = {}) {
   void bootstrapOpenCodeAtStartup();
 
   const distPath = (() => {
-    const env = typeof process.env.OPENCHAMBER_DIST_DIR === 'string' ? process.env.OPENCHAMBER_DIST_DIR.trim() : '';
+    const env = typeof process.env.OPENAURORA_DIST_DIR === 'string' ? process.env.OPENAURORA_DIST_DIR.trim() : '';
     if (env) {
       return path.resolve(env);
     }
@@ -13935,8 +14124,8 @@ async function main(options = {}) {
 
   let activePort = port;
 
-  const bindHost = typeof process.env.OPENCHAMBER_HOST === 'string' && process.env.OPENCHAMBER_HOST.trim().length > 0
-    ? process.env.OPENCHAMBER_HOST.trim()
+  const bindHost = typeof process.env.OPENAURORA_HOST === 'string' && process.env.OPENAURORA_HOST.trim().length > 0
+    ? process.env.OPENAURORA_HOST.trim()
     : null;
 
   await new Promise((resolve, reject) => {
@@ -13951,12 +14140,12 @@ async function main(options = {}) {
       activePort = typeof addressInfo === 'object' && addressInfo ? addressInfo.port : port;
 
       try {
-        process.send?.({ type: 'openchamber:ready', port: activePort });
+        process.send?.({ type: 'openaurora:ready', port: activePort });
       } catch {
         // ignore
       }
 
-      console.log(`OpenChamber server running on port ${activePort}`);
+      console.log(`OpenAurora server running on port ${activePort}`);
       console.log(`Health check: http://localhost:${activePort}/health`);
       console.log(`Web interface: http://localhost:${activePort}`);
 

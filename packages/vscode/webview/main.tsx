@@ -1,21 +1,21 @@
 import { createVSCodeAPIs } from './api';
 import { onCommand, onThemeChange, proxyApiRequest, proxySessionMessageRequest, sendBridgeMessage, startSseProxy, stopSseProxy } from './api/bridge';
-import type { RuntimeAPIs } from '@openchamber/ui/lib/api/types';
+import type { RuntimeAPIs } from '@openaurora/ui/lib/api/types';
 import {
   buildVSCodeThemeFromPalette,
   readVSCodeThemePalette,
   type VSCodeThemeKind,
   type VSCodeThemePayload,
-} from '@openchamber/ui/lib/theme/vscode/adapter';
+} from '@openaurora/ui/lib/theme/vscode/adapter';
 
 type ConnectionStatus = 'connecting' | 'connected' | 'error' | 'disconnected';
 type PanelType = 'chat' | 'agentManager';
 
-declare const __OPENCHAMBER_WEBVIEW_BUILD_TIME__: string;
+declare const __OPENAURORA_WEBVIEW_BUILD_TIME__: string;
 
 declare global {
   interface Window {
-    __OPENCHAMBER_RUNTIME_APIS__?: RuntimeAPIs;
+    __OPENAURORA_RUNTIME_APIS__?: RuntimeAPIs;
     __VSCODE_CONFIG__?: {
       apiUrl?: string;
       workspaceFolder: string;
@@ -26,51 +26,51 @@ declare global {
       viewMode?: 'sidebar' | 'editor';
       initialSessionId?: string | null;
     };
-    __OPENCHAMBER_VSCODE_THEME__?: VSCodeThemePayload['theme'];
-    __OPENCHAMBER_VSCODE_SHIKI_THEMES__?: { light?: Record<string, unknown>; dark?: Record<string, unknown> } | null;
-    __OPENCHAMBER_CONNECTION__?: { status: ConnectionStatus; error?: string; cliAvailable?: boolean };
-    __OPENCHAMBER_HOME__?: string;
-    __OPENCHAMBER_PANEL_TYPE__?: PanelType;
+    __OPENAURORA_VSCODE_THEME__?: VSCodeThemePayload['theme'];
+    __OPENAURORA_VSCODE_SHIKI_THEMES__?: { light?: Record<string, unknown>; dark?: Record<string, unknown> } | null;
+    __OPENAURORA_CONNECTION__?: { status: ConnectionStatus; error?: string; cliAvailable?: boolean };
+    __OPENAURORA_HOME__?: string;
+    __OPENAURORA_PANEL_TYPE__?: PanelType;
   }
 }
 
-console.log('[OpenChamber] VS Code webview starting...');
-console.log('[OpenChamber] VS Code webview build:', __OPENCHAMBER_WEBVIEW_BUILD_TIME__);
-console.log('[OpenChamber] Config:', window.__VSCODE_CONFIG__);
+console.log('[OpenAurora] VS Code webview starting...');
+console.log('[OpenAurora] VS Code webview build:', __OPENAURORA_WEBVIEW_BUILD_TIME__);
+console.log('[OpenAurora] Config:', window.__VSCODE_CONFIG__);
 try {
-  if (window.localStorage.getItem('openchamber_stream_debug') === '1') {
-    console.log('[OpenChamber] Debug: openchamber_stream_debug=1');
+  if (window.localStorage.getItem('openaurora_stream_debug') === '1') {
+    console.log('[OpenAurora] Debug: openaurora_stream_debug=1');
   }
 } catch {
   // ignore
 }
 
-window.__OPENCHAMBER_RUNTIME_APIS__ = createVSCodeAPIs();
+window.__OPENAURORA_RUNTIME_APIS__ = createVSCodeAPIs();
 
 const bootstrapConnectionStatus = () => {
   const initialStatus = (window.__VSCODE_CONFIG__?.connectionStatus as ConnectionStatus | undefined) || 'connecting';
   const cliAvailable = window.__VSCODE_CONFIG__?.cliAvailable ?? true;
-  window.__OPENCHAMBER_CONNECTION__ = { status: initialStatus, cliAvailable };
+  window.__OPENAURORA_CONNECTION__ = { status: initialStatus, cliAvailable };
 };
 
 bootstrapConnectionStatus();
 
 // Expose panel type globally for App.tsx to conditionally render
-window.__OPENCHAMBER_PANEL_TYPE__ = (window.__VSCODE_CONFIG__?.panelType as PanelType) || 'chat';
+window.__OPENAURORA_PANEL_TYPE__ = (window.__VSCODE_CONFIG__?.panelType as PanelType) || 'chat';
 
 const handleConnectionMessage = (event: MessageEvent) => {
   const msg = event.data;
   if (msg?.type === 'connectionStatus') {
     const payload: ConnectionStatus = msg.status;
     const error: string | undefined = msg.error;
-    const prevCliAvailable = window.__OPENCHAMBER_CONNECTION__?.cliAvailable ?? true;
-    window.__OPENCHAMBER_CONNECTION__ = { status: payload, error, cliAvailable: prevCliAvailable };
-    window.dispatchEvent(new CustomEvent('openchamber:connection-status', { detail: { status: payload, error } }));
+    const prevCliAvailable = window.__OPENAURORA_CONNECTION__?.cliAvailable ?? true;
+    window.__OPENAURORA_CONNECTION__ = { status: payload, error, cliAvailable: prevCliAvailable };
+    window.dispatchEvent(new CustomEvent('openaurora:connection-status', { detail: { status: payload, error } }));
   }
 };
 
 window.addEventListener('message', handleConnectionMessage);
-window.addEventListener('openchamber:connection-status', () => {
+window.addEventListener('openaurora:connection-status', () => {
   maybeHideLoadingOverlay();
 });
 
@@ -145,7 +145,7 @@ const recordBootstrapFetch = (pathname: string, ok: boolean) => {
 };
 
 const maybeHideLoadingOverlay = () => {
-  const connectionStatus = window.__OPENCHAMBER_CONNECTION__?.status ?? 'connecting';
+  const connectionStatus = window.__OPENAURORA_CONNECTION__?.status ?? 'connecting';
 
   if (!uiMounted) {
     return;
@@ -170,7 +170,7 @@ const maybeHideLoadingOverlay = () => {
   }
 
   if (connectionStatus === 'error') {
-    const error = window.__OPENCHAMBER_CONNECTION__?.error;
+    const error = window.__OPENAURORA_CONNECTION__?.error;
     setLoadingStatusText(error || 'Connection error', 'error');
     fadeOutLoadingScreen();
     return;
@@ -211,9 +211,9 @@ const emitVSCodeTheme = (preferredKind?: VSCodeThemeKind) => {
     return;
   }
   const theme = buildVSCodeThemeFromPalette(palette);
-  window.__OPENCHAMBER_VSCODE_THEME__ = theme;
+  window.__OPENAURORA_VSCODE_THEME__ = theme;
    applyInitialTheme(theme);
-  window.dispatchEvent(new CustomEvent<VSCodeThemePayload>('openchamber:vscode-theme', {
+  window.dispatchEvent(new CustomEvent<VSCodeThemePayload>('openaurora:vscode-theme', {
     detail: { theme, palette },
   }));
 };
@@ -237,9 +237,9 @@ onThemeChange((payload) => {
       : undefined) as VSCodeThemeKind | undefined;
 
   if (typeof payload === 'object' && payload?.shikiThemes !== undefined) {
-    window.__OPENCHAMBER_VSCODE_SHIKI_THEMES__ = payload.shikiThemes;
+    window.__OPENAURORA_VSCODE_SHIKI_THEMES__ = payload.shikiThemes;
     window.dispatchEvent(
-      new CustomEvent('openchamber:vscode-shiki-themes', {
+      new CustomEvent('openaurora:vscode-shiki-themes', {
         detail: { shikiThemes: payload.shikiThemes },
       }),
     );
@@ -259,7 +259,7 @@ if (workspaceFolder) {
   };
 
   const normalizedWorkspaceFolder = normalizeWorkspacePath(workspaceFolder);
-  window.__OPENCHAMBER_HOME__ = normalizedWorkspaceFolder;
+  window.__OPENAURORA_HOME__ = normalizedWorkspaceFolder;
   try {
     window.localStorage.setItem('lastDirectory', normalizedWorkspaceFolder);
     window.localStorage.setItem('homeDirectory', normalizedWorkspaceFolder);
@@ -352,7 +352,7 @@ const extractBodyBase64 = async (input: RequestInfo | URL, init: RequestInit | u
     return bytes.length > 0 ? encodeBase64(bytes) : undefined;
   }
 
-  console.warn('[OpenChamber] Unsupported request body type for proxy request:', body);
+  console.warn('[OpenAurora] Unsupported request body type for proxy request:', body);
   return undefined;
 };
 
@@ -379,7 +379,7 @@ const extractBodyText = async (input: RequestInfo | URL, init: RequestInit | und
     return await body.text();
   }
 
-  console.warn('[OpenChamber] Unsupported request body type for direct session proxy:', body);
+  console.warn('[OpenAurora] Unsupported request body type for direct session proxy:', body);
   return '';
 };
 
@@ -432,9 +432,9 @@ const handleLocalApiRequest = async (url: URL, init?: RequestInit) => {
 
   // Health endpoints: reflect actual connection status
   if (pathname === '/health' || pathname === '/api/health') {
-    const connectionStatus = window.__OPENCHAMBER_CONNECTION__?.status;
+    const connectionStatus = window.__OPENAURORA_CONNECTION__?.status;
     const isReady = connectionStatus === 'connected';
-    const cliAvailable = window.__OPENCHAMBER_CONNECTION__?.cliAvailable ?? true;
+    const cliAvailable = window.__OPENAURORA_CONNECTION__?.cliAvailable ?? true;
     return new Response(JSON.stringify({ 
       status: isReady ? 'ok' : 'connecting', 
       isOpenCodeReady: isReady,
@@ -736,12 +736,12 @@ const handleLocalApiRequest = async (url: URL, init?: RequestInit) => {
     return new Response(JSON.stringify({ restarted: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
 
-  if (pathname.startsWith('/api/openchamber/models-metadata')) {
+  if (pathname.startsWith('/api/openaurora/models-metadata')) {
     try {
       const data = await sendBridgeMessage('api:models/metadata');
       return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
     } catch (error) {
-      console.warn('[OpenChamber] Failed to fetch models metadata via bridge, returning empty set:', error);
+      console.warn('[OpenAurora] Failed to fetch models metadata via bridge, returning empty set:', error);
       return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
   }
@@ -822,9 +822,9 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const pathname = targetUrl?.pathname || '';
   const normalizedPathname = pathname.replace(/\/+/, '/');
   if (targetUrl && normalizedPathname === '/health') {
-    const connectionStatus = window.__OPENCHAMBER_CONNECTION__?.status;
+    const connectionStatus = window.__OPENAURORA_CONNECTION__?.status;
     const isReady = connectionStatus === 'connected';
-    const cliAvailable = window.__OPENCHAMBER_CONNECTION__?.cliAvailable ?? true;
+    const cliAvailable = window.__OPENAURORA_CONNECTION__?.cliAvailable ?? true;
     return new Response(JSON.stringify({ 
       status: isReady ? 'ok' : 'connecting', 
       isOpenCodeReady: isReady,
@@ -936,7 +936,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const data = await sendBridgeMessage('api:models/metadata');
       return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
     } catch (error) {
-      console.warn('[OpenChamber] models.dev request failed via bridge, returning empty metadata:', error);
+      console.warn('[OpenAurora] models.dev request failed via bridge, returning empty metadata:', error);
       return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
   }
@@ -986,7 +986,7 @@ onCommand('createSessionWithPrompt', (payload) => {
         undefined, // agentMentionName
         undefined  // additionalParts
       ).catch((error: unknown) => {
-        console.error('[OpenChamber] Failed to send prompt:', error);
+        console.error('[OpenAurora] Failed to send prompt:', error);
       });
     } else {
       // If no provider/model configured, just set the text and let user send manually
@@ -1003,18 +1003,18 @@ onCommand('newSession', () => {
   });
   
   // Also dispatch event to navigate to chat view in VSCodeLayout
-  window.dispatchEvent(new CustomEvent('openchamber:navigate', { detail: { view: 'chat' } }));
+  window.dispatchEvent(new CustomEvent('openaurora:navigate', { detail: { view: 'chat' } }));
 });
 
 // Listen for showSettings command from extension title bar button
 onCommand('showSettings', () => {
   // Dispatch event to navigate to settings view in VSCodeLayout
-  window.dispatchEvent(new CustomEvent('openchamber:navigate', { detail: { view: 'settings' } }));
+  window.dispatchEvent(new CustomEvent('openaurora:navigate', { detail: { view: 'settings' } }));
 });
 
 // Listen for settings sync command from extension (broadcast to all VS Code webviews)
 onCommand('settingsSynced', () => {
-  import('@openchamber/ui/lib/persistence').then(({ syncDesktopSettings }) => {
+  import('@openaurora/ui/lib/persistence').then(({ syncDesktopSettings }) => {
     void syncDesktopSettings();
   });
 });
@@ -1026,7 +1026,7 @@ import('@/main')
     maybeHideLoadingOverlay();
   })
   .catch((error) => {
-    console.error('[OpenChamber] Failed to bootstrap UI:', error);
+    console.error('[OpenAurora] Failed to bootstrap UI:', error);
     // If the UI bundle fails to load, remove the overlay so the user at least sees errors in the root.
     uiMounted = true;
     fadeOutLoadingScreen();

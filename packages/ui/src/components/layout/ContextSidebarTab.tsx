@@ -371,7 +371,7 @@ export const ContextPanelContent: React.FC = () => {
       : null;
 
     return {
-      sessionTitle: currentSession?.title || 'Untitled Session',
+      sessionTitle: currentSession?.title || 'Untitled Conversation',
       messagesCount: sessionMessages.length,
       userMessagesCount: userMessages.length,
       assistantMessagesCount: assistantMessages.length,

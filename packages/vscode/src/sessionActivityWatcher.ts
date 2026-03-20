@@ -34,7 +34,7 @@ const setSessionActivityPhase = (sessionId: string, phase: ActivityPhase): void 
   // Notify webview if available
   if (chatViewProvider) {
     chatViewProvider.postMessage({
-      type: 'openchamber:session-activity',
+      type: 'openaurora:session-activity',
       properties: {
         sessionId,
         phase,
@@ -50,7 +50,7 @@ const setSessionActivityPhase = (sessionId: string, phase: ActivityPhase): void 
         sessionActivityPhases.set(sessionId, { phase: 'idle', updatedAt: Date.now() });
         if (chatViewProvider) {
           chatViewProvider.postMessage({
-            type: 'openchamber:session-activity',
+            type: 'openaurora:session-activity',
             properties: {
               sessionId,
               phase: 'idle',

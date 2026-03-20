@@ -392,7 +392,7 @@ export const GitHubSettings: React.FC = () => {
       {flow && (
         <div className="mt-4 rounded-lg bg-[var(--surface-elevated)]/70 p-4 border border-[var(--interactive-border)]">
           <div className="space-y-1">
-            <h4 className="typography-ui-label text-foreground">Authorize OpenChamber</h4>
+            <h4 className="typography-ui-label text-foreground">Authorize OpenAurora</h4>
             <p className="typography-meta text-muted-foreground">
               In GitHub, enter the following code to authorize this device:
             </p>

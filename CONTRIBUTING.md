@@ -1,10 +1,10 @@
-# Contributing to OpenChamber
+# Contributing to OpenAurora
 
 ## Getting Started
 
 ```bash
-git clone https://github.com/btriapitsyn/openchamber.git
-cd openchamber
+git clone https://github.com/btriapitsyn/openaurora.git
+cd openaurora
 bun install
 ```
 
@@ -17,7 +17,7 @@ bun install
 | `bun run dev:web:full` | Build watcher + Express server. No HMR — manual refresh after changes. | `3001` (server + static) |
 | `bun run dev:web:hmr` | Vite dev server + Express API. **Open the Vite URL for HMR**, not the backend. | `5180` (Vite HMR), `3902` (API) |
 
-Both are configurable via env vars: `OPENCHAMBER_PORT`, `OPENCHAMBER_HMR_UI_PORT`, `OPENCHAMBER_HMR_API_PORT`.
+Both are configurable via env vars: `OPENAURORA_PORT`, `OPENAURORA_HMR_UI_PORT`, `OPENAURORA_HMR_API_PORT`.
 
 ### Desktop (Tauri)
 
@@ -89,4 +89,4 @@ You can still help:
 
 ## Questions?
 
-Open an [issue](https://github.com/btriapitsyn/openchamber/issues) or ask in [Discord](https://discord.gg/ZYRSdnwwKA).
+Open an [issue](https://github.com/btriapitsyn/openaurora/issues) or ask in [Discord](https://discord.gg/ZYRSdnwwKA).

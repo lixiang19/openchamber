@@ -132,7 +132,7 @@ export function useServerSessionStatus(options?: { enabled?: boolean }) {
 
       // Overlay OpenCode's own session status endpoint.
       // This is the source-of-truth for retry message payload and works even when
-      // OpenChamber server-side tracking misses transient updates.
+      // OpenAurora server-side tracking misses transient updates.
       for (const [sessionId, upstream] of Object.entries(upstreamStatuses)) {
         const existing = (newStatuses ?? currentStatuses).get(sessionId);
         const hasChanged =

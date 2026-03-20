@@ -18,6 +18,7 @@ import {
   RiCloseLine,
   RiCommandLine,
   RiCloudLine,
+  RiDownloadLine,
   RiFoldersLine,
   RiGitBranchLine,
   RiGlobalLine,
@@ -49,9 +50,10 @@ import { ProvidersPage } from '@/components/sections/providers/ProvidersPage';
 import { UsageSidebar } from '@/components/sections/usage/UsageSidebar';
 import { UsagePage } from '@/components/sections/usage/UsagePage';
 import { GitPage } from '@/components/sections/git-identities/GitPage';
-import type { OpenChamberSection } from '@/components/sections/openchamber/types';
-import { OpenChamberPage } from '@/components/sections/openchamber/OpenChamberPage';
-import { AboutSettings } from '@/components/sections/openchamber/AboutSettings';
+import { OpencodeConfigInstallPage } from '@/components/sections/opencode-config/OpencodeConfigInstallPage';
+import type { OpenAuroraSection } from '@/components/sections/openaurora/types';
+import { OpenAuroraPage } from '@/components/sections/openaurora/OpenAuroraPage';
+import { AboutSettings } from '@/components/sections/openaurora/AboutSettings';
 import { McpIcon } from '@/components/icons/McpIcon';
 import { useDeviceInfo } from '@/lib/device';
 import { isDesktopShell, isVSCodeRuntime, isWebRuntime } from '@/lib/desktop';
@@ -89,6 +91,7 @@ const pageOrder: SettingsPageSlug[] = [
   'git',
   'projects',
   'remote-instances',
+  'config-install',
   'agents',
   'commands',
   'mcp',
@@ -132,6 +135,8 @@ function getSettingsNavIcon(slug: SettingsPageSlug): React.ComponentType<{ class
 
     case 'providers':
       return RiCloudLine;
+    case 'config-install':
+      return RiDownloadLine;
     case 'agents':
       return RiAiAgentLine;
     case 'commands':
@@ -204,6 +209,18 @@ const SettingsHome: React.FC<{ onOpen: (slug: SettingsPageSlug) => void }> = ({ 
           >
             <div className="typography-ui-label text-foreground">Skills Catalog</div>
             <div className="typography-micro text-muted-foreground/70">Install skills from catalogs</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onOpen('config-install')}
+            className={cn(
+              'rounded-lg border border-border bg-[var(--surface-elevated)] p-4 text-left',
+              'hover:bg-[var(--interactive-hover)] transition-colors'
+            )}
+          >
+            <div className="typography-ui-label text-foreground">Config Install</div>
+            <div className="typography-micro text-muted-foreground/70">Install your bundled OpenCode profile</div>
           </button>
 
           <button
@@ -363,7 +380,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
   // Collapse main nav to icon rail when active page has its own sidebar
   const isNavCollapsed = !isMobile && activePageMeta?.kind === 'split';
 
-  const openChamberSectionBySlug: Partial<Record<SettingsPageSlug, OpenChamberSection>> = React.useMemo(() => ({
+  const openAuroraSectionBySlug: Partial<Record<SettingsPageSlug, OpenAuroraSection>> = React.useMemo(() => ({
     appearance: 'visual',
     chat: 'chat',
     shortcuts: 'shortcuts',
@@ -432,6 +449,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
         return <SkillsPage view="catalog" />;
       case 'providers':
         return <ProvidersPage />;
+      case 'config-install':
+        return <OpencodeConfigInstallPage />;
       case 'usage':
         return <UsagePage />;
       case 'git':
@@ -443,13 +462,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
       case 'notifications':
       case 'voice':
       case 'tunnel': {
-        const section = openChamberSectionBySlug[slug] ?? 'visual';
-        return <OpenChamberPage section={section} />;
+        const section = openAuroraSectionBySlug[slug] ?? 'visual';
+        return <OpenAuroraPage section={section} />;
       }
       default:
         return <SettingsHome onOpen={openPage} />;
     }
-  }, [openChamberSectionBySlug, openPage, renderUnavailable, runtimeCtx]);
+  }, [openAuroraSectionBySlug, openPage, renderUnavailable, runtimeCtx]);
 
   // Mobile: if opened via deep-link / palette to a non-home page, jump into it once.
   React.useEffect(() => {

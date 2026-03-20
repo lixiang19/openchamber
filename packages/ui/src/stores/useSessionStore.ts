@@ -427,7 +427,7 @@ export const useSessionStore = create<SessionStore>()(
                         try {
                             useSessionManagementStore
                                 .getState()
-                                .initializeNewOpenChamberSession(created.id, configState.agents);
+                                .initializeNewOpenAuroraSession(created.id, configState.agents);
                         } catch {
                             // ignored
                         }
@@ -607,9 +607,9 @@ export const useSessionStore = create<SessionStore>()(
                     const messages = useMessageStore.getState().messages;
                     return useContextStore.getState().analyzeAndSaveExternalSessionChoices(sessionId, agents, messages);
                 },
-                isOpenChamberCreatedSession: (sessionId: string) => useSessionManagementStore.getState().isOpenChamberCreatedSession(sessionId),
-                markSessionAsOpenChamberCreated: (sessionId: string) => useSessionManagementStore.getState().markSessionAsOpenChamberCreated(sessionId),
-                initializeNewOpenChamberSession: (sessionId: string, agents: Record<string, unknown>[]) => useSessionManagementStore.getState().initializeNewOpenChamberSession(sessionId, agents),
+                isOpenAuroraCreatedSession: (sessionId: string) => useSessionManagementStore.getState().isOpenAuroraCreatedSession(sessionId),
+                markSessionAsOpenAuroraCreated: (sessionId: string) => useSessionManagementStore.getState().markSessionAsOpenAuroraCreated(sessionId),
+                initializeNewOpenAuroraSession: (sessionId: string, agents: Record<string, unknown>[]) => useSessionManagementStore.getState().initializeNewOpenAuroraSession(sessionId, agents),
                 setWorktreeMetadata: (sessionId: string, metadata) => useSessionManagementStore.getState().setWorktreeMetadata(sessionId, metadata),
                 setSessionDirectory: (sessionId: string, directory: string | null) => useSessionManagementStore.getState().setSessionDirectory(sessionId, directory),
                 getWorktreeMetadata: (sessionId: string) => useSessionManagementStore.getState().getWorktreeMetadata(sessionId),

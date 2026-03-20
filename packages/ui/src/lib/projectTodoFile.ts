@@ -64,7 +64,7 @@ const getRuntimeFilesAPI = (): FilesAPI | null => {
     return null;
   }
 
-  const apis = (window as typeof window & { __OPENCHAMBER_RUNTIME_APIS__?: RuntimeAPIs }).__OPENCHAMBER_RUNTIME_APIS__;
+  const apis = (window as typeof window & { __OPENAURORA_RUNTIME_APIS__?: RuntimeAPIs }).__OPENAURORA_RUNTIME_APIS__;
   return apis?.files ?? null;
 };
 
@@ -167,24 +167,24 @@ const parseProjectTodoDocument = (raw: string): ProjectTodoDocument => {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error('todo.json 不是合法 JSON');
+    throw new Error('todo.json is not valid JSON');
   }
 
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('todo.json 顶层必须是对象');
+    throw new Error('todo.json root must be an object');
   }
 
   const record = parsed as { version?: unknown; items?: unknown };
   if (record.version !== 1) {
-    throw new Error('todo.json version 必须为 1');
+    throw new Error('todo.json version must be 1');
   }
   if (!Array.isArray(record.items)) {
-    throw new Error('todo.json items 必须是数组');
+    throw new Error('todo.json items must be an array');
   }
 
   const items: ProjectTodoItem[] = record.items.map((entry, index) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-      throw new Error(`todo.json items[${index}] 必须是对象`);
+      throw new Error(`todo.json items[${index}] must be an object`);
     }
 
     const item = entry as Record<string, unknown>;
@@ -192,22 +192,22 @@ const parseProjectTodoDocument = (raw: string): ProjectTodoDocument => {
     const text = typeof item.text === 'string' ? item.text.trim() : '';
 
     if (!id) {
-      throw new Error(`todo.json items[${index}].id 无效`);
+      throw new Error(`todo.json items[${index}].id is invalid`);
     }
     if (!text) {
-      throw new Error(`todo.json items[${index}].text 不能为空`);
+      throw new Error(`todo.json items[${index}].text cannot be empty`);
     }
     if (text.length > PROJECT_TODO_TEXT_MAX_LENGTH) {
-      throw new Error(`todo.json items[${index}].text 超过长度限制`);
+      throw new Error(`todo.json items[${index}].text exceeds the length limit`);
     }
     if (typeof item.done !== 'boolean') {
-      throw new Error(`todo.json items[${index}].done 必须是布尔值`);
+      throw new Error(`todo.json items[${index}].done must be a boolean`);
     }
     if (!isValidTimestamp(item.createdAt)) {
-      throw new Error(`todo.json items[${index}].createdAt 无效`);
+      throw new Error(`todo.json items[${index}].createdAt is invalid`);
     }
     if (!isValidTimestamp(item.updatedAt)) {
-      throw new Error(`todo.json items[${index}].updatedAt 无效`);
+      throw new Error(`todo.json items[${index}].updatedAt is invalid`);
     }
 
     return {
@@ -234,7 +234,7 @@ export async function readProjectTodoFile(directory: string): Promise<ProjectTod
   const todoPath = getProjectTodoPath(normalizedDirectory);
 
   if (!normalizedDirectory) {
-    return { status: 'error', path: todoPath, message: '没有可用的项目目录' };
+    return { status: 'error', path: todoPath, message: 'No project directory available' };
   }
 
   const file = await readTextFile(todoPath);
@@ -247,7 +247,7 @@ export async function readProjectTodoFile(directory: string): Promise<ProjectTod
 
   const trimmed = file.content.trim();
   if (!trimmed) {
-    return { status: 'invalid', path: todoPath, message: 'todo.json 为空，请写入合法的 JSON 文档' };
+    return { status: 'invalid', path: todoPath, message: 'todo.json is empty. Please provide a valid JSON document.' };
   }
 
   try {
@@ -256,7 +256,7 @@ export async function readProjectTodoFile(directory: string): Promise<ProjectTod
     return {
       status: 'invalid',
       path: todoPath,
-      message: error instanceof Error ? error.message : 'todo.json 格式无效',
+      message: error instanceof Error ? error.message : 'todo.json format is invalid',
     };
   }
 }
@@ -267,7 +267,7 @@ export async function writeProjectTodoFile(directory: string, document: ProjectT
   const todoPath = getProjectTodoPath(normalizedDirectory);
 
   if (!normalizedDirectory) {
-    return { ok: false, path: todoPath, message: '没有可用的项目目录' };
+    return { ok: false, path: todoPath, message: 'No project directory available' };
   }
 
   try {
@@ -276,18 +276,18 @@ export async function writeProjectTodoFile(directory: string, document: ProjectT
     return {
       ok: false,
       path: todoPath,
-      message: error instanceof Error ? error.message : 'Todo 数据无效',
+      message: error instanceof Error ? error.message : 'Todo data is invalid',
     };
   }
 
   const ensuredDirectory = await mkdirp(todoDirectory);
   if (!ensuredDirectory) {
-    return { ok: false, path: todoPath, message: `无法创建目录 ${todoDirectory}` };
+    return { ok: false, path: todoPath, message: `Failed to create directory ${todoDirectory}` };
   }
 
   const wrote = await writeTextFile(todoPath, `${JSON.stringify(document, null, 2)}\n`);
   if (!wrote) {
-    return { ok: false, path: todoPath, message: `无法写入 ${todoPath}` };
+    return { ok: false, path: todoPath, message: `Failed to write ${todoPath}` };
   }
 
   return { ok: true, path: todoPath };

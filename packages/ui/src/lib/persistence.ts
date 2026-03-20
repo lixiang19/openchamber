@@ -1,4 +1,8 @@
-import type { DesktopSettings } from '@/lib/desktop';
+import type {
+  DesktopSettings,
+  RightSidebarTabVisibilitySettings,
+  SessionSidebarHeaderVisibilitySettings,
+} from '@/lib/desktop';
 import { useUIStore } from '@/stores/useUIStore';
 import { useMessageQueueStore } from '@/stores/messageQueueStore';
 import { setDirectoryShowHidden } from '@/lib/directoryShowHidden';
@@ -31,7 +35,7 @@ const persistToLocalStorage = (settings: DesktopSettings) => {
   }
   if (settings.homeDirectory) {
     localStorage.setItem('homeDirectory', settings.homeDirectory);
-    window.__OPENCHAMBER_HOME__ = settings.homeDirectory;
+    window.__OPENAURORA_HOME__ = settings.homeDirectory;
   }
   if (Array.isArray(settings.projects) && settings.projects.length > 0) {
     localStorage.setItem('projects', JSON.stringify(settings.projects));
@@ -77,9 +81,9 @@ const persistToLocalStorage = (settings: DesktopSettings) => {
   if (typeof settings.pwaAppName === 'string') {
     const normalized = settings.pwaAppName.trim().replace(/\s+/g, ' ').slice(0, 64);
     if (normalized.length > 0) {
-      localStorage.setItem('openchamber.pwaName', normalized);
+      localStorage.setItem('openaurora.pwaName', normalized);
     } else {
-      localStorage.removeItem('openchamber.pwaName');
+      localStorage.removeItem('openaurora.pwaName');
     }
   }
 };
@@ -121,6 +125,38 @@ const sanitizeSkillCatalogs = (value: unknown): DesktopSettings['skillCatalogs']
   }
 
   return result;
+};
+
+const sanitizeSessionSidebarHeaderVisibility = (
+  value: unknown,
+): SessionSidebarHeaderVisibilitySettings | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return {
+    worktree: candidate.worktree === true,
+    multiRun: candidate.multiRun === true,
+    notes: candidate.notes === true,
+    search: candidate.search === true,
+    displayMode: candidate.displayMode === true,
+  };
+};
+
+const sanitizeRightSidebarTabVisibility = (
+  value: unknown,
+): RightSidebarTabVisibilitySettings | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return {
+    git: candidate.git === true,
+    files: candidate.files !== false,
+    todo: candidate.todo !== false,
+  };
 };
 
 const HEX_COLOR_PATTERN = /^#(?:[\da-fA-F]{3}|[\da-fA-F]{6})$/;
@@ -365,6 +401,45 @@ const applyDesktopUiPreferences = (settings: DesktopSettings) => {
   }
   if (typeof settings.showExpandedEditTools === 'boolean' && settings.showExpandedEditTools !== store.showExpandedEditTools) {
     store.setShowExpandedEditTools(settings.showExpandedEditTools);
+  }
+  if (settings.sessionSidebarHeaderVisibility) {
+    const current = store.sessionSidebarHeaderVisibility;
+    const next = settings.sessionSidebarHeaderVisibility;
+    const same = current.worktree === next.worktree
+      && current.multiRun === next.multiRun
+      && current.notes === next.notes
+      && current.search === next.search
+      && current.displayMode === next.displayMode;
+    if (!same) {
+      useUIStore.setState({ sessionSidebarHeaderVisibility: {
+        worktree: next.worktree === true,
+        multiRun: next.multiRun === true,
+        notes: next.notes === true,
+        search: next.search === true,
+        displayMode: next.displayMode === true,
+      } });
+    }
+  }
+  if (settings.rightSidebarTabVisibility) {
+    const current = store.rightSidebarTabVisibility;
+    const next = settings.rightSidebarTabVisibility;
+    const normalizedNext = {
+      git: next.git === true,
+      files: next.files !== false,
+      todo: next.todo !== false,
+    };
+    const same = current.git === normalizedNext.git
+      && current.files === normalizedNext.files
+      && current.todo === normalizedNext.todo;
+    if (!same) {
+      useUIStore.setState({
+        rightSidebarTabVisibility: normalizedNext,
+      });
+      if (!normalizedNext[useUIStore.getState().rightSidebarTab]) {
+        const fallback = normalizedNext.files ? 'files' : normalizedNext.todo ? 'todo' : normalizedNext.git ? 'git' : 'files';
+        useUIStore.getState().setRightSidebarTab(fallback);
+      }
+    }
   }
   if (typeof settings.chatRenderMode === 'string'
     && (settings.chatRenderMode === 'sorted' || settings.chatRenderMode === 'live')) {
@@ -763,6 +838,14 @@ const sanitizeWebSettings = (payload: unknown): DesktopSettings | null => {
   if (typeof candidate.showExpandedEditTools === 'boolean') {
     result.showExpandedEditTools = candidate.showExpandedEditTools;
   }
+  const sessionSidebarHeaderVisibility = sanitizeSessionSidebarHeaderVisibility(candidate.sessionSidebarHeaderVisibility);
+  if (sessionSidebarHeaderVisibility) {
+    result.sessionSidebarHeaderVisibility = sessionSidebarHeaderVisibility;
+  }
+  const rightSidebarTabVisibility = sanitizeRightSidebarTabVisibility(candidate.rightSidebarTabVisibility);
+  if (rightSidebarTabVisibility) {
+    result.rightSidebarTabVisibility = rightSidebarTabVisibility;
+  }
   if (typeof candidate.chatRenderMode === 'string'
     && (candidate.chatRenderMode === 'sorted' || candidate.chatRenderMode === 'live')) {
     result.chatRenderMode = candidate.chatRenderMode;
@@ -895,7 +978,7 @@ export const syncDesktopSettings = async (): Promise<void> => {
     }
 
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent<DesktopSettings>('openchamber:settings-synced', { detail: settings }));
+      window.dispatchEvent(new CustomEvent<DesktopSettings>('openaurora:settings-synced', { detail: settings }));
     }
   };
 

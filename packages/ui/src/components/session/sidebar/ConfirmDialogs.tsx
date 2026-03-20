@@ -22,15 +22,15 @@ export function SessionDeleteConfirmDialog(props: {
     <Dialog open={Boolean(value)} onOpenChange={(open) => { if (!open) setValue(null); }}>
       <DialogContent showCloseButton={false} className="max-w-sm gap-5">
         <DialogHeader>
-          <DialogTitle>{value?.archivedBucket ? 'Delete session?' : 'Archive session?'}</DialogTitle>
+          <DialogTitle>{value?.archivedBucket ? 'Delete conversation?' : 'Archive conversation?'}</DialogTitle>
           <DialogDescription>
             {value && value.descendantCount > 0
               ? value.archivedBucket
-                ? `"${value.session.title || 'Untitled Session'}" and its ${value.descendantCount} sub-task${value.descendantCount === 1 ? '' : 's'} will be permanently deleted.`
-                : `"${value.session.title || 'Untitled Session'}" and its ${value.descendantCount} sub-task${value.descendantCount === 1 ? '' : 's'} will be archived.`
+                ? `"${value.session.title || 'Untitled Conversation'}" and its ${value.descendantCount} sub-task${value.descendantCount === 1 ? '' : 's'} will be permanently deleted.`
+                : `"${value.session.title || 'Untitled Conversation'}" and its ${value.descendantCount} sub-task${value.descendantCount === 1 ? '' : 's'} will be archived.`
               : value?.archivedBucket
-                ? `"${value?.session.title || 'Untitled Session'}" will be permanently deleted.`
-                : `"${value?.session.title || 'Untitled Session'}" will be archived.`}
+                ? `"${value?.session.title || 'Untitled Conversation'}" will be permanently deleted.`
+                : `"${value?.session.title || 'Untitled Conversation'}" will be archived.`}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="w-full sm:items-center sm:justify-between">

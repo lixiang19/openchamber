@@ -196,19 +196,19 @@ export const CommandPalette: React.FC = () => {
         <CommandGroup heading="Actions">
           <CommandItem onSelect={handleOpenSessionList}>
             <RiLayoutLeftLine className="mr-2 h-4 w-4" />
-            <span>Open Session List</span>
+            <span>Open Conversation List</span>
             <CommandShortcut>{shortcut('toggle_sidebar')}</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={handleCreateSession}>
             <RiAddLine className="mr-2 h-4 w-4" />
-            <span>New Session</span>
+            <span>New Conversation</span>
             <CommandShortcut>
               {shortcut('new_chat')}
             </CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={handleCreateWorktreeSession}>
             <RiGitBranchLine className="mr-2 h-4 w-4" />
-            <span>New Session with Worktree</span>
+            <span>New Worktree Conversation</span>
             <CommandShortcut>
               {shortcut('new_chat_worktree')}
             </CommandShortcut>
@@ -311,7 +311,7 @@ export const CommandPalette: React.FC = () => {
         {currentSessions.length > 0 && (
           <>
             <CommandSeparator />
-            <CommandGroup heading="Recent Sessions">
+            <CommandGroup heading="Recent Conversations">
               {currentSessions.map((session) => (
                 <CommandItem
                   key={session.id}
@@ -319,7 +319,7 @@ export const CommandPalette: React.FC = () => {
                 >
                   <RiChatAi3Line className="mr-2 h-4 w-4" />
                   <span className="truncate">
-                    {session.title || 'Untitled Session'}
+                    {session.title || 'Untitled Conversation'}
                   </span>
                 </CommandItem>
               ))}

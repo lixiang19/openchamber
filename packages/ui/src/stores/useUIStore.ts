@@ -13,6 +13,26 @@ export type MermaidRenderingMode = 'svg' | 'ascii';
 export type UserMessageRenderingMode = 'markdown' | 'plain';
 export type ChatRenderMode = 'sorted' | 'live';
 export type ActivityRenderMode = 'collapsed' | 'summary';
+export type SessionSidebarHeaderAction = 'worktree' | 'multiRun' | 'notes' | 'search' | 'displayMode';
+
+export type SessionSidebarHeaderVisibility = Record<SessionSidebarHeaderAction, boolean>;
+export type RightSidebarTabVisibility = Record<RightSidebarTab, boolean>;
+
+const DEFAULT_SESSION_SIDEBAR_HEADER_VISIBILITY: SessionSidebarHeaderVisibility = {
+  worktree: false,
+  multiRun: false,
+  notes: false,
+  search: false,
+  displayMode: false,
+};
+
+const DEFAULT_RIGHT_SIDEBAR_TAB_VISIBILITY: RightSidebarTabVisibility = {
+  git: false,
+  files: true,
+  todo: true,
+};
+
+const RIGHT_SIDEBAR_TAB_ORDER: RightSidebarTab[] = ['git', 'files', 'todo'];
 
 type ContextPanelTab = {
   id: string;
@@ -97,6 +117,47 @@ const CONTEXT_PANEL_MAX_TABS = 12;
 const CONTEXT_PANEL_MAX_LABEL_LENGTH = 120;
 const LEFT_SIDEBAR_MIN_WIDTH = 300;
 const RIGHT_SIDEBAR_MIN_WIDTH = 400;
+
+const sanitizeSessionSidebarHeaderVisibility = (value: unknown): SessionSidebarHeaderVisibility => {
+  const candidate = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  return {
+    worktree: candidate.worktree === true,
+    multiRun: candidate.multiRun === true,
+    notes: candidate.notes === true,
+    search: candidate.search === true,
+    displayMode: candidate.displayMode === true,
+  };
+};
+
+const sanitizeRightSidebarTabVisibility = (value: unknown): RightSidebarTabVisibility => {
+  const candidate = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  return {
+    git: candidate.git === true,
+    files: candidate.files !== false,
+    todo: candidate.todo !== false,
+  };
+};
+
+const getFirstVisibleRightSidebarTab = (visibility: RightSidebarTabVisibility): RightSidebarTab | null => {
+  for (const tab of RIGHT_SIDEBAR_TAB_ORDER) {
+    if (visibility[tab]) {
+      return tab;
+    }
+  }
+
+  return null;
+};
+
+const getSanitizedRightSidebarTab = (
+  tab: unknown,
+  visibility: RightSidebarTabVisibility,
+): RightSidebarTab => {
+  const fallback = getFirstVisibleRightSidebarTab(visibility) ?? 'files';
+  if (tab === 'git' || tab === 'files' || tab === 'todo') {
+    return visibility[tab] ? tab : fallback;
+  }
+  return fallback;
+};
 
 const normalizeDirectoryPath = (value: string): string => {
   if (!value) return '';
@@ -556,6 +617,8 @@ interface UIStore {
   showToolFileIcons: boolean;
   showExpandedBashTools: boolean;
   showExpandedEditTools: boolean;
+  sessionSidebarHeaderVisibility: SessionSidebarHeaderVisibility;
+  rightSidebarTabVisibility: RightSidebarTabVisibility;
   mermaidRenderingMode: MermaidRenderingMode;
   userMessageRenderingMode: UserMessageRenderingMode;
   stickyUserHeader: boolean;
@@ -670,6 +733,8 @@ interface UIStore {
   setShowToolFileIcons: (value: boolean) => void;
   setShowExpandedBashTools: (value: boolean) => void;
   setShowExpandedEditTools: (value: boolean) => void;
+  setSessionSidebarHeaderActionVisible: (action: SessionSidebarHeaderAction, value: boolean) => void;
+  setRightSidebarTabVisible: (tab: RightSidebarTab, value: boolean) => void;
   setMermaidRenderingMode: (value: MermaidRenderingMode) => void;
   setUserMessageRenderingMode: (value: UserMessageRenderingMode) => void;
   setStickyUserHeader: (value: boolean) => void;
@@ -784,6 +849,8 @@ export const useUIStore = create<UIStore>()(
         showToolFileIcons: true,
         showExpandedBashTools: false,
         showExpandedEditTools: false,
+        sessionSidebarHeaderVisibility: { ...DEFAULT_SESSION_SIDEBAR_HEADER_VISIBILITY },
+        rightSidebarTabVisibility: { ...DEFAULT_RIGHT_SIDEBAR_TAB_VISIBILITY },
         mermaidRenderingMode: 'svg',
         userMessageRenderingMode: 'markdown',
         stickyUserHeader: true,
@@ -882,7 +949,9 @@ export const useUIStore = create<UIStore>()(
         },
 
         setRightSidebarTab: (tab) => {
-          set({ rightSidebarTab: tab });
+          set((state) => ({
+            rightSidebarTab: getSanitizedRightSidebarTab(tab, state.rightSidebarTabVisibility),
+          }));
         },
 
         openContextPanelTab: (directory, tab) => {
@@ -1694,6 +1763,26 @@ export const useUIStore = create<UIStore>()(
         setShowExpandedEditTools: (value) => {
           set({ showExpandedEditTools: value });
         },
+        setSessionSidebarHeaderActionVisible: (action, value) => {
+          set((state) => ({
+            sessionSidebarHeaderVisibility: {
+              ...state.sessionSidebarHeaderVisibility,
+              [action]: value,
+            },
+          }));
+        },
+        setRightSidebarTabVisible: (tab, value) => {
+          set((state) => {
+            const rightSidebarTabVisibility = {
+              ...state.rightSidebarTabVisibility,
+              [tab]: value,
+            };
+            return {
+              rightSidebarTabVisibility,
+              rightSidebarTab: getSanitizedRightSidebarTab(state.rightSidebarTab, rightSidebarTabVisibility),
+            };
+          });
+        },
         setMermaidRenderingMode: (value) => {
           set({ mermaidRenderingMode: value });
         },
@@ -1753,7 +1842,7 @@ export const useUIStore = create<UIStore>()(
       {
         name: 'ui-store',
         storage: createJSONStorage(() => getSafeStorage()),
-        version: 10,
+        version: 11,
         migrate: (persistedState, version) => {
           if (!persistedState || typeof persistedState !== 'object') {
             return persistedState;
@@ -1793,15 +1882,25 @@ export const useUIStore = create<UIStore>()(
             delete state.memoryLimitActiveSession;
           }
 
-          if (
-            typeof state.rightSidebarTab !== 'string'
-            || (state.rightSidebarTab !== 'git' && state.rightSidebarTab !== 'files' && state.rightSidebarTab !== 'todo')
-          ) {
-            state.rightSidebarTab = 'files';
-          }
+          state.sessionSidebarHeaderVisibility = sanitizeSessionSidebarHeaderVisibility(state.sessionSidebarHeaderVisibility);
+          state.rightSidebarTabVisibility = sanitizeRightSidebarTabVisibility(state.rightSidebarTabVisibility);
+
+          state.rightSidebarTab = getSanitizedRightSidebarTab(
+            state.rightSidebarTab,
+            state.rightSidebarTabVisibility as RightSidebarTabVisibility,
+          );
 
           if (version < 8 && state.rightSidebarTab === 'git') {
             state.rightSidebarTab = 'files';
+          }
+
+          if (version < 11) {
+            state.sessionSidebarHeaderVisibility = { ...DEFAULT_SESSION_SIDEBAR_HEADER_VISIBILITY };
+            state.rightSidebarTabVisibility = sanitizeRightSidebarTabVisibility(state.rightSidebarTabVisibility);
+            state.rightSidebarTab = getSanitizedRightSidebarTab(
+              state.rightSidebarTab,
+              state.rightSidebarTabVisibility as RightSidebarTabVisibility,
+            );
           }
 
           if (typeof state.isRightSidebarOpen !== 'boolean') {
@@ -1905,6 +2004,8 @@ export const useUIStore = create<UIStore>()(
           showToolFileIcons: state.showToolFileIcons,
           showExpandedBashTools: state.showExpandedBashTools,
           showExpandedEditTools: state.showExpandedEditTools,
+          sessionSidebarHeaderVisibility: state.sessionSidebarHeaderVisibility,
+          rightSidebarTabVisibility: state.rightSidebarTabVisibility,
           mermaidRenderingMode: state.mermaidRenderingMode,
           userMessageRenderingMode: state.userMessageRenderingMode,
           stickyUserHeader: state.stickyUserHeader,

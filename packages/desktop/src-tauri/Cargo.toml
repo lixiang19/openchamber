@@ -1,11 +1,11 @@
 [package]
-name = "openchamber-desktop"
+name = "openaurora-desktop"
 version = "1.8.7"
 edition = "2021"
 publish = false
 
 [[bin]]
-name = "openchamber-desktop"
+name = "openaurora-desktop"
 path = "src/main.rs"
 
 [features]

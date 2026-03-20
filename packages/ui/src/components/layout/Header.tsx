@@ -234,7 +234,7 @@ export const Header: React.FC<HeaderProps> = ({
       return null;
     }
 
-    const injected = (window as unknown as { __OPENCHAMBER_MACOS_MAJOR__?: unknown }).__OPENCHAMBER_MACOS_MAJOR__;
+    const injected = (window as unknown as { __OPENAURORA_MACOS_MAJOR__?: unknown }).__OPENAURORA_MACOS_MAJOR__;
     if (typeof injected === 'number' && Number.isFinite(injected) && injected > 0) {
       return injected;
     }
@@ -321,7 +321,7 @@ export const Header: React.FC<HeaderProps> = ({
     try {
       const cfg = await desktopHostsGet();
       const currentHref = window.location.href;
-      const localOrigin = window.__OPENCHAMBER_LOCAL_ORIGIN__ || window.location.origin;
+      const localOrigin = window.__OPENAURORA_LOCAL_ORIGIN__ || window.location.origin;
 
       if (locationMatchesHost(currentHref, localOrigin)) {
         setCurrentInstanceLabel('Local');
@@ -1029,14 +1029,14 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={handleOpenSessionSwitcher}
-            aria-label="Open sessions"
+            aria-label="Open conversations"
             className={`${desktopHeaderIconButtonClass} mr-2 shrink-0`}
           >
             <RiLayoutLeftLine className="h-[18px] w-[18px]" />
           </button>
         </TooltipTrigger>
         <TooltipContent>
-          <p>Open sessions ({shortcutLabel('toggle_sidebar')})</p>
+          <p>Open conversations ({shortcutLabel('toggle_sidebar')})</p>
         </TooltipContent>
       </Tooltip>
 
@@ -1510,7 +1510,7 @@ export const Header: React.FC<HeaderProps> = ({
               mobileHeaderIconButtonClass,
               leftDrawerOpen && 'bg-interactive-selection text-interactive-selection-foreground'
             )}
-            aria-label={leftDrawerOpen ? 'Close sessions' : 'Open sessions'}
+            aria-label={leftDrawerOpen ? 'Close conversations' : 'Open conversations'}
           >
             <RiLayoutLeftLine className="h-5 w-5" />
           </button>
@@ -1528,14 +1528,14 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             onClick={handleOpenSessionSwitcher}
             className="app-region-no-drag h-9 w-9 p-2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-md active:bg-interactive-active"
-            aria-label="Open sessions"
+            aria-label="Open conversations"
           >
             <RiPlayListAddLine className="h-5 w-5" />
           </button>
         )}
 
         {isSessionSwitcherOpen && (
-          <span className="typography-ui-label font-semibold text-foreground">Sessions</span>
+          <span className="typography-ui-label font-semibold text-foreground">Conversations</span>
         )}
       </div>
 

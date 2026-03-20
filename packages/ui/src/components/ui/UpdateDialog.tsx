@@ -27,7 +27,7 @@ interface UpdateDialogProps {
   runtimeType?: 'desktop' | 'web' | 'vscode' | null;
 }
 
-const GITHUB_RELEASES_URL = 'https://github.com/btriapitsyn/openchamber/releases';
+const GITHUB_RELEASES_URL = 'https://github.com/btriapitsyn/openaurora/releases';
 
 type ChangelogSection = {
   version: string;
@@ -119,7 +119,7 @@ const WEB_UPDATE_MAX_WAIT_MS = 10 * 60 * 1000;
 
 async function installWebUpdate(): Promise<InstallWebUpdateResult> {
   try {
-    const response = await fetch('/api/openchamber/update-install', {
+    const response = await fetch('/api/openaurora/update-install', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
@@ -158,7 +158,7 @@ async function waitForUpdateApplied(
 ): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const response = await fetch('/api/openchamber/update-check', {
+      const response = await fetch('/api/openaurora/update-check', {
         method: 'GET',
         headers: { Accept: 'application/json' },
       });
@@ -211,7 +211,7 @@ export const UpdateDialog: React.FC<UpdateDialogProps> = ({
     : 0;
 
   const isWebRuntime = runtimeType === 'web';
-  const updateCommand = info?.updateCommand || 'openchamber update';
+  const updateCommand = info?.updateCommand || 'openaurora update';
 
   // Reset state when dialog closes
   useEffect(() => {
@@ -275,7 +275,7 @@ export const UpdateDialog: React.FC<UpdateDialogProps> = ({
       window.location.reload();
     } else {
       setWebUpdateState('error');
-      setWebError('Update is taking longer than expected. Wait a bit and refresh, or run: openchamber update');
+      setWebError('Update is taking longer than expected. Wait a bit and refresh, or run: openaurora update');
     }
   }, [info?.currentVersion]);
 
@@ -323,7 +323,7 @@ export const UpdateDialog: React.FC<UpdateDialogProps> = ({
             <RiDownloadCloudLine className="h-5 w-5 text-[var(--primary-base)]" />
             <span className="text-lg font-semibold text-foreground">
               {webUpdateState === 'restarting' || webUpdateState === 'reconnecting'
-                ? 'Updating OpenChamber...'
+                ? 'Updating OpenAurora...'
                 : 'Update Available'}
             </span>
           </DialogTitle>

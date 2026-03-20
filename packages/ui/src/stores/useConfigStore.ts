@@ -14,14 +14,14 @@ import { useDirectoryStore } from "@/stores/useDirectoryStore";
 import { streamDebugEnabled } from "@/stores/utils/streamDebug";
 
 const MODELS_DEV_API_URL = "https://models.dev/api.json";
-const MODELS_DEV_PROXY_URL = "/api/openchamber/models-metadata";
+const MODELS_DEV_PROXY_URL = "/api/openaurora/models-metadata";
 
 const FALLBACK_PROVIDER_ID = "opencode";
 const FALLBACK_MODEL_ID = "big-pickle";
 const GIT_UTILITY_PROVIDER_ID = "zen";
 const GIT_UTILITY_PREFERRED_MODEL_ID = "big-pickle";
 
-interface OpenChamberDefaults {
+interface OpenAuroraDefaults {
     defaultModel?: string;
     defaultVariant?: string;
     defaultAgent?: string;
@@ -30,7 +30,7 @@ interface OpenChamberDefaults {
     zenModel?: string;
 }
 
-const fetchOpenChamberDefaults = async (): Promise<OpenChamberDefaults> => {
+const fetchOpenAuroraDefaults = async (): Promise<OpenAuroraDefaults> => {
     try {
         // 1. Runtime settings API (VSCode)
         const runtimeSettings = getRegisteredRuntimeAPIs()?.settings;
@@ -425,7 +425,7 @@ interface ConfigStore {
     isConnected: boolean;
     isInitialized: boolean;
     modelsMetadata: Map<string, ModelMetadata>;
-    // OpenChamber settings-based defaults (take precedence over agent preferences)
+    // OpenAurora settings-based defaults (take precedence over agent preferences)
     settingsDefaultModel: string | undefined; // format: "provider/model"
     settingsDefaultVariant: string | undefined;
     settingsDefaultAgent: string | undefined;
@@ -1056,10 +1056,10 @@ export const useConfigStore = create<ConfigStore>()(
 
                     for (let attempt = 0; attempt < 3; attempt++) {
                         try {
-                            // Fetch agents and OpenChamber settings in parallel
-                            const [agents, openChamberDefaults] = await Promise.all([
+                            // Fetch agents and OpenAurora settings in parallel
+                            const [agents, openAuroraDefaults] = await Promise.all([
                                 opencodeClient.withDirectory(fromDirectoryKey(directoryKey), () => opencodeClient.listAgents()),
-                                fetchOpenChamberDefaults(),
+                                fetchOpenAuroraDefaults(),
                             ]);
 
                             const safeAgents = Array.isArray(agents) ? agents : [];
@@ -1070,7 +1070,7 @@ export const useConfigStore = create<ConfigStore>()(
 
                             const existingZenModel = normalizeOptionalString(get().settingsZenModel);
 
-                            const defaultZenModel = normalizeOptionalString(openChamberDefaults.zenModel);
+                            const defaultZenModel = normalizeOptionalString(openAuroraDefaults.zenModel);
 
                             const resolvedExistingGitSelection = resolveGitGenerationModelSelection({
                                 providers,
@@ -1105,11 +1105,11 @@ export const useConfigStore = create<ConfigStore>()(
                                 };
 
                                 const nextState: Partial<ConfigStore> = {
-                                    settingsDefaultModel: openChamberDefaults.defaultModel,
-                                    settingsDefaultVariant: openChamberDefaults.defaultVariant,
-                                    settingsDefaultAgent: openChamberDefaults.defaultAgent,
-                                    settingsAutoCreateWorktree: openChamberDefaults.autoCreateWorktree ?? false,
-                                    settingsGitmojiEnabled: openChamberDefaults.gitmojiEnabled ?? false,
+                                    settingsDefaultModel: openAuroraDefaults.defaultModel,
+                                    settingsDefaultVariant: openAuroraDefaults.defaultVariant,
+                                    settingsDefaultAgent: openAuroraDefaults.defaultAgent,
+                                    settingsAutoCreateWorktree: openAuroraDefaults.autoCreateWorktree ?? false,
+                                    settingsGitmojiEnabled: openAuroraDefaults.gitmojiEnabled ?? false,
                                     settingsZenModel: resolvedZenModel,
                                     directoryScoped: {
                                         ...state.directoryScoped,
@@ -1194,9 +1194,9 @@ export const useConfigStore = create<ConfigStore>()(
                             // Track invalid settings to clear
                              const invalidSettings: { defaultModel?: string; defaultVariant?: string; defaultAgent?: string } = {};
 
-                            // 1. Check OpenChamber settings for default agent
-                            if (openChamberDefaults.defaultAgent) {
-                                const settingsAgent = safeAgents.find((agent) => agent.name === openChamberDefaults.defaultAgent);
+                            // 1. Check OpenAurora settings for default agent
+                            if (openAuroraDefaults.defaultAgent) {
+                                const settingsAgent = safeAgents.find((agent) => agent.name === openAuroraDefaults.defaultAgent);
                                 if (settingsAgent) {
                                     resolvedAgent = settingsAgent;
                                 } else {
@@ -1211,19 +1211,19 @@ export const useConfigStore = create<ConfigStore>()(
                              let resolvedModelId: string | undefined;
                              let resolvedVariant: string | undefined;
 
-                             // 1. Check OpenChamber settings for default model
-                             if (openChamberDefaults.defaultModel) {
-                                 const parsed = parseModelString(openChamberDefaults.defaultModel);
+                             // 1. Check OpenAurora settings for default model
+                             if (openAuroraDefaults.defaultModel) {
+                                 const parsed = parseModelString(openAuroraDefaults.defaultModel);
                                  if (parsed && validateModel(parsed.providerId, parsed.modelId)) {
                                      resolvedProviderId = parsed.providerId;
                                      resolvedModelId = parsed.modelId;
 
-                                     if (openChamberDefaults.defaultVariant) {
+                                     if (openAuroraDefaults.defaultVariant) {
                                          const provider = providers.find((p) => p.id === parsed.providerId);
                                          const model = provider?.models.find((m) => m.id === parsed.modelId) as { variants?: Record<string, unknown> } | undefined;
                                          const variants = model?.variants;
-                                         if (variants && Object.prototype.hasOwnProperty.call(variants, openChamberDefaults.defaultVariant)) {
-                                             resolvedVariant = openChamberDefaults.defaultVariant;
+                                         if (variants && Object.prototype.hasOwnProperty.call(variants, openAuroraDefaults.defaultVariant)) {
+                                             resolvedVariant = openAuroraDefaults.defaultVariant;
                                          } else {
                                              invalidSettings.defaultVariant = '';
                                          }
@@ -1397,7 +1397,7 @@ export const useConfigStore = create<ConfigStore>()(
                         const sessionStore = window.__zustand_session_store__;
                         if (sessionStore) {
                             const sessionState = sessionStore.getState();
-                            const { currentSessionId, isOpenChamberCreatedSession, initializeNewOpenChamberSession, getAgentModelForSession } = sessionState;
+                            const { currentSessionId, isOpenAuroraCreatedSession, initializeNewOpenAuroraSession, getAgentModelForSession } = sessionState;
 
                             if (currentSessionId) {
 
@@ -1408,11 +1408,11 @@ export const useConfigStore = create<ConfigStore>()(
                                 });
                             }
 
-                            if (currentSessionId && isOpenChamberCreatedSession(currentSessionId)) {
+                            if (currentSessionId && isOpenAuroraCreatedSession(currentSessionId)) {
                                 const existingAgentModel = getAgentModelForSession(currentSessionId, agentName);
                                 if (!existingAgentModel) {
 
-                                    initializeNewOpenChamberSession(currentSessionId, agents);
+                                    initializeNewOpenAuroraSession(currentSessionId, agents);
                                 }
                             }
                         }

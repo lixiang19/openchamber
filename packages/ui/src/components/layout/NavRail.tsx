@@ -18,7 +18,6 @@ import {
   RiFolderAddLine,
   RiSettings3Line,
   RiQuestionLine,
-  RiDownloadLine,
   RiInformationLine,
   RiInboxArchiveLine,
   RiPencilLine,
@@ -34,18 +33,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { toast } from '@/components/ui';
 
-import { UpdateDialog } from '@/components/ui/UpdateDialog';
 import { ProjectEditDialog } from '@/components/layout/ProjectEditDialog';
 import { useUIStore } from '@/stores/useUIStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
-import { useUpdateStore } from '@/stores/useUpdateStore';
 import { cn, formatDirectoryName, hasModifier } from '@/lib/utils';
 import { PROJECT_ICON_MAP, PROJECT_COLOR_MAP, getProjectIconImageUrl } from '@/lib/projectMeta';
-import { isDesktopLocalOriginActive, isDesktopShell, isTauriShell, requestDirectoryAccess } from '@/lib/desktop';
+import { isDesktopShell } from '@/lib/desktop';
 import { useLongPress } from '@/hooks/useLongPress';
 import { formatShortcutForDisplay, getEffectiveShortcutCombo } from '@/lib/shortcuts';
 import { sessionEvents } from '@/lib/sessionEvents';
@@ -206,7 +202,7 @@ const InboxRailButton: React.FC<InboxRailButtonProps> = ({
             : 'border border-transparent bg-transparent hover:border-[var(--interactive-border)] hover:bg-[var(--interactive-hover)]/50'
         ),
       )}
-      aria-label="收件箱"
+      aria-label="Home"
     >
       {expanded ? (
         <span
@@ -231,7 +227,7 @@ const InboxRailButton: React.FC<InboxRailButtonProps> = ({
           isActive && expanded ? 'font-medium text-[var(--interactive-selection-foreground)]' : 'text-[var(--surface-foreground)]',
         )}
       >
-        收件箱
+        Home
       </span>
     </button>
   );
@@ -245,7 +241,7 @@ const InboxRailButton: React.FC<InboxRailButtonProps> = ({
       <TooltipTrigger asChild>
         <div className="relative">{button}</div>
       </TooltipTrigger>
-      <TooltipContent side="right" sideOffset={8}>收件箱</TooltipContent>
+      <TooltipContent side="right" sideOffset={8}>Home</TooltipContent>
     </Tooltip>
   );
 };
@@ -540,7 +536,6 @@ export const NavRail: React.FC<NavRailProps> = ({ className, mobile }) => {
   const projects = useProjectsStore((s) => s.projects);
   const activeProjectId = useProjectsStore((s) => s.activeProjectId);
   const setActiveProjectIdOnly = useProjectsStore((s) => s.setActiveProjectIdOnly);
-  const addProject = useProjectsStore((s) => s.addProject);
   const removeProject = useProjectsStore((s) => s.removeProject);
   const reorderProjects = useProjectsStore((s) => s.reorderProjects);
   const updateProjectMeta = useProjectsStore((s) => s.updateProjectMeta);
@@ -610,10 +605,7 @@ export const NavRail: React.FC<NavRailProps> = ({ className, mobile }) => {
   const currentSessionId = useSessionStore((s) => s.currentSessionId);
   const availableWorktreesByProject = useSessionStore((s) => s.availableWorktreesByProject);
 
-  const updateStore = useUpdateStore();
-  const { available: updateAvailable, downloaded: updateDownloaded } = updateStore;
-  const [updateDialogOpen, setUpdateDialogOpen] = React.useState(false);
-  const navRailInteractionBlocked = isOverlayBlockingNavRailActions || updateDialogOpen;
+  const navRailInteractionBlocked = isOverlayBlockingNavRailActions;
 
   const [editingProject, setEditingProject] = React.useState<{
     id: string;
@@ -625,8 +617,6 @@ export const NavRail: React.FC<NavRailProps> = ({ className, mobile }) => {
   } | null>(null);
 
   const isDesktopApp = React.useMemo(() => isDesktopShell(), []);
-  const tauriIpcAvailable = React.useMemo(() => isTauriShell(), []);
-
   const formatLabel = React.useCallback(
     (project: ProjectEntry): string => {
       return (
@@ -706,28 +696,8 @@ export const NavRail: React.FC<NavRailProps> = ({ className, mobile }) => {
   ]);
 
   const handleAddProject = React.useCallback(() => {
-    if (!tauriIpcAvailable || !isDesktopLocalOriginActive()) {
-      sessionEvents.requestDirectoryDialog();
-      return;
-    }
-    requestDirectoryAccess('')
-      .then((result) => {
-        if (result.success && result.path) {
-          const added = addProject(result.path, { id: result.projectId });
-          if (!added) {
-            toast.error('Failed to add project', {
-              description: 'Please select a valid directory.',
-            });
-          }
-        } else if (result.error && result.error !== 'Directory selection cancelled') {
-          toast.error('Failed to select directory', { description: result.error });
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to select directory:', error);
-        toast.error('Failed to select directory');
-      });
-  }, [addProject, tauriIpcAvailable]);
+    sessionEvents.requestProjectCreateDialog();
+  }, []);
 
   const handleEditProject = React.useCallback(
     (projectId: string) => {
@@ -899,26 +869,13 @@ export const NavRail: React.FC<NavRailProps> = ({ className, mobile }) => {
           'shrink-0 w-full pt-3 pb-4 flex flex-col gap-1',
           showExpandedContent ? 'items-stretch px-1' : 'items-center',
         )}>
-          {(updateAvailable || updateDownloaded) && (
-            <NavRailActionButton
-              onClick={() => setUpdateDialogOpen(true)}
-              disabled={navRailInteractionBlocked}
-              ariaLabel="Update available"
-              icon={<RiDownloadLine className={navRailActionIconClass} />}
-              tooltipLabel="Update available"
-              buttonClassName={navRailActionButtonClass}
-              showExpandedContent={showExpandedContent}
-              actionTextVisible={actionTextVisible}
-            />
-          )}
-
-          {!isDesktopApp && !(updateAvailable || updateDownloaded) && (
+          {!isDesktopApp && (
             <NavRailActionButton
               onClick={() => setAboutDialogOpen(true)}
               disabled={navRailInteractionBlocked}
               ariaLabel="About"
               icon={<RiInformationLine className={navRailActionIconClass} />}
-              tooltipLabel="About OpenChamber"
+              tooltipLabel="About OpenAurora"
               buttonClassName={navRailActionButtonClass}
               showExpandedContent={showExpandedContent}
               actionTextVisible={actionTextVisible}
@@ -990,19 +947,6 @@ export const NavRail: React.FC<NavRailProps> = ({ className, mobile }) => {
           onSave={handleSaveProjectEdit}
         />
       )}
-
-      <UpdateDialog
-        open={updateDialogOpen}
-        onOpenChange={setUpdateDialogOpen}
-        info={updateStore.info}
-        downloading={updateStore.downloading}
-        downloaded={updateStore.downloaded}
-        progress={updateStore.progress}
-        error={updateStore.error}
-        onDownload={updateStore.downloadUpdate}
-        onRestart={updateStore.restartToUpdate}
-        runtimeType={updateStore.runtimeType}
-      />
     </>
   );
 };

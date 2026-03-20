@@ -116,8 +116,8 @@ const getHomeDirectory = () => {
     if (cachedHomeDirectory) return cachedHomeDirectory;
 
     const desktopHome =
-      (typeof window.__OPENCHAMBER_HOME__ === 'string' && window.__OPENCHAMBER_HOME__.length > 0
-        ? window.__OPENCHAMBER_HOME__
+      (typeof window.__OPENAURORA_HOME__ === 'string' && window.__OPENAURORA_HOME__.length > 0
+        ? window.__OPENAURORA_HOME__
         : null);
 
     if (desktopHome && desktopHome.length > 0) {

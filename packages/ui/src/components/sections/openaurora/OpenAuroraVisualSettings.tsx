@@ -93,11 +93,11 @@ const MERMAID_RENDERING_OPTIONS: Option<'svg' | 'ascii'>[] = [
     },
 ];
 
-const DEFAULT_PWA_INSTALL_NAME = 'OpenChamber - AI Coding Assistant';
+const DEFAULT_PWA_INSTALL_NAME = 'OpenAurora - AI Coding Assistant';
 
 type PwaInstallNameWindow = Window & {
-    __OPENCHAMBER_SET_PWA_INSTALL_NAME__?: (value: string) => string;
-    __OPENCHAMBER_UPDATE_PWA_MANIFEST__?: () => void;
+    __OPENAURORA_SET_PWA_INSTALL_NAME__?: (value: string) => string;
+    __OPENAURORA_UPDATE_PWA_MANIFEST__?: () => void;
 };
 
 const USER_MESSAGE_RENDERING_OPTIONS: Option<'markdown' | 'plain'>[] = [
@@ -143,14 +143,14 @@ const normalizeUserMessageRenderingMode = (mode: unknown): 'markdown' | 'plain' 
     return mode === 'markdown' ? 'markdown' : 'plain';
 };
 
-export type VisibleSetting = 'theme' | 'pwaInstallName' | 'fontSize' | 'terminalFontSize' | 'spacing' | 'cornerRadius' | 'inputBarOffset' | 'navRail' | 'mermaidRendering' | 'userMessageRendering' | 'chatRenderMode' | 'activityRenderMode' | 'stickyUserHeader' | 'diffLayout' | 'mobileStatusBar' | 'dotfiles' | 'reasoning' | 'showToolFileIcons' | 'expandedTools' | 'queueMode' | 'terminalQuickKeys' | 'persistDraft' | 'inputSpellcheck';
+export type VisibleSetting = 'theme' | 'pwaInstallName' | 'fontSize' | 'terminalFontSize' | 'spacing' | 'cornerRadius' | 'inputBarOffset' | 'navRail' | 'mermaidRendering' | 'userMessageRendering' | 'chatRenderMode' | 'activityRenderMode' | 'stickyUserHeader' | 'diffLayout' | 'mobileStatusBar' | 'dotfiles' | 'reasoning' | 'showToolFileIcons' | 'expandedTools' | 'queueMode' | 'terminalQuickKeys' | 'persistDraft' | 'inputSpellcheck' | 'sessionSidebarButtons' | 'rightSidebarTabs';
 
-interface OpenChamberVisualSettingsProps {
+interface OpenAuroraVisualSettingsProps {
     /** Which settings to show. If undefined, shows all. */
     visibleSettings?: VisibleSetting[];
 }
 
-export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps> = ({ visibleSettings }) => {
+export const OpenAuroraVisualSettings: React.FC<OpenAuroraVisualSettingsProps> = ({ visibleSettings }) => {
     const { isMobile } = useDeviceInfo();
     const { browserTab } = usePwaDetection();
     const directoryShowHidden = useDirectoryShowHidden();
@@ -195,6 +195,10 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
     const setShowExpandedBashTools = useUIStore(state => state.setShowExpandedBashTools);
     const showExpandedEditTools = useUIStore(state => state.showExpandedEditTools);
     const setShowExpandedEditTools = useUIStore(state => state.setShowExpandedEditTools);
+    const sessionSidebarHeaderVisibility = useUIStore(state => state.sessionSidebarHeaderVisibility);
+    const setSessionSidebarHeaderActionVisible = useUIStore(state => state.setSessionSidebarHeaderActionVisible);
+    const rightSidebarTabVisibility = useUIStore(state => state.rightSidebarTabVisibility);
+    const setRightSidebarTabVisible = useUIStore(state => state.setRightSidebarTabVisible);
     const isNavRailExpanded = useUIStore(state => state.isNavRailExpanded);
     const setNavRailExpanded = useUIStore(state => state.setNavRailExpanded);
     const showMobileSessionStatusBar = useUIStore(state => state.showMobileSessionStatusBar);
@@ -269,6 +273,30 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
         void updateDesktopSettings({ showExpandedEditTools: enabled });
     }, [setShowExpandedEditTools]);
 
+    const handleSessionSidebarHeaderActionVisibilityChange = React.useCallback((
+        action: 'worktree' | 'multiRun' | 'notes' | 'search' | 'displayMode',
+        enabled: boolean,
+    ) => {
+        const nextVisibility = {
+            ...sessionSidebarHeaderVisibility,
+            [action]: enabled,
+        };
+        setSessionSidebarHeaderActionVisible(action, enabled);
+        void updateDesktopSettings({ sessionSidebarHeaderVisibility: nextVisibility });
+    }, [sessionSidebarHeaderVisibility, setSessionSidebarHeaderActionVisible]);
+
+    const handleRightSidebarTabVisibilityChange = React.useCallback((
+        tab: 'git' | 'files' | 'todo',
+        enabled: boolean,
+    ) => {
+        const nextVisibility = {
+            ...rightSidebarTabVisibility,
+            [tab]: enabled,
+        };
+        setRightSidebarTabVisible(tab, enabled);
+        void updateDesktopSettings({ rightSidebarTabVisibility: nextVisibility });
+    }, [rightSidebarTabVisibility, setRightSidebarTabVisible]);
+
     const lightThemes = React.useMemo(
         () => availableThemes
             .filter((theme) => theme.metadata.variant === 'light')
@@ -318,6 +346,8 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
         || shouldShow('reasoning')
         || shouldShow('queueMode')
         || shouldShow('persistDraft')
+        || shouldShow('sessionSidebarButtons')
+        || shouldShow('rightSidebarTabs')
         || shouldShow('showToolFileIcons')
         || shouldShow('expandedTools')
         || (!isMobile && shouldShow('inputSpellcheck'));
@@ -336,14 +366,14 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
 
         await updateDesktopSettings({ pwaAppName: persistedValue });
 
-        if (typeof win.__OPENCHAMBER_SET_PWA_INSTALL_NAME__ === 'function') {
-            const resolved = win.__OPENCHAMBER_SET_PWA_INSTALL_NAME__(persistedValue);
+        if (typeof win.__OPENAURORA_SET_PWA_INSTALL_NAME__ === 'function') {
+            const resolved = win.__OPENAURORA_SET_PWA_INSTALL_NAME__(persistedValue);
             setPwaInstallName(resolved);
             return;
         }
 
         setPwaInstallName(persistedValue || DEFAULT_PWA_INSTALL_NAME);
-        win.__OPENCHAMBER_UPDATE_PWA_MANIFEST__?.();
+        win.__OPENAURORA_UPDATE_PWA_MANIFEST__?.();
     }, []);
 
     React.useEffect(() => {
@@ -486,7 +516,7 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
                                         </button>
                                     </TooltipTrigger>
                                     <TooltipContent sideOffset={8}>
-                                        Import custom themes from ~/.config/openchamber/themes/
+                                        Import custom themes from ~/.config/openaurora/themes/
                                     </TooltipContent>
                                 </Tooltip>
                             </div>
@@ -1295,6 +1325,186 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
                                         </div>
                                     )}
 
+                                </section>
+                            )}
+
+                            {shouldShow('sessionSidebarButtons') && (
+                                <section className="p-2 space-y-1">
+                                    <h4 className="typography-ui-header font-medium text-foreground">Session Sidebar Buttons</h4>
+
+                                    <div
+                                        className="group flex cursor-pointer items-center gap-2 py-0.5"
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-pressed={sessionSidebarHeaderVisibility.worktree}
+                                        onClick={() => handleSessionSidebarHeaderActionVisibilityChange('worktree', !sessionSidebarHeaderVisibility.worktree)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === ' ' || event.key === 'Enter') {
+                                                event.preventDefault();
+                                                handleSessionSidebarHeaderActionVisibilityChange('worktree', !sessionSidebarHeaderVisibility.worktree);
+                                            }
+                                        }}
+                                    >
+                                        <Checkbox
+                                            checked={sessionSidebarHeaderVisibility.worktree}
+                                            onChange={(value) => handleSessionSidebarHeaderActionVisibilityChange('worktree', value)}
+                                            ariaLabel="Show worktree button"
+                                        />
+                                        <span className="typography-ui-label text-foreground">Show Worktree Button</span>
+                                    </div>
+
+                                    <div
+                                        className="group flex cursor-pointer items-center gap-2 py-0.5"
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-pressed={sessionSidebarHeaderVisibility.multiRun}
+                                        onClick={() => handleSessionSidebarHeaderActionVisibilityChange('multiRun', !sessionSidebarHeaderVisibility.multiRun)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === ' ' || event.key === 'Enter') {
+                                                event.preventDefault();
+                                                handleSessionSidebarHeaderActionVisibilityChange('multiRun', !sessionSidebarHeaderVisibility.multiRun);
+                                            }
+                                        }}
+                                    >
+                                        <Checkbox
+                                            checked={sessionSidebarHeaderVisibility.multiRun}
+                                            onChange={(value) => handleSessionSidebarHeaderActionVisibilityChange('multiRun', value)}
+                                            ariaLabel="Show multi-run button"
+                                        />
+                                        <span className="typography-ui-label text-foreground">Show Multi-Run Button</span>
+                                    </div>
+
+                                    <div
+                                        className="group flex cursor-pointer items-center gap-2 py-0.5"
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-pressed={sessionSidebarHeaderVisibility.notes}
+                                        onClick={() => handleSessionSidebarHeaderActionVisibilityChange('notes', !sessionSidebarHeaderVisibility.notes)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === ' ' || event.key === 'Enter') {
+                                                event.preventDefault();
+                                                handleSessionSidebarHeaderActionVisibilityChange('notes', !sessionSidebarHeaderVisibility.notes);
+                                            }
+                                        }}
+                                    >
+                                        <Checkbox
+                                            checked={sessionSidebarHeaderVisibility.notes}
+                                            onChange={(value) => handleSessionSidebarHeaderActionVisibilityChange('notes', value)}
+                                            ariaLabel="Show project notes button"
+                                        />
+                                        <span className="typography-ui-label text-foreground">Show Project Notes Button</span>
+                                    </div>
+
+                                    <div
+                                        className="group flex cursor-pointer items-center gap-2 py-0.5"
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-pressed={sessionSidebarHeaderVisibility.search}
+                                        onClick={() => handleSessionSidebarHeaderActionVisibilityChange('search', !sessionSidebarHeaderVisibility.search)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === ' ' || event.key === 'Enter') {
+                                                event.preventDefault();
+                                                handleSessionSidebarHeaderActionVisibilityChange('search', !sessionSidebarHeaderVisibility.search);
+                                            }
+                                        }}
+                                    >
+                                        <Checkbox
+                                            checked={sessionSidebarHeaderVisibility.search}
+                                            onChange={(value) => handleSessionSidebarHeaderActionVisibilityChange('search', value)}
+                                            ariaLabel="Show conversation search button"
+                                        />
+                                        <span className="typography-ui-label text-foreground">Show Search Button</span>
+                                    </div>
+
+                                    <div
+                                        className="group flex cursor-pointer items-center gap-2 py-0.5"
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-pressed={sessionSidebarHeaderVisibility.displayMode}
+                                        onClick={() => handleSessionSidebarHeaderActionVisibilityChange('displayMode', !sessionSidebarHeaderVisibility.displayMode)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === ' ' || event.key === 'Enter') {
+                                                event.preventDefault();
+                                                handleSessionSidebarHeaderActionVisibilityChange('displayMode', !sessionSidebarHeaderVisibility.displayMode);
+                                            }
+                                        }}
+                                    >
+                                        <Checkbox
+                                            checked={sessionSidebarHeaderVisibility.displayMode}
+                                            onChange={(value) => handleSessionSidebarHeaderActionVisibilityChange('displayMode', value)}
+                                            ariaLabel="Show display mode button"
+                                        />
+                                        <span className="typography-ui-label text-foreground">Show Display Mode Button</span>
+                                    </div>
+                                </section>
+                            )}
+
+                            {shouldShow('rightSidebarTabs') && (
+                                <section className="p-2 space-y-1">
+                                    <h4 className="typography-ui-header font-medium text-foreground">Right Sidebar Tabs</h4>
+
+                                    <div
+                                        className="group flex cursor-pointer items-center gap-2 py-0.5"
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-pressed={rightSidebarTabVisibility.git}
+                                        onClick={() => handleRightSidebarTabVisibilityChange('git', !rightSidebarTabVisibility.git)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === ' ' || event.key === 'Enter') {
+                                                event.preventDefault();
+                                                handleRightSidebarTabVisibilityChange('git', !rightSidebarTabVisibility.git);
+                                            }
+                                        }}
+                                    >
+                                        <Checkbox
+                                            checked={rightSidebarTabVisibility.git}
+                                            onChange={(value) => handleRightSidebarTabVisibilityChange('git', value)}
+                                            ariaLabel="Show Git tab"
+                                        />
+                                        <span className="typography-ui-label text-foreground">Show Git Tab</span>
+                                    </div>
+
+                                    <div
+                                        className="group flex cursor-pointer items-center gap-2 py-0.5"
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-pressed={rightSidebarTabVisibility.files}
+                                        onClick={() => handleRightSidebarTabVisibilityChange('files', !rightSidebarTabVisibility.files)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === ' ' || event.key === 'Enter') {
+                                                event.preventDefault();
+                                                handleRightSidebarTabVisibilityChange('files', !rightSidebarTabVisibility.files);
+                                            }
+                                        }}
+                                    >
+                                        <Checkbox
+                                            checked={rightSidebarTabVisibility.files}
+                                            onChange={(value) => handleRightSidebarTabVisibilityChange('files', value)}
+                                            ariaLabel="Show Files tab"
+                                        />
+                                        <span className="typography-ui-label text-foreground">Show Files Tab</span>
+                                    </div>
+
+                                    <div
+                                        className="group flex cursor-pointer items-center gap-2 py-0.5"
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-pressed={rightSidebarTabVisibility.todo}
+                                        onClick={() => handleRightSidebarTabVisibilityChange('todo', !rightSidebarTabVisibility.todo)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === ' ' || event.key === 'Enter') {
+                                                event.preventDefault();
+                                                handleRightSidebarTabVisibilityChange('todo', !rightSidebarTabVisibility.todo);
+                                            }
+                                        }}
+                                    >
+                                        <Checkbox
+                                            checked={rightSidebarTabVisibility.todo}
+                                            onChange={(value) => handleRightSidebarTabVisibilityChange('todo', value)}
+                                            ariaLabel="Show Todo tab"
+                                        />
+                                        <span className="typography-ui-label text-foreground">Show Todo Tab</span>
+                                    </div>
                                 </section>
                             )}
 

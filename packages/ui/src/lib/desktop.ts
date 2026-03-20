@@ -35,6 +35,20 @@ export type ManagedRemoteTunnelPreset = {
   hostname: string;
 };
 
+export type SessionSidebarHeaderVisibilitySettings = {
+  worktree?: boolean;
+  multiRun?: boolean;
+  notes?: boolean;
+  search?: boolean;
+  displayMode?: boolean;
+};
+
+export type RightSidebarTabVisibilitySettings = {
+  git?: boolean;
+  files?: boolean;
+  todo?: boolean;
+};
+
 export type DesktopSettings = {
   themeId?: string;
   useSystemTheme?: boolean;
@@ -120,6 +134,8 @@ export type DesktopSettings = {
   showToolFileIcons?: boolean;
   showExpandedBashTools?: boolean;
   showExpandedEditTools?: boolean;
+  sessionSidebarHeaderVisibility?: SessionSidebarHeaderVisibilitySettings;
+  rightSidebarTabVisibility?: RightSidebarTabVisibilitySettings;
   chatRenderMode?: 'sorted' | 'live';
   activityRenderMode?: 'collapsed' | 'summary';
   mermaidRenderingMode?: 'svg' | 'ascii';
@@ -141,7 +157,7 @@ export type DesktopSettings = {
   // Message limit — controls fetch, trim, and Load More chunk size (default: 200)
   messageLimit?: number;
 
-  // User-added skills catalogs (persisted to ~/.config/openchamber/settings.json)
+  // User-added skills catalogs (persisted to ~/.config/openaurora/settings.json)
   skillCatalogs?: SkillCatalogConfig[];
 };
 
@@ -203,7 +219,7 @@ const isLoopbackHost = (host: string): boolean => {
 
 export const isDesktopLocalOriginActive = (): boolean => {
   if (typeof window === 'undefined') return false;
-  const local = typeof window.__OPENCHAMBER_LOCAL_ORIGIN__ === 'string' ? window.__OPENCHAMBER_LOCAL_ORIGIN__ : '';
+  const local = typeof window.__OPENAURORA_LOCAL_ORIGIN__ === 'string' ? window.__OPENAURORA_LOCAL_ORIGIN__ : '';
   const localUrl = parseUrl(local);
   const currentUrl = parseUrl(window.location.origin);
 
@@ -232,7 +248,7 @@ export const isDesktopLocalOriginActive = (): boolean => {
 // (Remote pages can temporarily lose window.__TAURI__ if URL doesn't match remote allowlist.)
 export const isDesktopShell = (): boolean => {
   if (typeof window === 'undefined') return false;
-  if (typeof window.__OPENCHAMBER_LOCAL_ORIGIN__ === 'string' && window.__OPENCHAMBER_LOCAL_ORIGIN__.length > 0) {
+  if (typeof window.__OPENAURORA_LOCAL_ORIGIN__ === 'string' && window.__OPENAURORA_LOCAL_ORIGIN__.length > 0) {
     return true;
   }
   return isTauriShell();
@@ -240,13 +256,13 @@ export const isDesktopShell = (): boolean => {
 
 export const isVSCodeRuntime = (): boolean => {
   if (typeof window === "undefined") return false;
-  const apis = (window as { __OPENCHAMBER_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } }).__OPENCHAMBER_RUNTIME_APIS__;
+  const apis = (window as { __OPENAURORA_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } }).__OPENAURORA_RUNTIME_APIS__;
   return apis?.runtime?.isVSCode === true;
 };
 
 export const isWebRuntime = (): boolean => {
   if (typeof window === "undefined") return false;
-  const apis = (window as { __OPENCHAMBER_RUNTIME_APIS__?: { runtime?: { platform?: string } } }).__OPENCHAMBER_RUNTIME_APIS__;
+  const apis = (window as { __OPENAURORA_RUNTIME_APIS__?: { runtime?: { platform?: string } } }).__OPENAURORA_RUNTIME_APIS__;
   const platform = apis?.runtime?.platform;
   if (platform === 'web') {
     return true;
@@ -260,7 +276,7 @@ export const isWebRuntime = (): boolean => {
 
 export const getDesktopHomeDirectory = async (): Promise<string | null> => {
   if (typeof window !== 'undefined') {
-    const embedded = window.__OPENCHAMBER_HOME__;
+    const embedded = window.__OPENAURORA_HOME__;
     if (embedded && embedded.length > 0) {
       return embedded;
     }
@@ -343,7 +359,7 @@ export const sendAssistantCompletionNotification = async (
         payload: {
           title: payload?.title,
           body: payload?.body,
-          tag: 'openchamber-agent-complete',
+          tag: 'openaurora-agent-complete',
         },
       });
       return true;
@@ -385,7 +401,7 @@ export const downloadDesktopUpdate = async (
 
   try {
     if (typeof onProgress === 'function' && tauri?.event?.listen) {
-      unlisten = await tauri.event.listen('openchamber:update-progress', (evt) => {
+      unlisten = await tauri.event.listen('openaurora:update-progress', (evt) => {
         const payload = evt?.payload;
         if (!payload || typeof payload !== 'object') return;
         const data = payload as { event?: unknown; data?: unknown };

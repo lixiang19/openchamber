@@ -1,4 +1,4 @@
-import type { NotificationPayload, NotificationsAPI } from '@openchamber/ui/lib/api/types';
+import type { NotificationPayload, NotificationsAPI } from '@openaurora/ui/lib/api/types';
 
 const notifyWithWebAPI = async (payload?: NotificationPayload): Promise<boolean> => {
   if (typeof Notification === 'undefined') {
@@ -20,7 +20,7 @@ const notifyWithWebAPI = async (payload?: NotificationPayload): Promise<boolean>
   }
 
   try {
-    new Notification(payload?.title ?? 'OpenChamber', {
+    new Notification(payload?.title ?? 'OpenAurora', {
       body: payload?.body,
       tag: payload?.tag,
     });

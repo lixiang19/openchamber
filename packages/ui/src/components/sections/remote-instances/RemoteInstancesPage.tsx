@@ -68,9 +68,9 @@ const phaseLabel = (phase?: string): string => {
     case 'remote_probe':
       return 'Probing remote';
     case 'installing':
-      return 'Installing OpenChamber';
+      return 'Installing OpenAurora';
     case 'updating':
-      return 'Updating OpenChamber';
+      return 'Updating OpenAurora';
     case 'server_detecting':
       return 'Detecting server';
     case 'server_starting':
@@ -401,14 +401,14 @@ export const RemoteInstancesPage: React.FC = () => {
     }
 
     if (
-      normalized.auth.openchamberPassword?.enabled &&
-      normalized.auth.openchamberPassword.value?.trim() &&
-      normalized.auth.openchamberPassword.store !== 'settings'
+      normalized.auth.openauroraPassword?.enabled &&
+      normalized.auth.openauroraPassword.value?.trim() &&
+      normalized.auth.openauroraPassword.store !== 'settings'
     ) {
-      const store = window.confirm('Store OpenChamber UI password in settings.json as plaintext?');
-      normalized.auth.openchamberPassword.store = store ? 'settings' : 'never';
+      const store = window.confirm('Store OpenAurora UI password in settings.json as plaintext?');
+      normalized.auth.openauroraPassword.store = store ? 'settings' : 'never';
       if (!store) {
-        normalized.auth.openchamberPassword.value = undefined;
+        normalized.auth.openauroraPassword.value = undefined;
       }
     }
 
@@ -674,7 +674,7 @@ export const RemoteInstancesPage: React.FC = () => {
         <div className="mb-8">
           <div className="mb-1 px-1 space-y-0.5">
             <h3 className="typography-ui-header font-medium text-foreground">Remote Instances</h3>
-            <p className="typography-meta text-muted-foreground">Manage SSH-backed OpenChamber instances.</p>
+            <p className="typography-meta text-muted-foreground">Manage SSH-backed OpenAurora instances.</p>
           </div>
           <section className="px-2 pb-2 pt-0 space-y-3">
             <p className="typography-meta text-muted-foreground">Select an instance from the sidebar or import one from SSH config.</p>
@@ -906,14 +906,14 @@ export const RemoteInstancesPage: React.FC = () => {
       <div className="mb-8 border-t border-[var(--surface-subtle)] pt-8">
         <div className="mb-1 px-1 space-y-0.5">
           <h3 className="typography-ui-header font-medium text-foreground">Remote server</h3>
-          <p className="typography-meta text-muted-foreground">How OpenChamber is discovered or started on the remote machine.</p>
+          <p className="typography-meta text-muted-foreground">How OpenAurora is discovered or started on the remote machine.</p>
         </div>
         <section className="px-2 pb-2 pt-0 space-y-3">
           <div className="flex flex-col gap-1.5 py-1.5 md:flex-row md:items-center md:gap-8">
             <div className="w-56 shrink-0">
               <HintLabel
                 label="Mode"
-                hint="Managed installs/updates and starts OpenChamber remotely. External assumes it is already running."
+                hint="Managed installs/updates and starts OpenAurora remotely. External assumes it is already running."
               />
             </div>
             <Select
@@ -942,7 +942,7 @@ export const RemoteInstancesPage: React.FC = () => {
             <div className="w-56 shrink-0">
               <HintLabel
                 label="Preferred remote port"
-                hint="Port OpenChamber should use on the remote host. Leave empty to let the runtime choose."
+                hint="Port OpenAurora should use on the remote host. Leave empty to let the runtime choose."
               />
             </div>
             <NumberInput
@@ -979,7 +979,7 @@ export const RemoteInstancesPage: React.FC = () => {
               <div className="w-56 shrink-0">
                 <HintLabel
                   label="Install method"
-                  hint="How OpenChamber gets installed/updated remotely when mode is Managed."
+                  hint="How OpenAurora gets installed/updated remotely when mode is Managed."
                 />
               </div>
               <Select
@@ -1015,7 +1015,7 @@ export const RemoteInstancesPage: React.FC = () => {
               <div className="w-56 shrink-0">
                 <HintLabel
                   label="Keep server running"
-                  hint="If enabled, OpenChamber daemon is left running remotely when you disconnect."
+                  hint="If enabled, OpenAurora daemon is left running remotely when you disconnect."
                 />
               </div>
               <div className="flex w-full items-center gap-2 md:max-w-xs">
@@ -1040,7 +1040,7 @@ export const RemoteInstancesPage: React.FC = () => {
       <div className="mb-8 border-t border-[var(--surface-subtle)] pt-8">
         <div className="mb-1 px-1 space-y-0.5">
           <h3 className="typography-ui-header font-medium text-foreground">Main tunnel</h3>
-          <p className="typography-meta text-muted-foreground">Primary local URL that points to the remote OpenChamber server.</p>
+          <p className="typography-meta text-muted-foreground">Primary local URL that points to the remote OpenAurora server.</p>
         </div>
         <section className="px-2 pb-2 pt-0 space-y-3">
           <div className="flex flex-col gap-1.5 py-1.5 md:flex-row md:items-center md:gap-8">
@@ -1083,7 +1083,7 @@ export const RemoteInstancesPage: React.FC = () => {
             <div className="w-56 shrink-0">
               <HintLabel
                 label="Preferred local port"
-                hint="Preferred local port for the main OpenChamber tunnel. Leave empty for auto-select."
+                hint="Preferred local port for the main OpenAurora tunnel. Leave empty for auto-select."
               />
             </div>
             <div className="flex w-full items-center gap-2 md:max-w-sm">
@@ -1167,20 +1167,20 @@ export const RemoteInstancesPage: React.FC = () => {
           </div>
 
           <div className="flex flex-col gap-1.5 py-1.5 md:flex-row md:items-center md:gap-8">
-            <span className="typography-ui-label text-foreground w-56 shrink-0">OpenChamber UI password (optional)</span>
+            <span className="typography-ui-label text-foreground w-56 shrink-0">OpenAurora UI password (optional)</span>
             <Input
               className="h-7 md:max-w-sm"
               type="password"
-              value={draft.auth.openchamberPassword?.value || ''}
+              value={draft.auth.openauroraPassword?.value || ''}
               onChange={(event) =>
                 updateDraft((current) => ({
                   ...current,
                   auth: {
                     ...current.auth,
-                    openchamberPassword: {
+                    openauroraPassword: {
                       enabled: event.target.value.trim().length > 0,
                       value: event.target.value,
-                      store: current.auth.openchamberPassword?.store || 'never',
+                      store: current.auth.openauroraPassword?.store || 'never',
                     },
                   },
                 }))
@@ -1194,7 +1194,7 @@ export const RemoteInstancesPage: React.FC = () => {
       <div className="mb-8 border-t border-[var(--surface-subtle)] pt-8">
         <div className="mb-1 px-1 space-y-0.5">
           <h3 className="typography-ui-header font-medium text-foreground">Port Forwards</h3>
-          <p className="typography-meta text-muted-foreground">Optional extra SSH forwards in addition to the primary OpenChamber tunnel.</p>
+          <p className="typography-meta text-muted-foreground">Optional extra SSH forwards in addition to the primary OpenAurora tunnel.</p>
         </div>
         <section className="px-2 pb-2 pt-0 space-y-2">
           {draft.portForwards.length === 0 ? (

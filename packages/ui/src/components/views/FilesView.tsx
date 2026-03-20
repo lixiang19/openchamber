@@ -3,9 +3,11 @@ import React from 'react';
 import {
   RiArrowLeftSLine,
   RiArrowDownSLine,
+  RiBookOpenLine,
   RiClipboardLine,
   RiCloseLine,
   RiFileCopy2Line,
+  RiFileTextLine,
   RiCheckLine,
   RiFolder3Fill,
   RiFolderOpenFill,
@@ -90,6 +92,12 @@ type FileNode = {
 type SelectedLineRange = {
   start: number;
   end: number;
+};
+
+type RecentLibraryItem = {
+  name: string;
+  path: string;
+  relativePath: string;
 };
 
 const getParentDirectoryPath = (path: string): string => {
@@ -223,6 +231,13 @@ const getDisplayPath = (root: string | null, path: string): string => {
   return relative.startsWith('/') ? relative.slice(1) : relative;
 };
 
+const QUICK_LIBRARY_FILTERS = [
+  { label: 'Markdown', query: '.md' },
+  { label: 'PDF', query: '.pdf' },
+  { label: 'Text', query: '.txt' },
+  { label: 'CSV', query: '.csv' },
+] as const;
+
 const DEFAULT_IGNORED_DIR_NAMES = new Set(['node_modules']);
 
 type FileStatus = 'open' | 'modified' | 'git-modified' | 'git-added' | 'git-deleted';
@@ -262,6 +277,29 @@ const isMarkdownFile = (path: string): boolean => {
   if (!path) return false;
   const ext = path.toLowerCase().split('.').pop();
   return ext === 'md' || ext === 'markdown';
+};
+
+const isHtmlFile = (path: string): boolean => {
+  if (!path) return false;
+  const ext = path.toLowerCase().split('.').pop();
+  return ext === 'html' || ext === 'htm';
+};
+
+const HtmlPreviewPane: React.FC<{
+  content: string;
+  filePath: string;
+  className?: string;
+}> = ({ content, filePath, className }) => {
+  return (
+    <div className={cn('h-full min-h-[24rem] overflow-hidden rounded-md border border-border/30 bg-[var(--surface-background)]', className)}>
+      <iframe
+        title={`HTML preview for ${filePath}`}
+        srcDoc={content}
+        sandbox="allow-scripts"
+        className="h-full w-full border-0 bg-[var(--surface-background)]"
+      />
+    </div>
+  );
 };
 
 const getRelativePathFromRoot = (root: string, path: string): string | undefined => {
@@ -429,7 +467,7 @@ const FileRow: React.FC<FileRowProps> = ({
               </DropdownMenuItem>
               {canReveal && (
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onRevealPath(node.path); }}>
-                  <RiFolderReceivedLine className="mr-2 h-4 w-4" /> Reveal in Finder
+                  <RiFolderReceivedLine className="mr-2 h-4 w-4" /> Show in folder
                 </DropdownMenuItem>
               )}
               {isDir && (canCreateFile || canCreateFolder) && (
@@ -437,7 +475,7 @@ const FileRow: React.FC<FileRowProps> = ({
                   <DropdownMenuSeparator />
                   {canCreateFile && (
                     <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onOpenDialog('createFile', node); }}>
-                      <RiFileAddLine className="mr-2 h-4 w-4" /> New File
+                      <RiFileAddLine className="mr-2 h-4 w-4" /> New document
                     </DropdownMenuItem>
                   )}
                   {canCreateFolder && (
@@ -493,7 +531,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [isSearchOpen, setIsSearchOpen] = React.useState(false);
   const [textViewMode, setTextViewMode] = React.useState<'view' | 'edit'>('edit');
-  const [mdViewMode, setMdViewMode] = React.useState<'preview' | 'edit'>('edit');
+  const [previewMode, setPreviewMode] = React.useState<'preview' | 'edit'>('edit');
 
   const lightTheme = React.useMemo(
     () => availableThemes.find((theme) => theme.metadata.id === lightThemeId) ?? getDefaultTheme(false),
@@ -536,6 +574,25 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
   const openFiles = React.useMemo(() => openPaths.map(toFileNode), [openPaths, toFileNode]);
   const effectiveSelectedPath = React.useMemo(() => selectedPath ?? openPaths[0] ?? null, [openPaths, selectedPath]);
   const selectedFile = React.useMemo(() => (effectiveSelectedPath ? toFileNode(effectiveSelectedPath) : null), [effectiveSelectedPath, toFileNode]);
+  const recentLibraryItems = React.useMemo<RecentLibraryItem[]>(() => {
+    const ordered = [selectedPath, ...openPaths.slice().reverse()].filter((value): value is string => Boolean(value));
+    const seen = new Set<string>();
+
+    return ordered
+      .filter((path) => {
+        if (seen.has(path)) {
+          return false;
+        }
+        seen.add(path);
+        return true;
+      })
+      .slice(0, 6)
+      .map((path) => ({
+        name: toFileNode(path).name,
+        path,
+        relativePath: getDisplayPath(root || null, path),
+      }));
+  }, [openPaths, root, selectedPath, toFileNode]);
 
   // Editor tabs horizontal scroll fades
   const editorTabsScrollRef = React.useRef<HTMLDivElement>(null);
@@ -564,6 +621,17 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
   const [childrenByDir, setChildrenByDir] = React.useState<Record<string, FileNode[]>>({});
   const loadedDirsRef = React.useRef<Set<string>>(new Set());
   const inFlightDirsRef = React.useRef<Set<string>>(new Set());
+  const visibleDocumentCount = React.useMemo(() => {
+    const uniqueFiles = new Set<string>();
+    Object.values(childrenByDir).forEach((nodes) => {
+      nodes.forEach((node) => {
+        if (node.type === 'file') {
+          uniqueFiles.add(node.path);
+        }
+      });
+    });
+    return uniqueFiles.size;
+  }, [childrenByDir]);
 
   const [searchResults, setSearchResults] = React.useState<FileNode[]>([]);
   const [searching, setSearching] = React.useState(false);
@@ -1645,8 +1713,11 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
   const canCopyPath = Boolean(selectedFile && displaySelectedPath.length > 0);
   const canEdit = Boolean(selectedFile && !isSelectedImage && files.writeFile && fileContent.length <= MAX_VIEW_CHARS);
   const isMarkdown = Boolean(selectedFile?.path && isMarkdownFile(selectedFile.path));
+  const isHtml = Boolean(selectedFile?.path && isHtmlFile(selectedFile.path));
+  const isPreviewableText = isMarkdown || isHtml;
   const isTextFile = Boolean(selectedFile && !isSelectedImage);
   const canUseShikiFileView = isTextFile && !isMarkdown;
+  const previewContent = canEdit ? draftContent : fileContent;
   const staticLanguageExtension = React.useMemo(
     () => (selectedFilePath ? languageByExtension(selectedFilePath) : null),
     [selectedFilePath],
@@ -1684,33 +1755,33 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
     setTextViewMode('edit');
   }, [selectedFile?.path]);
 
-  const MD_VIEWER_MODE_KEY = 'openchamber:files:md-viewer-mode';
+  const FILE_PREVIEW_MODE_KEY = 'openaurora:files:preview-mode';
 
   React.useEffect(() => {
     try {
-      const stored = localStorage.getItem(MD_VIEWER_MODE_KEY);
+      const stored = localStorage.getItem(FILE_PREVIEW_MODE_KEY);
       if (stored === 'preview') {
-        setMdViewMode('preview');
+        setPreviewMode('preview');
       } else if (stored === 'edit') {
-        setMdViewMode('edit');
+        setPreviewMode('edit');
       }
     } catch {
       // Ignore localStorage errors
     }
   }, []);
 
-  const saveMdViewMode = React.useCallback((mode: 'preview' | 'edit') => {
-    setMdViewMode(mode);
+  const savePreviewMode = React.useCallback((mode: 'preview' | 'edit') => {
+    setPreviewMode(mode);
     try {
-      localStorage.setItem(MD_VIEWER_MODE_KEY, mode);
+      localStorage.setItem(FILE_PREVIEW_MODE_KEY, mode);
     } catch {
       // Ignore localStorage errors
     }
   }, []);
 
-  const getMdViewMode = React.useCallback((): 'preview' | 'edit' => {
-    return mdViewMode;
-  }, [mdViewMode]);
+  const getPreviewMode = React.useCallback((): 'preview' | 'edit' => {
+    return previewMode;
+  }, [previewMode]);
 
   React.useEffect(() => {
     if (!pendingFileNavigation || !root) {
@@ -2058,13 +2129,13 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {activeDialog === 'createFile' && 'Create File'}
+            {activeDialog === 'createFile' && 'Create document'}
             {activeDialog === 'createFolder' && 'Create Folder'}
             {activeDialog === 'rename' && 'Rename'}
             {activeDialog === 'delete' && 'Delete'}
           </DialogTitle>
           <DialogDescription>
-            {activeDialog === 'createFile' && `Create a new file in ${dialogData?.path ?? 'root'}`}
+            {activeDialog === 'createFile' && `Create a new document in ${dialogData?.path ?? 'root'}`}
             {activeDialog === 'createFolder' && `Create a new folder in ${dialogData?.path ?? 'root'}`}
             {activeDialog === 'rename' && `Rename ${dialogData?.name}`}
             {activeDialog === 'delete' && `Are you sure you want to delete ${dialogData?.name}? This action cannot be undone.`}
@@ -2202,7 +2273,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                   <button
                     type="button"
                     className="inline-flex min-w-0 max-w-full items-center gap-1 text-left typography-ui-label font-medium"
-                    aria-label="Open files"
+                    aria-label="Open materials"
                   >
                     <FileTypeIcon filePath={selectedFile.path} extension={selectedFile.extension} className="h-3.5 w-3.5 flex-shrink-0" />
                     <span className="min-w-0 flex-1 truncate">{selectedFile.name}</span>
@@ -2257,7 +2328,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <div className="typography-ui-label font-medium truncate">Select a file</div>
+              <div className="typography-ui-label font-medium truncate">Select a document</div>
             )
           ) : (
             openFiles.length > 0 ? (
@@ -2318,7 +2389,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                 </div>
               </div>
             ) : (
-              <div className="typography-ui-label font-medium truncate">Select a file</div>
+              <div className="typography-ui-label font-medium truncate">Select a document</div>
             )
           )}
         </div>
@@ -2422,14 +2493,14 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
               </>
             )}
 
-            {(canCopy || canCopyPath || isMarkdown) && (canEdit || !isSelectedImage) && (
+            {(canCopy || canCopyPath || isPreviewableText) && (canEdit || !isSelectedImage) && (
               <span aria-hidden="true" className="mx-1 h-4 w-px bg-border/60" />
             )}
 
-            {isMarkdown && (
+            {isPreviewableText && (
               <PreviewToggleButton
-                currentMode={getMdViewMode()}
-                onToggle={() => saveMdViewMode(getMdViewMode() === 'preview' ? 'edit' : 'preview')}
+                currentMode={getPreviewMode()}
+                onToggle={() => savePreviewMode(getPreviewMode() === 'preview' ? 'edit' : 'preview')}
               />
             )}
 
@@ -2519,14 +2590,93 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
       <div className="flex-1 min-h-0 min-w-0 relative">
         <ScrollableOverlay outerClassName="h-full min-w-0" className="h-full min-w-0">
           {!selectedFile ? (
-            <div className="p-3 typography-ui text-muted-foreground">Pick a file from the tree.</div>
+            <div className="flex h-full min-h-[18rem] items-center justify-center p-4 sm:p-6">
+              <div className="w-full max-w-2xl rounded-3xl border border-[var(--interactive-border)] bg-[var(--surface-elevated)] p-5 sm:p-6">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--surface-muted)] text-[var(--surface-foreground)]">
+                    <RiBookOpenLine className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="typography-ui-header font-medium text-foreground">Choose a document to keep reading</div>
+                    <p className="mt-1 typography-meta text-muted-foreground">
+                      Browse the library on the left, search by file type, or reopen a recent material from this workspace.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-[var(--interactive-border)]"
+                    onClick={() => searchInputRef.current?.focus()}
+                  >
+                    <RiSearchLine className="h-4 w-4" />
+                    Focus search
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-[var(--interactive-border)]"
+                    onClick={() => setSearchQuery('.pdf')}
+                  >
+                    PDF files
+                  </Button>
+                  {canCreateFile ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="border-[var(--interactive-border)]"
+                      onClick={() => handleOpenDialog('createFile', { path: currentDirectory, type: 'directory' })}
+                    >
+                      <RiFileAddLine className="h-4 w-4" />
+                      New document
+                    </Button>
+                  ) : null}
+                </div>
+
+                {recentLibraryItems.length > 0 ? (
+                  <div className="mt-5 space-y-2">
+                    <div className="typography-meta text-muted-foreground">Recent materials</div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {recentLibraryItems.map((item) => (
+                        <button
+                          key={item.path}
+                          type="button"
+                          onClick={() => void handleSelectFile(toFileNode(item.path))}
+                          className="flex items-start gap-3 rounded-2xl border border-[var(--interactive-border)] bg-[var(--surface-background)] px-3 py-3 text-left transition-colors hover:bg-[var(--interactive-hover)]"
+                        >
+                          <div className="mt-0.5 text-muted-foreground">
+                            <RiFileTextLine className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate typography-ui-label font-medium text-foreground">{item.name}</div>
+                            <div className="mt-1 truncate typography-meta text-muted-foreground">{item.relativePath}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-2xl border border-dashed border-[var(--interactive-border)] bg-[var(--surface-background)] px-4 py-4">
+                    <div className="typography-ui-label font-medium text-foreground">No recent materials yet</div>
+                    <div className="mt-1 typography-meta text-muted-foreground">
+                      Open notes, PDFs, or source files from the library and they will show up here for quick return access.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           ) : fileLoading ? (
             suppressFileLoadingIndicator
               ? <div className="p-3" />
               : (
                 <div className="p-3 flex items-center gap-2 typography-ui text-muted-foreground">
                   <RiLoader4Line className="h-4 w-4 animate-spin" />
-                  Loading…
+                  Loading document…
                 </div>
               )
           ) : fileError ? (
@@ -2539,29 +2689,33 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                 className="max-w-full max-h-[70vh] object-contain rounded-md border border-border/30 bg-primary/10"
               />
             </div>
-          ) : selectedFile && isMarkdown && getMdViewMode() === 'preview' ? (
+          ) : selectedFile && isPreviewableText && getPreviewMode() === 'preview' ? (
             <div className="h-full overflow-auto p-3">
-              {fileContent.length > 500 * 1024 && (
+              {previewContent.length > 500 * 1024 && (
                 <div className="mb-3 rounded-md border border-status-warning/20 bg-status-warning/10 px-3 py-2 text-sm text-status-warning">
-                  This file is large ({Math.round(fileContent.length / 1024)}KB). Preview may be limited.
+                  This file is large ({Math.round(previewContent.length / 1024)}KB). Preview may be limited.
                 </div>
               )}
-              <ErrorBoundary
-                fallback={
-                  <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
-                    <div className="mb-1 font-medium text-destructive">Preview unavailable</div>
-                    <div className="text-sm text-muted-foreground">
-                      Switch to edit mode to fix the issue.
+              {isHtml ? (
+                <HtmlPreviewPane content={previewContent} filePath={selectedFile.path} />
+              ) : (
+                <ErrorBoundary
+                  fallback={
+                    <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
+                      <div className="mb-1 font-medium text-destructive">Preview unavailable</div>
+                      <div className="text-sm text-muted-foreground">
+                        Switch to edit mode to fix the issue.
+                      </div>
                     </div>
-                  </div>
-                }
-              >
-                <SimpleMarkdownRenderer
-                  content={fileContent}
-                  className="typography-markdown-body"
-                  stripFrontmatter
-                />
-              </ErrorBoundary>
+                  }
+                >
+                  <SimpleMarkdownRenderer
+                    content={previewContent}
+                    className="typography-markdown-body"
+                    stripFrontmatter
+                  />
+                </ErrorBoundary>
+              )}
             </div>
           ) : selectedFile && canUseShikiFileView && textViewMode === 'view' ? (
             renderShikiFileView(selectedFile, draftContent)
@@ -2690,6 +2844,61 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
       isMobile ? "h-full w-full bg-background" : "h-full rounded-xl border border-border/60 bg-background/70"
     )}>
       <div className={cn("flex flex-col gap-2 py-2", isMobile ? "px-3" : "px-2")}>
+        <div className="rounded-2xl border border-[var(--interactive-border)] bg-[var(--surface-elevated)] px-3 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 typography-ui-label font-medium text-foreground">
+                <RiBookOpenLine className="h-4 w-4" />
+                Library
+              </div>
+              <div className="mt-1 truncate typography-meta text-muted-foreground" title={root || 'No workspace selected'}>
+                {root || 'Open a workspace to browse materials'}
+              </div>
+            </div>
+            <div className="shrink-0 rounded-full bg-[var(--surface-background)] px-2 py-1 typography-meta text-muted-foreground">
+              {visibleDocumentCount} visible
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {QUICK_LIBRARY_FILTERS.map((filter) => (
+              <button
+                key={filter.label}
+                type="button"
+                onClick={() => setSearchQuery(filter.query)}
+                className={cn(
+                  'inline-flex items-center rounded-full border px-2.5 py-1 typography-meta transition-colors',
+                  searchQuery.trim() === filter.query
+                    ? 'border-[var(--interactive-selection)] bg-[var(--interactive-selection)]/12 text-foreground'
+                    : 'border-[var(--interactive-border)] bg-[var(--surface-background)] text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground',
+                )}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+
+          {recentLibraryItems.length > 0 ? (
+            <div className="mt-3">
+              <div className="mb-2 typography-meta text-muted-foreground">Recent in this workspace</div>
+              <div className="flex flex-wrap gap-2">
+                {recentLibraryItems.slice(0, 3).map((item) => (
+                  <button
+                    key={item.path}
+                    type="button"
+                    onClick={() => void handleSelectFile(toFileNode(item.path))}
+                    className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-[var(--interactive-border)] bg-[var(--surface-background)] px-2.5 py-1 typography-meta text-foreground transition-colors hover:bg-[var(--interactive-hover)]"
+                    title={item.relativePath}
+                  >
+                    <RiFileTextLine className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{item.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
         <div className="flex items-center gap-2">
           <div className="relative flex-1 min-w-0">
             <RiSearchLine className="pointer-events-none absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
@@ -2697,7 +2906,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
               ref={searchInputRef}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search files…"
+              placeholder="Search library…"
               className="h-8 pl-8 pr-8 typography-meta"
             />
             {searchQuery.trim().length > 0 && (
@@ -2719,7 +2928,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
             size="sm"
             onClick={() => handleOpenDialog('createFile', { path: currentDirectory, type: 'directory' })}
             className="h-8 w-8 p-0 flex-shrink-0"
-            title="New File"
+            title="New document"
           >
             <RiFileAddLine className="h-4 w-4" />
           </Button>
@@ -2743,7 +2952,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
           {searching ? (
             <li className="flex items-center gap-1.5 px-2 py-1 typography-meta text-muted-foreground">
               <RiLoader4Line className="h-4 w-4 animate-spin" />
-              Searching…
+              Searching library…
             </li>
           ) : searchResults.length > 0 ? (
             searchResults.map((node) => {
@@ -2780,10 +2989,38 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                 </li>
               );
             })
+          ) : searchQuery.trim().length > 0 ? (
+            <li className="px-2 py-2">
+              <div className="rounded-2xl border border-dashed border-[var(--interactive-border)] bg-[var(--surface-elevated)] px-4 py-4 text-center">
+                <div className="typography-ui-label font-medium text-foreground">No matching materials</div>
+                <div className="mt-1 typography-meta text-muted-foreground">
+                  Try a different keyword or jump to a file type shortcut.
+                </div>
+                <div className="mt-3 flex flex-wrap justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="inline-flex rounded-full border border-[var(--interactive-border)] bg-[var(--surface-background)] px-2.5 py-1 typography-meta text-foreground transition-colors hover:bg-[var(--interactive-hover)]"
+                  >
+                    Clear search
+                  </button>
+                  {QUICK_LIBRARY_FILTERS.slice(0, 2).map((filter) => (
+                    <button
+                      key={filter.label}
+                      type="button"
+                      onClick={() => setSearchQuery(filter.query)}
+                      className="inline-flex rounded-full border border-[var(--interactive-border)] bg-[var(--surface-background)] px-2.5 py-1 typography-meta text-foreground transition-colors hover:bg-[var(--interactive-hover)]"
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </li>
           ) : hasTree ? (
             renderTree(root, 0)
           ) : (
-            <li className="px-2 py-1 typography-meta text-muted-foreground">Loading…</li>
+            <li className="px-2 py-1 typography-meta text-muted-foreground">Loading library…</li>
           )}
         </ul>
       </ScrollableOverlay>
@@ -2884,14 +3121,14 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
             </Button>
           )}
 
-          {(canCopy || canCopyPath || isMarkdown) && (canEdit || !isSelectedImage) && (
+          {(canCopy || canCopyPath || isPreviewableText) && (canEdit || !isSelectedImage) && (
             <span aria-hidden="true" className="mx-1 h-4 w-px bg-border/60" />
           )}
 
-          {isMarkdown && (
+          {isPreviewableText && (
             <PreviewToggleButton
-              currentMode={getMdViewMode()}
-              onToggle={() => saveMdViewMode(getMdViewMode() === 'preview' ? 'edit' : 'preview')}
+              currentMode={getPreviewMode()}
+              onToggle={() => savePreviewMode(getPreviewMode() === 'preview' ? 'edit' : 'preview')}
             />
           )}
 
@@ -2978,7 +3215,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
               : (
                 <div className="p-4 flex items-center gap-2 typography-ui text-muted-foreground">
                   <RiLoader4Line className="h-4 w-4 animate-spin" />
-                  Loading…
+                  Loading document…
                 </div>
               )
           ) : fileError ? (
@@ -2991,29 +3228,33 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                 className="max-w-full max-h-full object-contain rounded-md border border-border/30 bg-primary/10"
               />
             </div>
-          ) : isMarkdown && getMdViewMode() === 'preview' ? (
+          ) : isPreviewableText && getPreviewMode() === 'preview' ? (
             <div className="h-full overflow-auto p-4">
-              {fileContent.length > 500 * 1024 && (
+              {previewContent.length > 500 * 1024 && (
                 <div className="mb-3 rounded-md border border-status-warning/20 bg-status-warning/10 px-3 py-2 text-sm text-status-warning">
-                  This file is large ({Math.round(fileContent.length / 1024)}KB). Preview may be limited.
+                  This file is large ({Math.round(previewContent.length / 1024)}KB). Preview may be limited.
                 </div>
               )}
-              <ErrorBoundary
-                fallback={
-                  <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
-                    <div className="mb-1 font-medium text-destructive">Preview unavailable</div>
-                    <div className="text-sm text-muted-foreground">
-                      Switch to edit mode to fix the issue.
+              {isHtml ? (
+                <HtmlPreviewPane content={previewContent} filePath={selectedFile.path} />
+              ) : (
+                <ErrorBoundary
+                  fallback={
+                    <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
+                      <div className="mb-1 font-medium text-destructive">Preview unavailable</div>
+                      <div className="text-sm text-muted-foreground">
+                        Switch to edit mode to fix the issue.
+                      </div>
                     </div>
-                  </div>
-                }
-              >
-                <SimpleMarkdownRenderer
-                  content={fileContent}
-                  className="typography-markdown-body"
-                  stripFrontmatter
-                />
-              </ErrorBoundary>
+                  }
+                >
+                  <SimpleMarkdownRenderer
+                    content={previewContent}
+                    className="typography-markdown-body"
+                    stripFrontmatter
+                  />
+                </ErrorBoundary>
+              )}
             </div>
           ) : canUseShikiFileView && textViewMode === 'view' ? (
             renderShikiFileView(selectedFile, draftContent)

@@ -58,7 +58,7 @@ export type DesktopSshInstance = {
   };
   auth: {
     sshPassword?: DesktopSshStoredSecret;
-    openchamberPassword?: DesktopSshStoredSecret;
+    openauroraPassword?: DesktopSshStoredSecret;
   };
   portForwards: DesktopSshPortForward[];
 };
@@ -187,8 +187,8 @@ const parseInstance = (value: unknown): DesktopSshInstance | null => {
 
   const remoteRaw = isRecord(value.remoteOpenchamber)
     ? value.remoteOpenchamber
-    : isRecord(value.remote_openchamber)
-      ? value.remote_openchamber
+    : isRecord(value.remote_openaurora)
+      ? value.remote_openaurora
       : {};
 
   const localRaw = isRecord(value.localForward)
@@ -231,7 +231,7 @@ const parseInstance = (value: unknown): DesktopSshInstance | null => {
   const preferredLocalPort =
     readNumber(localRaw, 'preferredLocalPort') ?? readNumber(localRaw, 'preferred_local_port');
   const sshPassword = parseStoredSecret(authRaw.sshPassword || authRaw.ssh_password);
-  const openchamberPassword = parseStoredSecret(authRaw.openchamberPassword || authRaw.openchamber_password);
+  const openauroraPassword = parseStoredSecret(authRaw.openauroraPassword || authRaw.openaurora_password);
 
   return {
     id,
@@ -258,7 +258,7 @@ const parseInstance = (value: unknown): DesktopSshInstance | null => {
     },
     auth: {
       ...(sshPassword ? { sshPassword } : {}),
-      ...(openchamberPassword ? { openchamberPassword } : {}),
+      ...(openauroraPassword ? { openauroraPassword } : {}),
     },
     portForwards,
   };
@@ -442,7 +442,7 @@ export const listenDesktopSshStatus = async (
     return async () => {};
   }
 
-  const unlisten = await listen('openchamber:ssh-instance-status', (event) => {
+  const unlisten = await listen('openaurora:ssh-instance-status', (event) => {
     const status = parseStatus(event?.payload);
     if (!status) return;
     listener(status);

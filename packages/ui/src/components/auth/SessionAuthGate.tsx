@@ -6,7 +6,7 @@ import { isDesktopShell, isVSCodeRuntime } from '@/lib/desktop';
 import { syncDesktopSettings, initializeAppearancePreferences } from '@/lib/persistence';
 import { applyPersistedDirectoryPreferences } from '@/lib/directoryPersistence';
 import { DesktopHostSwitcherInline } from '@/components/desktop/DesktopHostSwitcher';
-import { OpenChamberLogo } from '@/components/ui/OpenChamberLogo';
+import { OpenAuroraLogo } from '@/components/ui/OpenAuroraLogo';
 
 const STATUS_CHECK_ENDPOINT = '/auth/session';
 
@@ -64,7 +64,7 @@ const AuthShell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 const LoadingScreen: React.FC = () => (
   <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
-    <OpenChamberLogo width={120} height={120} isAnimated />
+    <OpenAuroraLogo width={120} height={120} isAnimated />
   </div>
 );
 
@@ -295,7 +295,7 @@ export const SessionAuthGate: React.FC<SessionAuthGateProps> = ({ children }) =>
         <div className="flex flex-col items-center gap-6 w-full max-w-xs">
           <div className="flex flex-col items-center gap-1 text-center">
             <h1 className="text-xl font-semibold text-foreground">
-              {isTunnelLocked ? 'Tunnel access required' : 'Unlock OpenChamber'}
+              {isTunnelLocked ? 'Tunnel access required' : 'Unlock OpenAurora'}
             </h1>
             <p className="typography-meta text-muted-foreground">
               {isTunnelLocked
@@ -310,7 +310,7 @@ export const SessionAuthGate: React.FC<SessionAuthGateProps> = ({ children }) =>
                 <div className="relative flex-1">
                   <RiLockLine className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
                   <Input
-                    id="openchamber-ui-password"
+                    id="openaurora-ui-password"
                     ref={passwordInputRef}
                     type="password"
                     autoComplete="current-password"

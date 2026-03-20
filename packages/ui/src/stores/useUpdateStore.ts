@@ -31,7 +31,7 @@ interface UpdateStore extends UpdateState {
 
 async function checkForWebUpdates(): Promise<UpdateInfo | null> {
   try {
-    const response = await fetch('/api/openchamber/update-check', {
+    const response = await fetch('/api/openaurora/update-check', {
       method: 'GET',
       headers: { Accept: 'application/json' },
     });

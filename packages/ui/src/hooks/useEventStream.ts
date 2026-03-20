@@ -1054,18 +1054,18 @@ export const useEventStream = (options?: { enabled?: boolean }) => {
         }
         break;
 
-      case 'openchamber:session-activity':
+      case 'openaurora:session-activity':
         {
           const sessionId = readStringProp(props, ['sessionId', 'sessionID']);
           const phase = typeof props.phase === 'string' ? props.phase : null;
           if (sessionId && (phase === 'idle' || phase === 'busy' || phase === 'cooldown')) {
-            updateSessionActivityPhase(sessionId, phase, 'sse:openchamber:session-activity');
+            updateSessionActivityPhase(sessionId, phase, 'sse:openaurora:session-activity');
             requestSessionMetadataRefresh(sessionId, typeof props.directory === 'string' ? props.directory : null);
           }
         }
         break;
 
-      case 'openchamber:session-status':
+      case 'openaurora:session-status':
         {
           const sessionId = readStringProp(props, ['sessionId', 'sessionID']);
           const status = typeof props.status === 'string' ? props.status : null;
@@ -1075,8 +1075,8 @@ export const useEventStream = (options?: { enabled?: boolean }) => {
           if (sessionId && status) {
             // Update session status
             if (status === 'busy') {
-              updateSessionStatus(sessionId, { type: 'busy' }, 'sse:openchamber:session-status');
-              updateSessionActivityPhase(sessionId, 'busy', 'sse:openchamber:session-status', { syncStatus: false });
+              updateSessionStatus(sessionId, { type: 'busy' }, 'sse:openaurora:session-status');
+              updateSessionActivityPhase(sessionId, 'busy', 'sse:openaurora:session-status', { syncStatus: false });
             } else if (status === 'retry') {
               const metadata = (typeof props.metadata === 'object' && props.metadata !== null) ? props.metadata as Record<string, unknown> : {};
               updateSessionStatus(sessionId, {
@@ -1084,13 +1084,13 @@ export const useEventStream = (options?: { enabled?: boolean }) => {
                 attempt: typeof metadata.attempt === 'number' ? metadata.attempt : undefined,
                 message: typeof metadata.message === 'string' ? metadata.message : undefined,
                 next: typeof metadata.next === 'number' ? metadata.next : undefined,
-              }, 'sse:openchamber:session-status');
-              updateSessionActivityPhase(sessionId, 'busy', 'sse:openchamber:session-status', { syncStatus: false });
+              }, 'sse:openaurora:session-status');
+              updateSessionActivityPhase(sessionId, 'busy', 'sse:openaurora:session-status', { syncStatus: false });
             } else {
-              updateSessionStatus(sessionId, { type: 'idle' }, 'sse:openchamber:session-status');
-              updateSessionActivityPhase(sessionId, 'idle', 'sse:openchamber:session-status', { syncStatus: false });
+              updateSessionStatus(sessionId, { type: 'idle' }, 'sse:openaurora:session-status');
+              updateSessionActivityPhase(sessionId, 'idle', 'sse:openaurora:session-status', { syncStatus: false });
               if (needsAttention) {
-                repairSessionDerivedState('openchamber.session-status_attention_idle', { refreshActivity: false });
+                repairSessionDerivedState('openaurora.session-status_attention_idle', { refreshActivity: false });
               }
             }
 
@@ -2013,7 +2013,7 @@ export const useEventStream = (options?: { enabled?: boolean }) => {
         break;
       }
 
-      case 'openchamber:notification': {
+      case 'openaurora:notification': {
         serverNotificationEventSeenRef.current = true;
         const title = typeof (props as { title?: unknown }).title === 'string' ? (props as { title: string }).title : '';
         const body = typeof (props as { body?: unknown }).body === 'string' ? (props as { body: string }).body : '';

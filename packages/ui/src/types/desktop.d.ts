@@ -1,8 +1,8 @@
 declare global {
   interface Window {
-    __OPENCHAMBER_HOME__?: string;
-    __OPENCHAMBER_MACOS_MAJOR__?: number;
-    __OPENCHAMBER_LOCAL_ORIGIN__?: string;
+    __OPENAURORA_HOME__?: string;
+    __OPENAURORA_MACOS_MAJOR__?: number;
+    __OPENAURORA_LOCAL_ORIGIN__?: string;
   }
 }
 

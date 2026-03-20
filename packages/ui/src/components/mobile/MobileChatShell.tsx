@@ -20,7 +20,6 @@ import {
 } from '@remixicon/react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { toast } from '@/components/ui';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +31,6 @@ import { DiffIcon } from '@/components/icons/DiffIcon';
 import { MobileChatShellProvider } from '@/components/mobile/MobileChatShellContext';
 import { ChatView } from '@/components/views';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
-import { isDesktopLocalOriginActive, isTauriShell, requestDirectoryAccess } from '@/lib/desktop';
 import type { ProjectEntry } from '@/lib/api/types';
 import { PROJECT_COLOR_MAP, PROJECT_ICON_MAP, getProjectIconImageUrl } from '@/lib/projectMeta';
 import { createWorktreeSession } from '@/lib/worktreeSessionCreator';
@@ -61,24 +59,24 @@ const getSessionUpdatedAt = (session: Session): number => {
 
 const formatRelativeTime = (timestamp?: number | null): string => {
   if (!timestamp || !Number.isFinite(timestamp)) {
-    return '刚刚';
+    return 'Just now';
   }
 
   const diff = Math.max(0, Date.now() - timestamp);
   if (diff < 60_000) {
-    return '刚刚';
+    return 'Just now';
   }
   if (diff < 3_600_000) {
-    return `${Math.floor(diff / 60_000)} 分钟前`;
+    return `${Math.floor(diff / 60_000)}min ago`;
   }
   if (diff < 86_400_000) {
-    return `${Math.floor(diff / 3_600_000)} 小时前`;
+    return `${Math.floor(diff / 3_600_000)}h ago`;
   }
   if (diff < 604_800_000) {
-    return `${Math.floor(diff / 86_400_000)} 天前`;
+    return `${Math.floor(diff / 86_400_000)}d ago`;
   }
 
-  return new Date(timestamp).toLocaleDateString('zh-CN', {
+  return new Date(timestamp).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
   });
@@ -86,7 +84,7 @@ const formatRelativeTime = (timestamp?: number | null): string => {
 
 const compactPath = (path: string | null | undefined, homeDirectory?: string | null): string => {
   if (!path) {
-    return '未绑定目录';
+    return 'No directory linked';
   }
 
   const normalized = normalizePath(path) ?? path;
@@ -230,14 +228,12 @@ const MobileProjectsPage: React.FC<{
 }> = ({ onOpenChat }) => {
   const projects = useProjectsStore((state) => state.projects);
   const activeProjectId = useProjectsStore((state) => state.activeProjectId);
-  const addProject = useProjectsStore((state) => state.addProject);
   const setActiveProject = useProjectsStore((state) => state.setActiveProject);
   const sessions = useSessionStore((state) => state.sessions);
   const openNewSessionDraft = useSessionStore((state) => state.openNewSessionDraft);
   const worktreeMetadata = useSessionStore((state) => state.worktreeMetadata);
   const homeDirectory = useDirectoryStore((state) => state.homeDirectory);
   const [creatingWorktreeFor, setCreatingWorktreeFor] = React.useState<string | null>(null);
-  const tauriIpcAvailable = React.useMemo(() => isTauriShell(), []);
 
   const sortedProjects = React.useMemo(() => {
     return [...projects].sort((a, b) => {
@@ -257,34 +253,8 @@ const MobileProjectsPage: React.FC<{
   }, [sessions, sortedProjects, worktreeMetadata]);
 
   const handleAddProject = React.useCallback(() => {
-    if (!tauriIpcAvailable || !isDesktopLocalOriginActive()) {
-      sessionEvents.requestDirectoryDialog();
-      return;
-    }
-
-    requestDirectoryAccess('')
-      .then((result) => {
-        if (result.success && result.path) {
-          const added = addProject(result.path, { id: result.projectId });
-          if (!added) {
-            toast.error('添加项目失败', {
-              description: '请选择有效目录。',
-            });
-          }
-          return;
-        }
-
-        if (result.error && result.error !== 'Directory selection cancelled') {
-          toast.error('选择目录失败', {
-            description: result.error,
-          });
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to select directory:', error);
-        toast.error('选择目录失败');
-      });
-  }, [addProject, tauriIpcAvailable]);
+    sessionEvents.requestProjectCreateDialog();
+  }, []);
 
   const handleCreateSession = React.useCallback((project: ProjectEntry) => {
     setActiveProject(project.id);
@@ -311,13 +281,13 @@ const MobileProjectsPage: React.FC<{
         <div className="px-4 pb-3 pt-4" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="typography-meta text-muted-foreground">手机项目页</p>
-              <h1 className="typography-ui-header truncate text-foreground">项目</h1>
+              <p className="typography-meta text-muted-foreground">Mobile projects</p>
+              <h1 className="typography-ui-header truncate text-foreground">Projects</h1>
             </div>
             <div className="flex items-center gap-2">
               <Button type="button" size="sm" variant="outline" onClick={handleAddProject}>
                 <RiFolderAddLine className="size-4" />
-                添加
+                Add
               </Button>
               <MobileShellMenu />
             </div>
@@ -358,7 +328,7 @@ const MobileProjectsPage: React.FC<{
                         <h3 className="truncate text-sm font-semibold text-foreground">{label}</h3>
                         {isActive ? (
                           <span className="rounded-full bg-[var(--interactive-selection)] px-2 py-0.5 text-[11px] font-medium text-[var(--interactive-selection-foreground)]">
-                            当前
+                            Current
                           </span>
                         ) : null}
                       </div>
@@ -368,8 +338,8 @@ const MobileProjectsPage: React.FC<{
                           <RiTimeLine className="size-3.5" />
                           {formatRelativeTime(project.lastOpenedAt ?? project.addedAt ?? 0)}
                         </span>
-                        <span>{sessionCount} 个对话</span>
-                        {worktreeCount > 0 ? <span>{worktreeCount} 个 Worktree</span> : null}
+                        <span>{sessionCount} sessions</span>
+                        {worktreeCount > 0 ? <span>{worktreeCount} worktrees</span> : null}
                       </div>
                     </div>
                   </button>
@@ -377,7 +347,7 @@ const MobileProjectsPage: React.FC<{
                   <div className="grid grid-cols-2 gap-2 border-t border-border px-4 py-3">
                     <Button type="button" size="sm" onClick={() => handleCreateSession(project)}>
                       <RiMessage2Line className="size-4" />
-                      新建对话
+                      New session
                     </Button>
                     <Button
                       type="button"
@@ -403,13 +373,13 @@ const MobileProjectsPage: React.FC<{
             <div className="mb-4 flex size-14 items-center justify-center rounded-2xl border border-border bg-card text-muted-foreground">
               <RiFolderOpenLine className="size-6" />
             </div>
-            <h2 className="text-lg font-semibold text-foreground">还没有项目</h2>
+            <h2 className="text-lg font-semibold text-foreground">No projects yet</h2>
             <p className="mt-2 max-w-xs text-sm leading-6 text-muted-foreground">
-              添加一个本地目录后，这里会显示手机版项目卡片视图。
+              Add a local directory to see the mobile project cards here.
             </p>
             <Button type="button" className="mt-5" onClick={handleAddProject}>
               <RiAddLine className="size-4" />
-              添加第一个项目
+              Add your first project
             </Button>
           </div>
         )}
@@ -477,8 +447,8 @@ const MobileConversationsPage: React.FC<{
         <div className="px-4 pb-3 pt-4" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="typography-meta text-muted-foreground">手机对话页</p>
-              <h1 className="typography-ui-header truncate text-foreground">对话</h1>
+              <p className="typography-meta text-muted-foreground">Mobile conversations</p>
+              <h1 className="typography-ui-header truncate text-foreground">Conversations</h1>
             </div>
             <MobileShellMenu />
           </div>
@@ -490,7 +460,7 @@ const MobileConversationsPage: React.FC<{
           <div className="mx-auto flex w-full max-w-2xl flex-col">
             {sortedSessions.map((session) => {
               const project = resolveProjectForSession(session);
-              const label = project ? getProjectDisplayName(project, homeDirectory) : (session.title?.trim() || '未命名对话');
+              const label = project ? getProjectDisplayName(project, homeDirectory) : (session.title?.trim() || 'Untitled Conversation');
               const statusType = sessionStatus?.get(session.id)?.type ?? 'idle';
               const isWorking = statusType === 'busy' || statusType === 'retry';
               const needsAttention = sessionAttentionStates.get(session.id)?.needsAttention === true;
@@ -529,7 +499,7 @@ const MobileConversationsPage: React.FC<{
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <h3 className="truncate text-sm font-semibold text-foreground">
-                            {session.title?.trim() || '未命名对话'}
+                            {session.title?.trim() || 'Untitled Conversation'}
                           </h3>
                           {worktree ? (
                             <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
@@ -555,7 +525,7 @@ const MobileConversationsPage: React.FC<{
                           {worktree.branch}
                         </span>
                       ) : null}
-                      {needsAttention && !isWorking ? <span className="text-[var(--status-info)]">有未读更新</span> : null}
+                      {needsAttention && !isWorking ? <span className="text-[var(--status-info)]">Unread updates</span> : null}
                     </div>
                   </div>
                 </button>
@@ -567,13 +537,13 @@ const MobileConversationsPage: React.FC<{
             <div className="mb-4 flex size-14 items-center justify-center rounded-2xl border border-border bg-card text-muted-foreground">
               <RiWifiOffLine className="size-6" />
             </div>
-            <h2 className="text-lg font-semibold text-foreground">还没有对话</h2>
+            <h2 className="text-lg font-semibold text-foreground">No conversations yet</h2>
             <p className="mt-2 max-w-xs text-sm leading-6 text-muted-foreground">
-              去项目页选一个项目，然后从手机版项目卡片里直接开启新对话。
+              Open Workspaces, pick one, and start a new conversation from the mobile workspace card.
             </p>
             <Button type="button" className="mt-5" onClick={onShowProjects}>
               <RiFolder6Line className="size-4" />
-              去项目页
+              Go to Workspaces
             </Button>
           </div>
         )}
@@ -643,7 +613,7 @@ const MobileChatPage: React.FC<{
   }, [activeProjectId, chatDirectory, projects]);
 
   const currentWorktree = currentSessionId ? worktreeMetadata.get(currentSessionId) : null;
-  const title = currentSession?.title?.trim() || '新对话';
+  const title = currentSession?.title?.trim() || 'New session';
   const subtitle = activeProject
     ? getProjectDisplayName(activeProject, homeDirectory)
     : compactPath(chatDirectory, homeDirectory);
@@ -751,7 +721,7 @@ export const MobileChatShell: React.FC = () => {
             onClick={() => setPage('conversations')}
           >
             <RiChat4Line className="size-5" />
-            <span className="mt-1">对话</span>
+            <span className="mt-1">Chats</span>
           </button>
           <button
             type="button"
@@ -764,7 +734,7 @@ export const MobileChatShell: React.FC = () => {
             onClick={() => setPage('projects')}
           >
             <RiFolder6Line className="size-5" />
-            <span className="mt-1">项目</span>
+            <span className="mt-1">Projects</span>
           </button>
         </nav>
       ) : null}

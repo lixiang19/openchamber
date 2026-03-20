@@ -189,7 +189,7 @@ export function SessionNodeItem(props: Props): React.ReactNode {
   const isMissingDirectory = directoryState === 'missing';
   const memoryState = sessionMemoryState.get(session.id);
   const isActive = currentSessionId === session.id;
-  const sessionTitle = session.title || 'Untitled Session';
+  const sessionTitle = session.title || 'Untitled Conversation';
   const hasChildren = node.children.length > 0;
   const isPinnedSession = pinnedSessionIds.has(session.id);
   const isExpanded = hasSessionSearchQuery ? true : expandedParents.has(session.id);
@@ -219,7 +219,7 @@ export function SessionNodeItem(props: Props): React.ReactNode {
               onChange={(event) => setEditTitle(event.target.value)}
               className="flex-1 min-w-0 bg-transparent typography-ui-label outline-none placeholder:text-muted-foreground"
               autoFocus
-              placeholder="Rename session"
+              placeholder="Rename conversation"
               onKeyDown={(event) => {
                 if (event.key === 'Escape') {
                   event.stopPropagation();
@@ -243,7 +243,7 @@ export function SessionNodeItem(props: Props): React.ReactNode {
               {(sessionSummary?.files ?? 0) > 0 || hasChildren ? (
                 <span className="flex items-center gap-2 flex-shrink-0">
                   {(sessionSummary?.files ?? 0) > 0 ? <Tooltip><TooltipTrigger asChild><span className="inline-flex items-center gap-0.5"><RiFileEditLine className="h-3 w-3 text-muted-foreground/70" /><span>{sessionSummary!.files}</span></span></TooltipTrigger><TooltipContent side="bottom" sideOffset={4}><p>{sessionSummary!.files} changed {sessionSummary!.files === 1 ? 'file' : 'files'}</p></TooltipContent></Tooltip> : null}
-                  {hasChildren ? <Tooltip><TooltipTrigger asChild><span className="inline-flex items-center gap-0.5"><RiRobot2Line className="h-3 w-3 text-muted-foreground/70" /><span>{node.children.length}</span></span></TooltipTrigger><TooltipContent side="bottom" sideOffset={4}><p>{node.children.length} {node.children.length === 1 ? 'sub-session' : 'sub-sessions'}</p></TooltipContent></Tooltip> : null}
+                  {hasChildren ? <Tooltip><TooltipTrigger asChild><span className="inline-flex items-center gap-0.5"><RiRobot2Line className="h-3 w-3 text-muted-foreground/70" /><span>{node.children.length}</span></span></TooltipTrigger><TooltipContent side="bottom" sideOffset={4}><p>{node.children.length} {node.children.length === 1 ? 'sub-task' : 'sub-tasks'}</p></TooltipContent></Tooltip> : null}
                 </span>
               ) : null}
             </div>
@@ -332,7 +332,7 @@ export function SessionNodeItem(props: Props): React.ReactNode {
                     {hasChildren ? (
                       <div className="flex items-center gap-1">
                         <RiRobot2Line className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-muted-foreground">{node.children.length} {node.children.length === 1 ? 'sub-session' : 'sub-sessions'}</span>
+                        <span className="text-muted-foreground">{node.children.length} {node.children.length === 1 ? 'sub-task' : 'sub-tasks'}</span>
                       </div>
                     ) : null}
                     {isMissingDirectory ? (
@@ -380,7 +380,7 @@ export function SessionNodeItem(props: Props): React.ReactNode {
                   {(sessionSummary?.files ?? 0) > 0 || hasChildren ? (
                     <span className="flex items-center gap-2 flex-shrink-0">
                       {(sessionSummary?.files ?? 0) > 0 ? <Tooltip><TooltipTrigger asChild><span className="inline-flex items-center gap-0.5"><RiFileEditLine className="h-3 w-3 text-muted-foreground/70" /><span>{sessionSummary!.files}</span></span></TooltipTrigger><TooltipContent side="bottom" sideOffset={4}><p>{sessionSummary!.files} changed {sessionSummary!.files === 1 ? 'file' : 'files'}</p></TooltipContent></Tooltip> : null}
-                      {hasChildren ? <Tooltip><TooltipTrigger asChild><span className="inline-flex items-center gap-0.5"><RiRobot2Line className="h-3 w-3 text-muted-foreground/70" /><span>{node.children.length}</span></span></TooltipTrigger><TooltipContent side="bottom" sideOffset={4}><p>{node.children.length} {node.children.length === 1 ? 'sub-session' : 'sub-sessions'}</p></TooltipContent></Tooltip> : null}
+                      {hasChildren ? <Tooltip><TooltipTrigger asChild><span className="inline-flex items-center gap-0.5"><RiRobot2Line className="h-3 w-3 text-muted-foreground/70" /><span>{node.children.length}</span></span></TooltipTrigger><TooltipContent side="bottom" sideOffset={4}><p>{node.children.length} {node.children.length === 1 ? 'sub-task' : 'sub-tasks'}</p></TooltipContent></Tooltip> : null}
                     </span>
                   ) : null}
                   {isMissingDirectory ? <span className="inline-flex items-center gap-0.5 text-status-warning flex-shrink-0"><RiErrorWarningLine className="h-3 w-3" />Missing</span> : null}

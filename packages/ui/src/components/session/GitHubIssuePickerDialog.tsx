@@ -388,7 +388,7 @@ export function GitHubIssuePickerDialog({
       void useSessionStore.getState().updateSessionTitle(sessionId, sessionTitle).catch(() => undefined);
 
       try {
-        useSessionStore.getState().initializeNewOpenChamberSession(sessionId, useConfigStore.getState().agents);
+        useSessionStore.getState().initializeNewOpenAuroraSession(sessionId, useConfigStore.getState().agents);
       } catch {
         // ignore
       }

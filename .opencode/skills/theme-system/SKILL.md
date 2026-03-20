@@ -1,13 +1,13 @@
 ---
 name: theme-system
-description: Use when creating or modifying UI components, styling, or visual elements in OpenChamber. All UI colors must use theme tokens - never hardcoded values or Tailwind color classes.
+description: Use when creating or modifying UI components, styling, or visual elements in OpenAurora. All UI colors must use theme tokens - never hardcoded values or Tailwind color classes.
 license: MIT
 compatibility: opencode
 ---
 
 ## Overview
 
-OpenChamber uses a JSON-based theme system. Themes are defined in `packages/ui/src/lib/theme/themes/`. Users can also add custom themes via `~/.config/openchamber/themes/`.
+OpenAurora uses a JSON-based theme system. Themes are defined in `packages/ui/src/lib/theme/themes/`. Users can also add custom themes via `~/.config/openaurora/themes/`.
 
 **Core principle:** UI colors must use theme tokens - never hardcoded hex colors or Tailwind color classes.
 

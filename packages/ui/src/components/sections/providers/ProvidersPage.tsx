@@ -636,7 +636,7 @@ export const ProvidersPage: React.FC = () => {
                           <RiInformationLine className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
                         </TooltipTrigger>
                         <TooltipContent sideOffset={8} className="max-w-xs">
-                          Keys are sent directly to OpenCode and never stored by OpenChamber.
+                          Keys are sent directly to OpenCode and never stored by OpenAurora.
                         </TooltipContent>
                       </Tooltip>
                     </label>
@@ -839,7 +839,7 @@ export const ProvidersPage: React.FC = () => {
                         <RiInformationLine className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent sideOffset={8} className="max-w-xs">
-                        Keys are sent directly to OpenCode and never stored by OpenChamber.
+                        Keys are sent directly to OpenCode and never stored by OpenAurora.
                       </TooltipContent>
                     </Tooltip>
                   </label>

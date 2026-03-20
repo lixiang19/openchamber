@@ -7,7 +7,7 @@ import { getWebviewHtml } from './webviewHtml';
 import { openSseProxy } from './sseProxy';
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'openchamber.chatView';
+  public static readonly viewType = 'openaurora.chatView';
 
   private _view?: vscode.WebviewView;
 
@@ -71,7 +71,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       webviewView.webview.postMessage(response);
 
       if (message.type === 'api:config/settings:save' && response.success) {
-        void vscode.commands.executeCommand('openchamber.internal.settingsSynced', response.data);
+        void vscode.commands.executeCommand('openaurora.internal.settingsSynced', response.data);
       }
     });
   }

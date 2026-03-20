@@ -58,7 +58,7 @@ const WS_RECONNECT_MAX_DELAY_MS = 30000;
 const WS_RECONNECT_JITTER_MS = 250;
 const WS_KEEPALIVE_INTERVAL_MS = 20000;
 const WS_CONNECT_TIMEOUT_MS = 5000;
-const GLOBAL_TERMINAL_INPUT_STATE_KEY = '__openchamberTerminalInputWsState';
+const GLOBAL_TERMINAL_INPUT_STATE_KEY = '__openauroraTerminalInputWsState';
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();

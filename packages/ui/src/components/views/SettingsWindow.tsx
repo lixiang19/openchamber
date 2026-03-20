@@ -59,7 +59,7 @@ export const SettingsWindow: React.FC<SettingsWindowProps> = ({ open, onOpenChan
           )}
         >
           <DialogPrimitive.Description id={descriptionId} className="sr-only">
-            OpenChamber settings window.
+            OpenAurora settings window.
           </DialogPrimitive.Description>
           <SettingsView onClose={() => onOpenChange(false)} isWindowed />
         </DialogPrimitive.Content>

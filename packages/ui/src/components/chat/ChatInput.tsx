@@ -80,7 +80,7 @@ type ChatDropIntent = 'attach' | 'insert-path';
 
 // Per-session draft key — preserves in-progress messages across project switches
 const getDraftKey = (sessionId: string | null): string =>
-    `openchamber_chat_input_draft_${sessionId ?? 'new'}`;
+    `openaurora_chat_input_draft_${sessionId ?? 'new'}`;
 
 // Helper to safely read from localStorage for a given session
 const getStoredDraft = (sessionId: string | null): string => {

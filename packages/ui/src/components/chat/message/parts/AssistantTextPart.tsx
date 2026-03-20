@@ -51,7 +51,7 @@ const AssistantTextPart: React.FC<AssistantTextPartProps> = ({
             lastDisplayLengthRef.current = displayTextContent.length;
             return;
         }
-        const debugEnabled = window.localStorage.getItem('openchamber_stream_debug') === '1';
+        const debugEnabled = window.localStorage.getItem('openaurora_stream_debug') === '1';
         if (!debugEnabled) {
             lastDisplayLengthRef.current = displayTextContent.length;
             return;

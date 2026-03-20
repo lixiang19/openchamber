@@ -1,4 +1,4 @@
-import type { VSCodeAPI } from '@openchamber/ui/lib/api/types';
+import type { VSCodeAPI } from '@openaurora/ui/lib/api/types';
 import { executeVSCodeCommand } from './bridge';
 
 export const createVSCodeActionsAPI = (): VSCodeAPI => ({
@@ -8,6 +8,6 @@ export const createVSCodeActionsAPI = (): VSCodeAPI => ({
   },
 
   async openAgentManager(): Promise<void> {
-    await executeVSCodeCommand('openchamber.openAgentManager');
+    await executeVSCodeCommand('openaurora.openAgentManager');
   },
 });

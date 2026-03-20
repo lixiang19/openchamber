@@ -128,7 +128,7 @@ export const OpenCodeCliSettings: React.FC = () => {
 
         <div className="py-1.5">
           <div className="typography-micro text-muted-foreground/70">
-            Tip: you can also use <span className="font-mono">OPENCODE_BINARY</span> env var, but this setting persists in <span className="font-mono">~/.config/openchamber/settings.json</span>.
+            Tip: you can also use <span className="font-mono">OPENCODE_BINARY</span> env var, but this setting persists in <span className="font-mono">~/.config/openaurora/settings.json</span>.
           </div>
         </div>
 

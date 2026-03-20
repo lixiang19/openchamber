@@ -105,13 +105,13 @@ export interface BridgeContext {
   context?: vscode.ExtensionContext;
 }
 
-const SETTINGS_KEY = 'openchamber.settings';
+const SETTINGS_KEY = 'openaurora.settings';
 const CLIENT_RELOAD_DELAY_MS = 800;
 const MAX_FILE_ATTACH_SIZE_BYTES = 10 * 1024 * 1024;
 const execFileAsync = promisify(execFile);
 const gpgconfCandidates = ['gpgconf', '/opt/homebrew/bin/gpgconf', '/usr/local/bin/gpgconf'];
 
-const OPENCHAMBER_SHARED_SETTINGS_PATH = path.join(os.homedir(), '.config', 'openchamber', 'settings.json');
+const OPENAURORA_SHARED_SETTINGS_PATH = path.join(os.homedir(), '.config', 'openaurora', 'settings.json');
 
 const guessMimeTypeFromExtension = (ext: string) => {
   switch (ext) {
@@ -175,7 +175,7 @@ type ParsedDiffHunk = {
   newLines: string[];
 };
 
-const VIRTUAL_DIFF_SCHEME = 'openchamber-diff';
+const VIRTUAL_DIFF_SCHEME = 'openaurora-diff';
 const virtualDiffContents = new Map<string, string>();
 let virtualDiffCounter = 0;
 let virtualDiffProviderDisposable: vscode.Disposable | null = null;
@@ -422,7 +422,7 @@ const fetchOpenCodeSkillsFromApi = async (ctx: BridgeContext | undefined, workin
 
 const readSharedSettingsFromDisk = (): Record<string, unknown> => {
   try {
-    const raw = fs.readFileSync(OPENCHAMBER_SHARED_SETTINGS_PATH, 'utf8');
+    const raw = fs.readFileSync(OPENAURORA_SHARED_SETTINGS_PATH, 'utf8');
     const parsed = JSON.parse(raw) as unknown;
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       return parsed as Record<string, unknown>;
@@ -435,11 +435,11 @@ const readSharedSettingsFromDisk = (): Record<string, unknown> => {
 
 const writeSharedSettingsToDisk = async (changes: Record<string, unknown>): Promise<void> => {
   try {
-    await fs.promises.mkdir(path.dirname(OPENCHAMBER_SHARED_SETTINGS_PATH), { recursive: true });
+    await fs.promises.mkdir(path.dirname(OPENAURORA_SHARED_SETTINGS_PATH), { recursive: true });
     const current = readSharedSettingsFromDisk();
     const next: Record<string, unknown> = { ...current, ...changes };
     // Keep empty-string sentinel (""), so other runtimes can detect explicit clears.
-    await fs.promises.writeFile(OPENCHAMBER_SHARED_SETTINGS_PATH, JSON.stringify(next, null, 2), 'utf8');
+    await fs.promises.writeFile(OPENAURORA_SHARED_SETTINGS_PATH, JSON.stringify(next, null, 2), 'utf8');
   } catch {
     // ignore
   }
@@ -1393,7 +1393,7 @@ const buildProxyJsonError = (status: number, error: string): ApiProxyResponsePay
 const tryHandleLocalFsProxy = async (method: string, requestPath: string): Promise<ApiProxyResponsePayload | null> => {
   let parsed: URL;
   try {
-    parsed = new URL(requestPath, 'https://openchamber.local');
+    parsed = new URL(requestPath, 'https://openaurora.local');
   } catch {
     return buildProxyJsonError(400, 'Invalid request path');
   }
@@ -1617,7 +1617,7 @@ export async function handleBridgeMessage(message: BridgeRequest, ctx?: BridgeCo
 
       case 'config:get': {
         const { key } = payload as { key: string };
-        const config = vscode.workspace.getConfiguration('openchamber');
+        const config = vscode.workspace.getConfiguration('openaurora');
         const value = config.get(key);
         return { id, type, success: true, data: { value } };
       }
@@ -3554,8 +3554,8 @@ export async function handleBridgeMessage(message: BridgeRequest, ctx?: BridgeCo
         return { id, type, success: false, error: `Unsupported method: ${normalizedMethod}` };
       }
 
-      case 'api:git/ignore-openchamber': {
-        // LEGACY_WORKTREES: only needed for <project>/.openchamber era. Safe to remove after legacy support dropped.
+      case 'api:git/ignore-openaurora': {
+        // LEGACY_WORKTREES: only needed for <project>/.openaurora era. Safe to remove after legacy support dropped.
         // This is now a no-op since the function was removed with legacy worktree support.
         return { id, type, success: true, data: { success: true } };
       }

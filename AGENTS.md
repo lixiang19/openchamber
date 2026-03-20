@@ -1,7 +1,7 @@
-# OpenChamber - AI Agent Reference (verified)
+# OpenAurora - AI Agent Reference (verified)
 
 ## Core purpose
-OpenChamber provides UI runtimes (web/desktop/VS Code) for interacting with an OpenCode server (local auto-start or remote URL). UI uses HTTP + SSE via `@opencode-ai/sdk`.
+OpenAurora provides UI runtimes (web/desktop/VS Code) for interacting with an OpenCode server (local auto-start or remote URL). UI uses HTTP + SSE via `@opencode-ai/sdk`.
 
 ## Runtime architecture (IMPORTANT)
 - `Desktop` is a thin Tauri shell that starts the web server sidecar and loads the web UI from `http://127.0.0.1:<port>`.
@@ -28,7 +28,7 @@ Workspaces are `packages/*` (see `package.json`).
 Before changing any mapped module, read its module documentation first.
 
 ### web
-Web runtime and server implementation for OpenChamber.
+Web runtime and server implementation for OpenAurora.
 
 #### lib
 Server-side integration modules used by API routes and runtime services.

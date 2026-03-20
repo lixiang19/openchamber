@@ -20,8 +20,9 @@ import { ArrowsMerge } from '@/components/icons/ArrowsMerge';
 import { ProjectNotesTodoPanel } from '../ProjectNotesTodoPanel';
 import { formatDirectoryName } from '@/lib/utils';
 import { formatProjectLabel } from './utils';
-import type { ProjectRef } from '@/lib/openchamberConfig';
+import type { ProjectRef } from '@/lib/openauroraConfig';
 import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
+import { useUIStore } from '@/stores/useUIStore';
 
 type ProjectItem = {
   id: string;
@@ -111,6 +112,16 @@ export function SidebarHeader(props: Props): React.ReactNode {
 
   const displayMode = useSessionDisplayStore((state) => state.displayMode);
   const setDisplayMode = useSessionDisplayStore((state) => state.setDisplayMode);
+  const sessionSidebarHeaderVisibility = useUIStore((state) => state.sessionSidebarHeaderVisibility);
+  const showWorktreeButton = sessionSidebarHeaderVisibility.worktree;
+  const showMultiRunButton = sessionSidebarHeaderVisibility.multiRun;
+  const showNotesButton = sessionSidebarHeaderVisibility.notes;
+  const showSearchButton = sessionSidebarHeaderVisibility.search;
+  const showDisplayModeButton = sessionSidebarHeaderVisibility.displayMode;
+  const hasVisibleHeaderActions = (stableActiveProjectIsRepo && (showWorktreeButton || showMultiRunButton))
+    || showNotesButton
+    || showSearchButton
+    || showDisplayModeButton;
 
   if (hideDirectoryControls) {
     return null;
@@ -222,86 +233,88 @@ export function SidebarHeader(props: Props): React.ReactNode {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={addProjectButtonClass}
-                    aria-label="Session display mode"
-                  >
-                    <RiEqualizer2Line className={headerActionIconClass} />
-                  </button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" sideOffset={4}><p>Display mode</p></TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent align="end" className="min-w-[160px]">
-              <DropdownMenuItem
-                onClick={() => setDisplayMode('default')}
-                className="flex items-center justify-between"
-              >
-                <span>Default</span>
-                {displayMode === 'default' ? <RiCheckLine className="h-4 w-4 text-primary" /> : null}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => setDisplayMode('minimal')}
-                className="flex items-center justify-between"
-              >
-                <span>Minimal</span>
-                {displayMode === 'minimal' ? <RiCheckLine className="h-4 w-4 text-primary" /> : null}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {showDisplayModeButton ? (
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={addProjectButtonClass}
+                      aria-label="Session display mode"
+                    >
+                      <RiEqualizer2Line className={headerActionIconClass} />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={4}><p>Display mode</p></TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="min-w-[160px]">
+                <DropdownMenuItem
+                  onClick={() => setDisplayMode('default')}
+                  className="flex items-center justify-between"
+                >
+                  <span>Default</span>
+                  {displayMode === 'default' ? <RiCheckLine className="h-4 w-4 text-primary" /> : null}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setDisplayMode('minimal')}
+                  className="flex items-center justify-between"
+                >
+                  <span>Minimal</span>
+                  {displayMode === 'minimal' ? <RiCheckLine className="h-4 w-4 text-primary" /> : null}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </div>
       )}
 
-      {reserveHeaderActionsSpace ? (
+      {reserveHeaderActionsSpace && hasVisibleHeaderActions ? (
         <div className="-ml-1 flex h-auto min-h-8 flex-col gap-1">
           {activeProjectForHeader ? (
             <>
               <div className="flex h-8 -translate-y-px items-center justify-between gap-1.5 rounded-md pl-0 pr-1">
                 <div className="flex items-center gap-1.5">
-                {stableActiveProjectIsRepo ? (
-                  <>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!activeProjectForHeader) return;
-                            if (activeProjectForHeader.id !== activeProjectId) {
-                              setActiveProjectIdOnly(activeProjectForHeader.id);
-                            }
-                            setActiveMainTab('chat');
-                            setNewWorktreeDialogOpen(true);
-                          }}
-                          className={headerActionButtonClass}
-                          aria-label="New worktree"
-                        >
-                          <RiNodeTree className={headerActionIconClass} />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" sideOffset={4}><p>New worktree</p></TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          onClick={openMultiRunLauncher}
-                          className={headerActionButtonClass}
-                          aria-label="New multi-run"
-                        >
-                          <ArrowsMerge className={headerActionIconClass} />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" sideOffset={4}><p>New multi-run</p></TooltipContent>
-                    </Tooltip>
-                  </>
+                {stableActiveProjectIsRepo && showWorktreeButton ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!activeProjectForHeader) return;
+                          if (activeProjectForHeader.id !== activeProjectId) {
+                            setActiveProjectIdOnly(activeProjectForHeader.id);
+                          }
+                          setActiveMainTab('chat');
+                          setNewWorktreeDialogOpen(true);
+                        }}
+                        className={headerActionButtonClass}
+                        aria-label="New worktree"
+                      >
+                        <RiNodeTree className={headerActionIconClass} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" sideOffset={4}><p>New worktree</p></TooltipContent>
+                  </Tooltip>
+                ) : null}
+                {stableActiveProjectIsRepo && showMultiRunButton ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={openMultiRunLauncher}
+                        className={headerActionButtonClass}
+                        aria-label="New multi-run"
+                      >
+                        <ArrowsMerge className={headerActionIconClass} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" sideOffset={4}><p>New multi-run</p></TooltipContent>
+                  </Tooltip>
                 ) : null}
 
-                {useMobileNotesPanel ? (
+                {showNotesButton && useMobileNotesPanel ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
@@ -315,7 +328,8 @@ export function SidebarHeader(props: Props): React.ReactNode {
                     </TooltipTrigger>
                     <TooltipContent side="bottom" sideOffset={4}><p>Project notes</p></TooltipContent>
                   </Tooltip>
-                ) : (
+                ) : null}
+                {showNotesButton && !useMobileNotesPanel ? (
                   <DropdownMenu open={projectNotesPanelOpen} onOpenChange={setProjectNotesPanelOpen} modal={false}>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -339,59 +353,63 @@ export function SidebarHeader(props: Props): React.ReactNode {
                       />
                     </DropdownMenuContent>
                   </DropdownMenu>
-                )}
+                ) : null}
 
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => setIsSessionSearchOpen((prev) => !prev)}
-                      className={headerActionButtonClass}
-                      aria-label="Search sessions"
-                      aria-expanded={isSessionSearchOpen}
-                    >
-                      <RiSearchLine className={headerActionIconClass} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" sideOffset={4}><p>Search sessions</p></TooltipContent>
-                </Tooltip>
-                </div>
-
-                <DropdownMenu>
+                {showSearchButton ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className={headerActionButtonClass}
-                          aria-label="Session display mode"
-                        >
-                          <RiEqualizer2Line className={headerActionIconClass} />
-                        </button>
-                      </DropdownMenuTrigger>
+                      <button
+                        type="button"
+                        onClick={() => setIsSessionSearchOpen((prev) => !prev)}
+                        className={headerActionButtonClass}
+                        aria-label="Search conversations"
+                        aria-expanded={isSessionSearchOpen}
+                      >
+                        <RiSearchLine className={headerActionIconClass} />
+                      </button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom" sideOffset={4}><p>Display mode</p></TooltipContent>
+                    <TooltipContent side="bottom" sideOffset={4}><p>Search conversations</p></TooltipContent>
                   </Tooltip>
-                  <DropdownMenuContent align="end" className="min-w-[160px]">
-                    <DropdownMenuItem
-                      onClick={() => setDisplayMode('default')}
-                      className="flex items-center justify-between"
-                    >
-                      <span>Default</span>
-                      {displayMode === 'default' ? <RiCheckLine className="h-4 w-4 text-primary" /> : null}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setDisplayMode('minimal')}
-                      className="flex items-center justify-between"
-                    >
-                      <span>Minimal</span>
-                      {displayMode === 'minimal' ? <RiCheckLine className="h-4 w-4 text-primary" /> : null}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                ) : null}
+                </div>
+
+                {showDisplayModeButton ? (
+                  <DropdownMenu>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className={headerActionButtonClass}
+                            aria-label="Session display mode"
+                          >
+                            <RiEqualizer2Line className={headerActionIconClass} />
+                          </button>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" sideOffset={4}><p>Display mode</p></TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent align="end" className="min-w-[160px]">
+                      <DropdownMenuItem
+                        onClick={() => setDisplayMode('default')}
+                        className="flex items-center justify-between"
+                      >
+                        <span>Default</span>
+                        {displayMode === 'default' ? <RiCheckLine className="h-4 w-4 text-primary" /> : null}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setDisplayMode('minimal')}
+                        className="flex items-center justify-between"
+                      >
+                        <span>Minimal</span>
+                        {displayMode === 'minimal' ? <RiCheckLine className="h-4 w-4 text-primary" /> : null}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : null}
               </div>
 
-              {isSessionSearchOpen ? (
+              {showSearchButton && isSessionSearchOpen ? (
                 <div className="px-1 pb-1">
                   <div className="mb-1 flex items-center justify-between px-0.5 typography-micro text-muted-foreground/80">
                     {hasSessionSearchQuery ? (
@@ -405,7 +423,7 @@ export function SidebarHeader(props: Props): React.ReactNode {
                       ref={sessionSearchInputRef}
                       value={sessionSearchQuery}
                       onChange={(event) => setSessionSearchQuery(event.target.value)}
-                      placeholder="Search sessions..."
+                      placeholder="Search conversations..."
                       className="h-8 w-full rounded-md border border-border bg-transparent pl-8 pr-8 typography-ui-label text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                       onKeyDown={(event) => {
                         if (event.key === 'Escape') {

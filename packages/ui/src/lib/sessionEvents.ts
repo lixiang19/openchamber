@@ -17,10 +17,12 @@ export type SessionCreateRequest = {
 type DeleteListener = (request: SessionDeleteRequest) => void;
 type CreateListener = (request: SessionCreateRequest) => void;
 type DirectoryListener = () => void;
+type ProjectCreateDialogListener = () => void;
 
 const deleteListeners = new Set<DeleteListener>();
 const createListeners = new Set<CreateListener>();
 const directoryListeners = new Set<DirectoryListener>();
+const projectCreateDialogListeners = new Set<ProjectCreateDialogListener>();
 
 export const sessionEvents = {
   onDeleteRequest(listener: DeleteListener) {
@@ -53,5 +55,14 @@ export const sessionEvents = {
   },
   requestDirectoryDialog() {
     directoryListeners.forEach((listener) => listener());
+  },
+  onProjectCreateDialogRequest(listener: ProjectCreateDialogListener) {
+    projectCreateDialogListeners.add(listener);
+    return () => {
+      projectCreateDialogListeners.delete(listener);
+    };
+  },
+  requestProjectCreateDialog() {
+    projectCreateDialogListeners.forEach((listener) => listener());
   },
 };

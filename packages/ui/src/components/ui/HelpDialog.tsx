@@ -103,17 +103,17 @@ export const HelpDialog: React.FC = () => {
       ],
     },
     {
-      category: "Session Management",
+      category: "Conversation Management",
       items: [
         {
           id: 'new_chat',
-          description: "Create New Session",
+          description: "Create New Conversation",
           icon: RiAddLine,
           keys: '',
         },
         {
           id: 'new_chat_worktree',
-          description: "Create New Session in Worktree",
+          description: "Create New Worktree Conversation",
           icon: RiGitBranchLine,
           keys: '',
         },
@@ -230,7 +230,7 @@ export const HelpDialog: React.FC = () => {
             Keyboard Shortcuts
           </DialogTitle>
           <DialogDescription>
-            Use these keyboard shortcuts to navigate OpenChamber efficiently
+            Use these keyboard shortcuts to navigate OpenAurora efficiently
           </DialogDescription>
         </DialogHeader>
 

@@ -58,7 +58,7 @@ export const usePwaInstallPrompt = () => {
         return;
       }
 
-      installToastId = toast.info('Install OpenChamber for quicker access', {
+      installToastId = toast.info('Install OpenAurora for quicker access', {
         duration: Infinity,
         action: {
           label: 'Install',
@@ -72,7 +72,7 @@ export const usePwaInstallPrompt = () => {
     const onAppInstalled = () => {
       deferredPrompt = null;
       dismissInstallToast();
-      toast.success('OpenChamber installed');
+      toast.success('OpenAurora installed');
     };
 
     window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt as EventListener);

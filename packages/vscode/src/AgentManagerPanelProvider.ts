@@ -7,7 +7,7 @@ import { getWebviewHtml } from './webviewHtml';
 import { openSseProxy } from './sseProxy';
 
 export class AgentManagerPanelProvider {
-  public static readonly viewType = 'openchamber.agentManager';
+  public static readonly viewType = 'openaurora.agentManager';
 
   private _panel?: vscode.WebviewPanel;
   

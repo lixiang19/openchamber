@@ -178,7 +178,7 @@ export async function computeIntegratePlan(args: {
 
 async function createTempWorktree(repoRoot: string, targetBranch: string): Promise<string> {
   const tmp = await execCommand(
-    'mkdir -p "$HOME/.config/openchamber/tmp" && mktemp -d "$HOME/.config/openchamber/tmp/oc-integrate-XXXXXX"',
+    'mkdir -p "$HOME/.config/openaurora/tmp" && mktemp -d "$HOME/.config/openaurora/tmp/oc-integrate-XXXXXX"',
     repoRoot
   );
   const tmpDir = stdoutText(tmp);

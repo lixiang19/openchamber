@@ -38,6 +38,7 @@ interface ProjectsStore {
   activeProjectId: string | null;
 
   addProject: (path: string, options?: { label?: string; id?: string }) => ProjectEntry | null;
+  createProjectFromTemplate: (input: { projectName: string; parentDirectory: string }) => Promise<{ ok: boolean; error?: string; project?: ProjectEntry }>;
   removeProject: (id: string) => void;
   setActiveProject: (id: string) => void;
   setActiveProjectIdOnly: (id: string) => void;
@@ -294,8 +295,8 @@ const getVSCodeWorkspaceProject = (): { projects: ProjectEntry[]; activeProjectI
     return null;
   }
 
-  const runtimeApis = (window as unknown as { __OPENCHAMBER_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } })
-    .__OPENCHAMBER_RUNTIME_APIS__;
+  const runtimeApis = (window as unknown as { __OPENAURORA_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } })
+    .__OPENAURORA_RUNTIME_APIS__;
   if (!runtimeApis?.runtime?.isVSCode) {
     return null;
   }
@@ -320,7 +321,7 @@ const getVSCodeWorkspaceProject = (): { projects: ProjectEntry[]; activeProjectI
   };
 
   if (streamDebugEnabled()) {
-    console.log('[OpenChamber][VSCode][projects] Using workspace fallback project', entry);
+    console.log('[OpenAurora][VSCode][projects] Using workspace fallback project', entry);
   }
 
   return { projects: [entry], activeProjectId: id };
@@ -399,6 +400,46 @@ export const useProjectsStore = create<ProjectsStore>()(
       get().setActiveProject(entry.id);
       void get().discoverProjectIcon(entry.id);
       return entry;
+    },
+
+    createProjectFromTemplate: async (input: { projectName: string; parentDirectory: string }) => {
+      if (vscodeWorkspace) {
+        return { ok: false, error: 'Project templates are not supported in this runtime' };
+      }
+
+      try {
+        const response = await fetch('/api/projects/create-from-template', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(input),
+        });
+
+        const payload = (await response.json().catch(() => null)) as {
+          success?: boolean;
+          error?: string;
+          project?: ProjectEntry;
+          settings?: DesktopSettings;
+        } | null;
+
+        if (!response.ok || payload?.success !== true) {
+          return { ok: false, error: payload?.error || 'Failed to create project from template' };
+        }
+
+        if (payload?.settings) {
+          get().synchronizeFromSettings(payload.settings);
+        }
+
+        return {
+          ok: true,
+          project: payload?.project,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { ok: false, error: message || 'Failed to create project from template' };
+      }
     },
 
     removeProject: (id: string) => {
@@ -693,7 +734,7 @@ export const useProjectsStore = create<ProjectsStore>()(
 );
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('openchamber:settings-synced', (event: Event) => {
+  window.addEventListener('openaurora:settings-synced', (event: Event) => {
     const detail = (event as CustomEvent<DesktopSettings>).detail;
     if (detail && typeof detail === 'object') {
       useProjectsStore.getState().synchronizeFromSettings(detail);

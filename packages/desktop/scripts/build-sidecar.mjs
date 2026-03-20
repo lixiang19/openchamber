@@ -38,8 +38,8 @@ const inferTargetTriple = () => {
 
 const targetTriple = inferTargetTriple();
 const sidecarBaseName = process.platform === 'win32'
-  ? `openchamber-server-${targetTriple}.exe`
-  : `openchamber-server-${targetTriple}`;
+  ? `openaurora-server-${targetTriple}.exe`
+  : `openaurora-server-${targetTriple}`;
 const sidecarOutPath = path.join(sidecarsDir, sidecarBaseName);
 
 
@@ -93,7 +93,7 @@ await fs.mkdir(resourcesDir, { recursive: true });
 await fs.rm(resourcesWebDistDir, { recursive: true, force: true });
 await copyDir(webDistDir, resourcesWebDistDir);
 
-console.log('[desktop] building openchamber-server sidecar...');
+console.log('[desktop] building openaurora-server sidecar...');
 await fs.mkdir(sidecarsDir, { recursive: true });
 
 run(bunExe, [

@@ -218,13 +218,13 @@ export const SortableProjectItem: React.FC<SortableProjectItemProps> = ({
                     {showCreateButtons && isRepo && !hideDirectoryControls && settingsAutoCreateWorktree && onNewSession && (
                       <DropdownMenuItem onClick={onNewSession}>
                         <RiAddLine className="mr-1.5 h-4 w-4" />
-                        New Session
+                        New Conversation
                       </DropdownMenuItem>
                     )}
                     {showCreateButtons && isRepo && !hideDirectoryControls && !settingsAutoCreateWorktree && onNewWorktreeSession && (
                       <DropdownMenuItem onClick={onNewWorktreeSession}>
                         <RiGitBranchLine className="mr-1.5 h-4 w-4" />
-                        New Session in Worktree
+                        New Worktree Conversation
                       </DropdownMenuItem>
                     )}
                     {showCreateButtons && isRepo && !hideDirectoryControls && (

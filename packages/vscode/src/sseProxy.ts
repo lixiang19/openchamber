@@ -42,7 +42,7 @@ const serializeSseEventBlock = (event: StreamEvent<unknown>): string => {
 };
 
 const normalizeSsePath = (path: string): { pathname: '/event' | '/global/event'; directory: string | null } => {
-  const parsed = new URL(path, 'https://openchamber.invalid');
+  const parsed = new URL(path, 'https://openaurora.invalid');
   const pathname = parsed.pathname === '/global/event' ? '/global/event' : '/event';
   const directory = parsed.searchParams.get('directory');
   return {

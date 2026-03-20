@@ -121,7 +121,7 @@ export const PlanView: React.FC = () => {
   const editorViewRef = React.useRef<EditorView | null>(null);
   const editorWrapperRef = React.useRef<HTMLDivElement | null>(null);
 
-  const MD_VIEWER_MODE_KEY = 'openchamber:plan:md-viewer-mode';
+  const MD_VIEWER_MODE_KEY = 'openaurora:plan:md-viewer-mode';
 
   React.useEffect(() => {
     try {

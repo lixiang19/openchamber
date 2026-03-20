@@ -1,5 +1,5 @@
 {
-  "name": "@openchamber/web",
+  "name": "@openaurora/web",
   "version": "1.8.7",
   "private": false,
   "type": "module",
@@ -13,8 +13,8 @@
   },
   "scripts": {
     "dev": "bun run build:watch",
-    "dev:server": "bun server/index.js --port ${OPENCHAMBER_PORT:-3001}",
-    "dev:server:watch": "nodemon --watch server --ext js --exec \"bun server/index.js --port ${OPENCHAMBER_PORT:-3001}\"",
+    "dev:server": "bun server/index.js --port ${OPENAURORA_PORT:-3001}",
+    "dev:server:watch": "nodemon --watch server --ext js --exec \"bun server/index.js --port ${OPENAURORA_PORT:-3001}\"",
     "build": "vite build",
     "build:watch": "vite build --watch",
     "type-check": "tsc --noEmit",

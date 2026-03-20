@@ -61,12 +61,12 @@ const resolveDesktopBaseUrl = (): string | null => {
     return null;
   }
   const desktopServer = (window as typeof window & {
-    __OPENCHAMBER_DESKTOP_SERVER__?: { origin: string; apiPrefix?: string };
-    __OPENCHAMBER_RUNTIME_APIS__?: RuntimeAPIs;
-  }).__OPENCHAMBER_DESKTOP_SERVER__;
+    __OPENAURORA_DESKTOP_SERVER__?: { origin: string; apiPrefix?: string };
+    __OPENAURORA_RUNTIME_APIS__?: RuntimeAPIs;
+  }).__OPENAURORA_DESKTOP_SERVER__;
 
   const isDesktop = Boolean(
-    (window as typeof window & { __OPENCHAMBER_RUNTIME_APIS__?: RuntimeAPIs }).__OPENCHAMBER_RUNTIME_APIS__?.runtime?.isDesktop
+    (window as typeof window & { __OPENAURORA_RUNTIME_APIS__?: RuntimeAPIs }).__OPENAURORA_RUNTIME_APIS__?.runtime?.isDesktop
   );
 
   if (!desktopServer || !isDesktop) {
@@ -134,7 +134,7 @@ const getDesktopFilesApi = (): FilesAPI | null => {
   if (typeof window === "undefined") {
     return null;
   }
-  const apis = (window as typeof window & { __OPENCHAMBER_RUNTIME_APIS__?: RuntimeAPIs }).__OPENCHAMBER_RUNTIME_APIS__;
+  const apis = (window as typeof window & { __OPENAURORA_RUNTIME_APIS__?: RuntimeAPIs }).__OPENAURORA_RUNTIME_APIS__;
   if (apis && apis.runtime?.isDesktop && apis.files) {
     return apis.files;
   }
@@ -1400,7 +1400,7 @@ class OpencodeService {
       return `session.status:${event.directory}:${sessionId}`;
     }
 
-    if (eventType === 'openchamber:session-status') {
+    if (eventType === 'openaurora:session-status') {
       const sessionId = typeof properties?.sessionId === 'string'
         ? properties.sessionId
         : typeof properties?.sessionID === 'string'
@@ -1409,7 +1409,7 @@ class OpencodeService {
       if (!sessionId) {
         return null;
       }
-      return `openchamber:session-status:${sessionId}`;
+      return `openaurora:session-status:${sessionId}`;
     }
 
     if (eventType === 'message.part.updated') {
@@ -1977,7 +1977,7 @@ class OpencodeService {
 
       const healthData = await response.json();
 
-      // Check if the upstream API is ready (not just OpenChamber server)
+      // Check if the upstream API is ready (not just OpenAurora server)
       if (healthData.isOpenCodeReady === false) {
         return false;
       }

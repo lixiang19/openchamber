@@ -3,7 +3,7 @@ import { useProjectsStore } from '@/stores/useProjectsStore';
 import { isDesktopShell, isTauriShell } from '@/lib/desktop';
 import { desktopHostsGet, locationMatchesHost, redactSensitiveUrl } from '@/lib/desktopHosts';
 
-const APP_TITLE = 'OpenChamber';
+const APP_TITLE = 'OpenAurora';
 
 const formatProjectLabel = (label: string): string => {
   return label.replace(/[-_]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
@@ -59,7 +59,7 @@ export const useWindowTitle = () => {
     const refreshInstanceLabel = async () => {
       try {
         const currentHref = window.location.href;
-        const localOrigin = window.__OPENCHAMBER_LOCAL_ORIGIN__ || window.location.origin;
+        const localOrigin = window.__OPENAURORA_LOCAL_ORIGIN__ || window.location.origin;
 
         if (locationMatchesHost(currentHref, localOrigin)) {
           if (!cancelled) {

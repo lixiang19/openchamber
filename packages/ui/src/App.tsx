@@ -282,7 +282,7 @@ function App({ apis }: AppProps) {
       }
 
       const data = event.data as { type?: unknown; payload?: EmbeddedVisibilityPayload };
-      if (data?.type !== 'openchamber:embedded-visibility') {
+      if (data?.type !== 'openaurora:embedded-visibility') {
         return;
       }
 
@@ -290,16 +290,16 @@ function App({ apis }: AppProps) {
     };
 
     const scopedWindow = window as unknown as {
-      __openchamberSetEmbeddedVisibility?: (payload?: EmbeddedVisibilityPayload) => void;
+      __openauroraSetEmbeddedVisibility?: (payload?: EmbeddedVisibilityPayload) => void;
     };
 
-    scopedWindow.__openchamberSetEmbeddedVisibility = applyVisibility;
+    scopedWindow.__openauroraSetEmbeddedVisibility = applyVisibility;
     window.addEventListener('message', handleMessage);
 
     return () => {
       window.removeEventListener('message', handleMessage);
-      if (scopedWindow.__openchamberSetEmbeddedVisibility === applyVisibility) {
-        delete scopedWindow.__openchamberSetEmbeddedVisibility;
+      if (scopedWindow.__openauroraSetEmbeddedVisibility === applyVisibility) {
+        delete scopedWindow.__openauroraSetEmbeddedVisibility;
       }
     };
   }, [embeddedSessionChat]);
@@ -360,8 +360,8 @@ function App({ apis }: AppProps) {
     if (!isInitialized || isSwitchingDirectory) return;
     if (appReadyDispatchedRef.current) return;
     appReadyDispatchedRef.current = true;
-    (window as unknown as { __openchamberAppReady?: boolean }).__openchamberAppReady = true;
-    window.dispatchEvent(new Event('openchamber:app-ready'));
+    (window as unknown as { __openauroraAppReady?: boolean }).__openauroraAppReady = true;
+    window.dispatchEvent(new Event('openaurora:app-ready'));
   }, [isInitialized, isSwitchingDirectory]);
 
   useEventStream({ enabled: embeddedBackgroundWorkEnabled });
@@ -493,7 +493,7 @@ function App({ apis }: AppProps) {
   if (isVSCodeRuntime) {
     // Check if this is the Agent Manager panel
     const panelType = typeof window !== 'undefined' 
-      ? (window as { __OPENCHAMBER_PANEL_TYPE__?: 'chat' | 'agentManager' }).__OPENCHAMBER_PANEL_TYPE__ 
+      ? (window as { __OPENAURORA_PANEL_TYPE__?: 'chat' | 'agentManager' }).__OPENAURORA_PANEL_TYPE__ 
       : 'chat';
     
     if (panelType === 'agentManager') {

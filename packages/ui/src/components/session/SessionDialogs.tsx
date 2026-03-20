@@ -13,6 +13,8 @@ import {
 import { RiCheckboxBlankLine, RiCheckboxLine, RiDeleteBinLine, RiGitBranchLine } from '@remixicon/react';
 import { MobileOverlayPanel } from '@/components/ui/MobileOverlayPanel';
 import { DirectoryExplorerDialog } from './DirectoryExplorerDialog';
+import { ProjectCreateDialog } from './ProjectCreateDialog';
+import { TemplateProjectDialog } from './TemplateProjectDialog';
 import { cn, formatPathForDisplay } from '@/lib/utils';
 import type { Session } from '@opencode-ai/sdk/v2';
 import type { WorktreeMetadata } from '@/types/worktree';
@@ -22,8 +24,7 @@ import { useSessionStore } from '@/stores/useSessionStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useUIStore } from '@/stores/useUIStore';
-import { useFileSystemAccess } from '@/hooks/useFileSystemAccess';
-import { isDesktopLocalOriginActive, isTauriShell } from '@/lib/desktop';
+import { isDesktopLocalOriginActive, isTauriShell, requestDirectoryAccess, startAccessingDirectory } from '@/lib/desktop';
 import { useDeviceInfo } from '@/lib/device';
 import { sessionEvents } from '@/lib/sessionEvents';
 
@@ -49,7 +50,9 @@ type DeleteDialogState = {
 };
 
 export const SessionDialogs: React.FC = () => {
+    const [isProjectCreateDialogOpen, setIsProjectCreateDialogOpen] = React.useState(false);
     const [isDirectoryDialogOpen, setIsDirectoryDialogOpen] = React.useState(false);
+    const [isTemplateProjectDialogOpen, setIsTemplateProjectDialogOpen] = React.useState(false);
     const [hasShownInitialDirectoryPrompt, setHasShownInitialDirectoryPrompt] = React.useState(false);
     const [deleteDialog, setDeleteDialog] = React.useState<DeleteDialogState | null>(null);
     const [deleteDialogSummaries, setDeleteDialogSummaries] = React.useState<Array<{ session: Session; metadata: WorktreeMetadata }>>([]);
@@ -71,7 +74,6 @@ export const SessionDialogs: React.FC = () => {
     const setShowDeletionDialog = useUIStore((state) => state.setShowDeletionDialog);
     const { currentDirectory, homeDirectory, isHomeReady } = useDirectoryStore();
     const { projects, addProject, activeProjectId } = useProjectsStore();
-    const { requestAccess, startAccessing } = useFileSystemAccess();
     const { isMobile, isTablet, hasTouchInput } = useDeviceInfo();
     const useMobileOverlay = isMobile || isTablet || hasTouchInput;
 
@@ -135,9 +137,16 @@ export const SessionDialogs: React.FC = () => {
         }
 
         setHasShownInitialDirectoryPrompt(true);
+        setIsProjectCreateDialogOpen(true);
+    }, [
+        hasShownInitialDirectoryPrompt,
+        isHomeReady,
+        projects.length,
+    ]);
 
+    const openExistingProjectPicker = React.useCallback(() => {
         if (isTauriShell() && isDesktopLocalOriginActive()) {
-            requestAccess('')
+            requestDirectoryAccess('')
                 .then(async (result) => {
                     if (!result.success || !result.path) {
                         if (result.error && result.error !== 'Directory selection cancelled') {
@@ -148,7 +157,7 @@ export const SessionDialogs: React.FC = () => {
                         return;
                     }
 
-                    const accessResult = await startAccessing(result.path);
+                    const accessResult = await startAccessingDirectory(result.path);
                     if (!accessResult.success) {
                         toast.error('Failed to open directory', {
                             description: accessResult.error || 'Desktop could not grant file access.',
@@ -171,14 +180,7 @@ export const SessionDialogs: React.FC = () => {
         }
 
         setIsDirectoryDialogOpen(true);
-    }, [
-        addProject,
-        hasShownInitialDirectoryPrompt,
-        isHomeReady,
-        projects.length,
-        requestAccess,
-        startAccessing,
-    ]);
+    }, [addProject]);
 
     const openDeleteDialog = React.useCallback((payload: { sessions: Session[]; dateLabel?: string; mode?: 'session' | 'worktree'; worktree?: WorktreeMetadata | null }) => {
         setDeleteDialog({
@@ -248,7 +250,14 @@ export const SessionDialogs: React.FC = () => {
 
     React.useEffect(() => {
         return sessionEvents.onDirectoryRequest(() => {
+            setIsProjectCreateDialogOpen(false);
             setIsDirectoryDialogOpen(true);
+        });
+    }, []);
+
+    React.useEffect(() => {
+        return sessionEvents.onProjectCreateDialogRequest(() => {
+            setIsProjectCreateDialogOpen(true);
         });
     }, []);
 
@@ -578,7 +587,7 @@ export const SessionDialogs: React.FC = () => {
                                     •
                                 </span>
                                 <span className="truncate">
-                                    {session.title || 'Untitled Session'}
+                                    {session.title || 'Untitled Conversation'}
                                 </span>
                             </li>
                         ))}
@@ -783,6 +792,24 @@ export const SessionDialogs: React.FC = () => {
             <DirectoryExplorerDialog
                 open={isDirectoryDialogOpen}
                 onOpenChange={setIsDirectoryDialogOpen}
+            />
+
+            <ProjectCreateDialog
+                open={isProjectCreateDialogOpen}
+                onOpenChange={setIsProjectCreateDialogOpen}
+                onOpenExistingFolder={() => {
+                    setIsProjectCreateDialogOpen(false);
+                    openExistingProjectPicker();
+                }}
+                onOpenTemplateCreate={() => {
+                    setIsProjectCreateDialogOpen(false);
+                    setIsTemplateProjectDialogOpen(true);
+                }}
+            />
+
+            <TemplateProjectDialog
+                open={isTemplateProjectDialogOpen}
+                onOpenChange={setIsTemplateProjectDialogOpen}
             />
         </>
     );

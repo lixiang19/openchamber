@@ -1,4 +1,4 @@
-import type { ToolsAPI } from '@openchamber/ui/lib/api/types';
+import type { ToolsAPI } from '@openaurora/ui/lib/api/types';
 
 export const createWebToolsAPI = (): ToolsAPI => ({
   async getAvailableTools(): Promise<string[]> {

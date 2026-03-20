@@ -5,6 +5,7 @@ export type SettingsPageSlug =
   | 'projects'
   | 'remote-instances'
   | 'providers'
+  | 'config-install'
   | 'usage'
   | 'agents'
   | 'commands'
@@ -87,6 +88,13 @@ export const SETTINGS_PAGE_METADATA: readonly SettingsPageMeta[] = [
     group: 'opencode',
     kind: 'split',
     keywords: ['provider', 'providers', 'models', 'model', 'api key', 'api keys', 'openai', 'anthropic', 'ollama', 'credentials'],
+  },
+  {
+    slug: 'config-install',
+    title: 'Config Install',
+    group: 'opencode',
+    kind: 'single',
+    keywords: ['config', 'install', 'template', 'upload', 'opencode', 'agents', 'skills'],
   },
   {
     slug: 'usage',

@@ -1,13 +1,13 @@
 ---
 name: clack-cli-patterns
-description: Use when creating or modifying terminal CLI commands, prompts, or output formatting in OpenChamber. Enforces Clack UX standards with strict parity and safety across TTY/non-TTY, --quiet, and --json modes.
+description: Use when creating or modifying terminal CLI commands, prompts, or output formatting in OpenAurora. Enforces Clack UX standards with strict parity and safety across TTY/non-TTY, --quiet, and --json modes.
 license: MIT
 compatibility: opencode
 ---
 
 ## Overview
 
-OpenChamber terminal CLI uses `@clack/prompts` for interactive UX, but command policy and validation must be mode-agnostic.
+OpenAurora terminal CLI uses `@clack/prompts` for interactive UX, but command policy and validation must be mode-agnostic.
 
 **Core principle:** policy-first, UX-second. Clack is presentation, not enforcement.
 

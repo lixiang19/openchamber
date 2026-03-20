@@ -35,9 +35,9 @@ import { isDesktopShell } from '@/lib/desktop';
 import {
   getProjectActionsState,
   saveProjectActionsState,
-  type OpenChamberProjectAction,
+  type OpenAuroraProjectAction,
   type ProjectRef,
-} from '@/lib/openchamberConfig';
+} from '@/lib/openauroraConfig';
 import {
   buildProjectActionDesktopForwardOptions,
   PROJECT_ACTION_ICON_MAP,
@@ -46,7 +46,7 @@ import {
 } from '@/lib/projectActions';
 import { cn } from '@/lib/utils';
 
-type EditableProjectAction = OpenChamberProjectAction;
+type EditableProjectAction = OpenAuroraProjectAction;
 
 const createActionId = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {

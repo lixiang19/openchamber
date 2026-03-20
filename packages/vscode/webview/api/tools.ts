@@ -1,4 +1,4 @@
-import type { ToolsAPI } from '@openchamber/ui/lib/api/types';
+import type { ToolsAPI } from '@openaurora/ui/lib/api/types';
 
 // Use same endpoint as web - fetch interceptor handles URL rewriting
 export const createVSCodeToolsAPI = (): ToolsAPI => ({

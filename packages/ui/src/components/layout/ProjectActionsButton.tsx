@@ -23,9 +23,9 @@ import { useTerminalStore } from '@/stores/useTerminalStore';
 import { useDesktopSshStore } from '@/stores/useDesktopSshStore';
 import {
   getProjectActionsState,
-  type OpenChamberProjectAction,
+  type OpenAuroraProjectAction,
   type ProjectRef,
-} from '@/lib/openchamberConfig';
+} from '@/lib/openauroraConfig';
 import {
   normalizeProjectActionDirectory,
   PROJECT_ACTIONS_UPDATED_EVENT,
@@ -179,7 +179,7 @@ export const ProjectActionsButton = ({
   const setConnecting = useTerminalStore((state) => state.setConnecting);
   const setTabSessionId = useTerminalStore((state) => state.setTabSessionId);
 
-  const [actions, setActions] = React.useState<OpenChamberProjectAction[]>([]);
+  const [actions, setActions] = React.useState<OpenAuroraProjectAction[]>([]);
   const [selectedActionId, setSelectedActionId] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [runningByKey, setRunningByKey] = React.useState<Record<string, RunningEntry>>({});
@@ -375,7 +375,7 @@ export const ProjectActionsButton = ({
     return actions.find((entry) => entry.id === selectedActionId) ?? actions[0] ?? null;
   }, [actions, selectedActionId]);
 
-  const getOrCreateActionTab = React.useCallback(async (action: OpenChamberProjectAction) => {
+  const getOrCreateActionTab = React.useCallback(async (action: OpenAuroraProjectAction) => {
     if (!normalizedDirectory) {
       throw new Error('No active directory');
     }
@@ -418,7 +418,7 @@ export const ProjectActionsButton = ({
     setTabLabel,
   ]);
 
-  const runAction = React.useCallback(async (action: OpenChamberProjectAction) => {
+  const runAction = React.useCallback(async (action: OpenAuroraProjectAction) => {
     if (runtime.isVSCode || (!allowMobile && isMobile)) {
       return;
     }
@@ -524,7 +524,7 @@ export const ProjectActionsButton = ({
     terminal,
   ]);
 
-  const stopAction = React.useCallback(async (action: OpenChamberProjectAction) => {
+  const stopAction = React.useCallback(async (action: OpenAuroraProjectAction) => {
     const runKey = toProjectActionRunKey(normalizedDirectory, action.id);
     const activeRun = runningByKey[runKey];
     if (!activeRun) {
@@ -595,7 +595,7 @@ export const ProjectActionsButton = ({
     void runAction(selectedAction);
   }, [normalizedDirectory, runAction, runningByKey, selectedAction, stopAction]);
 
-  const handleSelectAction = React.useCallback((action: OpenChamberProjectAction, toggleStopIfRunning = false) => {
+  const handleSelectAction = React.useCallback((action: OpenAuroraProjectAction, toggleStopIfRunning = false) => {
     setSelectedActionId(action.id);
 
     if (!toggleStopIfRunning) {

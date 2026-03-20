@@ -21,9 +21,9 @@ import { ModelMultiSelect, generateInstanceId, type ModelSelectionWithId } from 
 import { BranchSelector, useBranchOptions } from '@/components/multirun/BranchSelector';
 import { AgentSelector } from '@/components/multirun/AgentSelector';
 import { isIMECompositionEvent } from '@/lib/ime';
-import { getWorktreeSetupCommands } from '@/lib/openchamberConfig';
+import { getWorktreeSetupCommands } from '@/lib/openauroraConfig';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
-import type { ProjectRef } from '@/lib/openchamberConfig';
+import type { ProjectRef } from '@/lib/openauroraConfig';
 import type { CreateMultiRunParams, MultiRunFileAttachment } from '@/types/multirun';
 
 /** Max file size in bytes (10MB) */
@@ -83,7 +83,7 @@ export const AgentManagerEmptyState: React.FC<AgentManagerEmptyStateProps> = ({
     if (typeof window === 'undefined') {
       return false;
     }
-    const apis = (window as unknown as { __OPENCHAMBER_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } }).__OPENCHAMBER_RUNTIME_APIS__;
+    const apis = (window as unknown as { __OPENAURORA_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } }).__OPENAURORA_RUNTIME_APIS__;
     return Boolean(apis?.runtime?.isVSCode);
   }, []);
 

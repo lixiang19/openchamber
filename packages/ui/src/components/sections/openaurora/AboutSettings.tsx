@@ -7,7 +7,7 @@ import { toast } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { ButtonSmall } from '@/components/ui/button-small';
 
-const GITHUB_URL = 'https://github.com/btriapitsyn/openchamber';
+const GITHUB_URL = 'https://github.com/btriapitsyn/openaurora';
 
 const MIN_CHECKING_DURATION = 800; // ms
 
@@ -135,7 +135,7 @@ export const AboutSettings: React.FC = () => {
     <div className="mb-8">
       <div className="mb-3 px-1">
         <h3 className="typography-ui-header font-semibold text-foreground">
-          About OpenChamber
+          About OpenAurora
         </h3>
       </div>
 

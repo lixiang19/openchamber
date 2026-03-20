@@ -2,17 +2,14 @@ import React from 'react';
 import { toast } from '@/components/ui';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useUIStore } from '@/stores/useUIStore';
-import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useUpdateStore } from '@/stores/useUpdateStore';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
 import { sessionEvents } from '@/lib/sessionEvents';
-import { isTauriShell } from '@/lib/desktop';
-import { useFileSystemAccess } from '@/hooks/useFileSystemAccess';
 import { createWorktreeSession } from '@/lib/worktreeSessionCreator';
 import { showOpenCodeStatus } from '@/lib/openCodeStatus';
 
-const MENU_ACTION_EVENT = 'openchamber:menu-action';
-const CHECK_FOR_UPDATES_EVENT = 'openchamber:check-for-updates';
+const MENU_ACTION_EVENT = 'openaurora:menu-action';
+const CHECK_FOR_UPDATES_EVENT = 'openaurora:check-for-updates';
 
 type TauriEventApi = {
   listen?: (
@@ -58,9 +55,7 @@ export const useMenuActions = (
     setSettingsDialogOpen,
     setAboutDialogOpen,
   } = useUIStore();
-  const { addProject } = useProjectsStore();
   const checkForUpdates = useUpdateStore((state) => state.checkForUpdates);
-  const { requestAccess, startAccessing } = useFileSystemAccess();
   const { setThemeMode } = useThemeSystem();
   const checkUpdatesInFlightRef = React.useRef(false);
 
@@ -90,41 +85,8 @@ export const useMenuActions = (
   }, [checkForUpdates]);
 
   const handleChangeWorkspace = React.useCallback(() => {
-    if (isTauriShell()) {
-      requestAccess('')
-        .then(async (result) => {
-          if (!result.success || !result.path) {
-            if (result.error && result.error !== 'Directory selection cancelled') {
-              toast.error('Failed to select directory', {
-                description: result.error,
-              });
-            }
-            return;
-          }
-
-          const accessResult = await startAccessing(result.path);
-          if (!accessResult.success) {
-            toast.error('Failed to open directory', {
-              description: accessResult.error || 'Desktop could not grant file access.',
-            });
-            return;
-          }
-
-          const added = addProject(result.path, { id: result.projectId });
-          if (!added) {
-            toast.error('Failed to add project', {
-              description: 'Please select a valid directory path.',
-            });
-          }
-        })
-        .catch((error) => {
-          console.error('Desktop: Error selecting directory:', error);
-          toast.error('Failed to select directory');
-        });
-    }
-
-    sessionEvents.requestDirectoryDialog();
-  }, [addProject, requestAccess, startAccessing]);
+    sessionEvents.requestProjectCreateDialog();
+  }, []);
 
   const handleAction = React.useCallback(
     (action: MenuAction) => {
@@ -182,7 +144,7 @@ export const useMenuActions = (
         }
 
         case 'copy': {
-          const copyEvent = new Event('openchamber:copy', { cancelable: true });
+          const copyEvent = new Event('openaurora:copy', { cancelable: true });
           const wasHandled = !window.dispatchEvent(copyEvent);
           if (!wasHandled) {
             document.execCommand('copy');
@@ -265,7 +227,7 @@ export const useMenuActions = (
     let unlistenMenu: null | (() => void | Promise<void>) = null;
     let unlistenUpdate: null | (() => void | Promise<void>) = null;
 
-    listen('openchamber:menu-action', (evt) => {
+    listen('openaurora:menu-action', (evt) => {
       const action = evt?.payload;
       if (typeof action !== 'string') return;
       handleAction(action as MenuAction);
@@ -277,7 +239,7 @@ export const useMenuActions = (
         // ignore
       });
 
-    listen('openchamber:check-for-updates', () => {
+    listen('openaurora:check-for-updates', () => {
       window.dispatchEvent(new Event(CHECK_FOR_UPDATES_EVENT));
     })
       .then((fn) => {

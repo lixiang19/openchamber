@@ -13,7 +13,7 @@ import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { checkIsGitRepository } from '@/lib/gitApi';
 import { generateBranchName } from '@/lib/git/branchNameGenerator';
 import { getRootBranch, getWorktreeStatus } from '@/lib/worktrees/worktreeStatus';
-import { getWorktreeSetupCommands } from '@/lib/openchamberConfig';
+import { getWorktreeSetupCommands } from '@/lib/openauroraConfig';
 import {
   removeProjectWorktree,
   type ProjectRef,
@@ -131,7 +131,7 @@ export async function createWorktreeSession(): Promise<{ id: string } | null> {
     // Initialize the session
     const configState = useConfigStore.getState();
     const agents = configState.agents;
-    sessionStore.initializeNewOpenChamberSession(session.id, agents);
+    sessionStore.initializeNewOpenAuroraSession(session.id, agents);
     sessionStore.setSessionDirectory(session.id, metadata.path);
     sessionStore.setWorktreeMetadata(session.id, createdMetadataWithStatus);
 
@@ -332,7 +332,7 @@ export async function createWorktreeSessionForBranch(
   try {
     const projectRef = resolveProjectRef(projectDirectory);
     if (!projectRef) {
-      throw new Error('Project is not registered in OpenChamber');
+      throw new Error('Project is not registered in OpenAurora');
     }
 
     // Check if it's a git repo (root project path)
@@ -392,7 +392,7 @@ export async function createWorktreeSessionForBranch(
     // Initialize the session
     const configState = useConfigStore.getState();
     const agents = configState.agents;
-    sessionStore.initializeNewOpenChamberSession(session.id, agents);
+    sessionStore.initializeNewOpenAuroraSession(session.id, agents);
     sessionStore.setSessionDirectory(session.id, metadata.path);
     sessionStore.setWorktreeMetadata(session.id, createdMetadataWithStatus);
 
@@ -523,7 +523,7 @@ export async function createWorktreeSessionForNewBranch(
 
     const projectRef = resolveProjectRef(projectDirectory);
     if (!projectRef) {
-      throw new Error('Project is not registered in OpenChamber');
+      throw new Error('Project is not registered in OpenAurora');
     }
 
     let isGitRepo = false;
@@ -573,7 +573,7 @@ export async function createWorktreeSessionForNewBranch(
         }
 
         const configState = useConfigStore.getState();
-        sessionStore.initializeNewOpenChamberSession(session.id, configState.agents);
+        sessionStore.initializeNewOpenAuroraSession(session.id, configState.agents);
         sessionStore.setSessionDirectory(session.id, metadata.path);
         sessionStore.setWorktreeMetadata(session.id, createdMetadataWithStatus);
 

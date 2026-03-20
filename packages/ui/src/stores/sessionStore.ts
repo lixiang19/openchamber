@@ -43,9 +43,9 @@ interface SessionActions {
     getSessionsByDirectory: (directory: string) => Session[];
     getDirectoryForSession: (sessionId: string) => string | null;
     applySessionMetadata: (sessionId: string, metadata: Partial<Session>) => void;
-    isOpenChamberCreatedSession: (sessionId: string) => boolean;
-    markSessionAsOpenChamberCreated: (sessionId: string) => void;
-    initializeNewOpenChamberSession: (sessionId: string, agents: Record<string, unknown>[]) => void;
+    isOpenAuroraCreatedSession: (sessionId: string) => boolean;
+    markSessionAsOpenAuroraCreated: (sessionId: string) => void;
+    initializeNewOpenAuroraSession: (sessionId: string, agents: Record<string, unknown>[]) => void;
     setWorktreeMetadata: (sessionId: string, metadata: WorktreeMetadata | null) => void;
     getWorktreeMetadata: (sessionId: string) => WorktreeMetadata | undefined;
     setSessionDirectory: (sessionId: string, directory: string | null) => void;
@@ -272,15 +272,15 @@ const readVSCodeWorkspaceDirectory = (): string | null => {
 
 const isVSCodeRuntime = (): boolean => {
     if (typeof window === "undefined") return false;
-    const runtime = (window as unknown as { __OPENCHAMBER_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } })
-        .__OPENCHAMBER_RUNTIME_APIS__?.runtime;
+    const runtime = (window as unknown as { __OPENAURORA_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } })
+        .__OPENAURORA_RUNTIME_APIS__?.runtime;
     return Boolean(runtime?.isVSCode);
 };
 
 const vscodeDebugLog = (...args: unknown[]) => {
     if (!streamDebugEnabled()) return;
     if (!isVSCodeRuntime()) return;
-    console.log("[OpenChamber][VSCode][sessions]", ...args);
+    console.log("[OpenAurora][VSCode][sessions]", ...args);
 };
 
 const dedupeSessionsById = (sessions: Session[]): Session[] => {
@@ -1466,25 +1466,25 @@ export const useSessionStore = create<SessionStore>()(
                     });
                 },
 
-                isOpenChamberCreatedSession: (sessionId: string) => {
+                isOpenAuroraCreatedSession: (sessionId: string) => {
                     const { webUICreatedSessions } = get();
                     return webUICreatedSessions.has(sessionId);
                 },
 
-                markSessionAsOpenChamberCreated: (sessionId: string) => {
+                markSessionAsOpenAuroraCreated: (sessionId: string) => {
                     set((state) => {
-                        const newOpenChamberCreatedSessions = new Set(state.webUICreatedSessions);
-                        newOpenChamberCreatedSessions.add(sessionId);
+                        const newOpenAuroraCreatedSessions = new Set(state.webUICreatedSessions);
+                        newOpenAuroraCreatedSessions.add(sessionId);
                         return {
-                            webUICreatedSessions: newOpenChamberCreatedSessions,
+                            webUICreatedSessions: newOpenAuroraCreatedSessions,
                         };
                     });
                 },
 
-                initializeNewOpenChamberSession: (sessionId: string) => {
-                    const { markSessionAsOpenChamberCreated } = get();
+                initializeNewOpenAuroraSession: (sessionId: string) => {
+                    const { markSessionAsOpenAuroraCreated } = get();
 
-                    markSessionAsOpenChamberCreated(sessionId);
+                    markSessionAsOpenAuroraCreated(sessionId);
 
                 },
 

@@ -1,13 +1,13 @@
 {
-  "name": "openchamber",
-  "displayName": "OpenChamber",
+  "name": "openaurora",
+  "displayName": "OpenAurora",
   "description": "AI coding assistant powered by OpenCode",
   "version": "1.8.7",
   "publisher": "fedaykindev",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/btriapitsyn/openchamber.git"
+    "url": "https://github.com/btriapitsyn/openaurora.git"
   },
   "qna": "https://discord.gg/ZYRSdnwwKA",
   "license": "MIT",
@@ -29,37 +29,37 @@
     "groq",
     "assistant",
     "opencode",
-    "openchamber"
+    "openaurora"
   ],
   "icon": "assets/app-icon.png",
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onCommand:openchamber.openSidebar",
-    "onView:openchamber.chatView"
+    "onCommand:openaurora.openSidebar",
+    "onView:openaurora.chatView"
   ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "openchamber",
-          "title": "OpenChamber",
+          "id": "openaurora",
+          "title": "OpenAurora",
           "icon": "assets/icon.svg"
         }
       ]
     },
     "views": {
-      "openchamber": [
+      "openaurora": [
         {
           "type": "webview",
-          "id": "openchamber.chatView",
+          "id": "openaurora.chatView",
           "name": "Chat"
         }
       ]
     },
     "commands": [
       {
-        "command": "openchamber.openSidebar",
-        "category": "OpenChamber",
+        "command": "openaurora.openSidebar",
+        "category": "OpenAurora",
         "title": "Open Sidebar",
         "icon": {
           "light": "assets/icon.svg",
@@ -67,35 +67,35 @@
         }
       },
       {
-        "command": "openchamber.focusChat",
-        "category": "OpenChamber",
+        "command": "openaurora.focusChat",
+        "category": "OpenAurora",
         "title": "Focus Chat"
       },
       {
-        "command": "openchamber.restartApi",
-        "category": "OpenChamber",
+        "command": "openaurora.restartApi",
+        "category": "OpenAurora",
         "title": "Restart API Connection"
       },
       {
-        "command": "openchamber.showOpenCodeStatus",
-        "category": "OpenChamber",
+        "command": "openaurora.showOpenCodeStatus",
+        "category": "OpenAurora",
         "title": "Show OpenCode Status"
       },
       {
-        "command": "openchamber.openAgentManager",
-        "category": "OpenChamber",
+        "command": "openaurora.openAgentManager",
+        "category": "OpenAurora",
         "title": "Open Agent Manager",
         "icon": "$(circuit-board)"
       },
       {
-        "command": "openchamber.openActiveSessionInEditor",
-        "category": "OpenChamber",
+        "command": "openaurora.openActiveSessionInEditor",
+        "category": "OpenAurora",
         "title": "Open Active Session in Editor",
         "icon": "$(link-external)"
       },
       {
-        "command": "openchamber.openNewSessionInEditor",
-        "category": "OpenChamber",
+        "command": "openaurora.openNewSessionInEditor",
+        "category": "OpenAurora",
         "title": "Open New Session in Editor",
         "icon": {
           "light": "assets/icon.svg",
@@ -103,101 +103,101 @@
         }
       },
       {
-        "command": "openchamber.openCurrentOrNewSessionInEditor",
-        "category": "OpenChamber",
+        "command": "openaurora.openCurrentOrNewSessionInEditor",
+        "category": "OpenAurora",
         "title": "Open Session in Editor",
         "icon": "$(link-external)"
       },
       {
-        "command": "openchamber.addToContext",
-        "category": "OpenChamber",
+        "command": "openaurora.addToContext",
+        "category": "OpenAurora",
         "title": "Add to Context"
       },
       {
-        "command": "openchamber.explain",
-        "category": "OpenChamber",
+        "command": "openaurora.explain",
+        "category": "OpenAurora",
         "title": "Explain"
       },
       {
-        "command": "openchamber.improveCode",
-        "category": "OpenChamber",
+        "command": "openaurora.improveCode",
+        "category": "OpenAurora",
         "title": "Improve Code"
       },
       {
-        "command": "openchamber.newSession",
-        "category": "OpenChamber",
+        "command": "openaurora.newSession",
+        "category": "OpenAurora",
         "title": "New Session",
         "icon": "$(add)"
       },
       {
-        "command": "openchamber.showSettings",
-        "category": "OpenChamber",
+        "command": "openaurora.showSettings",
+        "category": "OpenAurora",
         "title": "Settings",
         "icon": "$(settings-gear)"
       }
     ],
     "submenus": [
       {
-        "id": "openchamber.submenu",
-        "label": "OpenChamber"
+        "id": "openaurora.submenu",
+        "label": "OpenAurora"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "submenu": "openchamber.submenu",
+          "submenu": "openaurora.submenu",
           "group": "navigation"
         }
       ],
       "editor/title": [
         {
-          "command": "openchamber.openNewSessionInEditor",
+          "command": "openaurora.openNewSessionInEditor",
           "group": "navigation@1"
         }
       ],
       "view/title": [
         {
-          "command": "openchamber.newSession",
-          "when": "view == openchamber.chatView",
+          "command": "openaurora.newSession",
+          "when": "view == openaurora.chatView",
           "group": "navigation@1"
         },
         {
-          "command": "openchamber.openCurrentOrNewSessionInEditor",
-          "when": "view == openchamber.chatView",
+          "command": "openaurora.openCurrentOrNewSessionInEditor",
+          "when": "view == openaurora.chatView",
           "group": "navigation@2"
         },
         {
-          "command": "openchamber.openAgentManager",
-          "when": "view == openchamber.chatView",
+          "command": "openaurora.openAgentManager",
+          "when": "view == openaurora.chatView",
           "group": "navigation@3"
         },
         {
-          "command": "openchamber.showSettings",
-          "when": "view == openchamber.chatView",
+          "command": "openaurora.showSettings",
+          "when": "view == openaurora.chatView",
           "group": "navigation@4"
         }
       ],
-      "openchamber.submenu": [
+      "openaurora.submenu": [
         {
-          "command": "openchamber.explain"
+          "command": "openaurora.explain"
         },
         {
-          "command": "openchamber.improveCode"
+          "command": "openaurora.improveCode"
         },
         {
-          "command": "openchamber.addToContext"
+          "command": "openaurora.addToContext"
         }
       ]
     },
     "configuration": {
-      "title": "OpenChamber",
+      "title": "OpenAurora",
       "properties": {
-        "openchamber.apiUrl": {
+        "openaurora.apiUrl": {
           "type": "string",
           "default": "",
           "description": "URL of an external OpenCode API server. Leave empty to auto-start a local instance."
         },
-        "openchamber.opencodeBinary": {
+        "openaurora.opencodeBinary": {
           "type": "string",
           "default": "",
           "description": "Optional absolute path to the opencode CLI binary. Useful if PATH lookup fails. Requires window reload or API restart to apply."
@@ -228,7 +228,7 @@
     "vite": "^7.1.2"
   },
   "dependencies": {
-    "@openchamber/ui": "workspace:*",
+    "@openaurora/ui": "workspace:*",
     "@opencode-ai/sdk": "^1.2.20",
     "adm-zip": "^0.5.16",
     "jsonc-parser": "^3.3.1",

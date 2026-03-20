@@ -24,7 +24,7 @@ const LANGUAGE_OPTIONS = [
     { value: 'fr-FR', label: 'Français' },
     { value: 'de-DE', label: 'Deutsch' },
     { value: 'ja-JP', label: '日本語' },
-    { value: 'zh-CN', label: '中文' },
+    { value: 'zh-CN', label: 'Chinese' },
     { value: 'pt-BR', label: 'Português' },
     { value: 'it-IT', label: 'Italiano' },
     { value: 'ko-KR', label: '한국어' },
