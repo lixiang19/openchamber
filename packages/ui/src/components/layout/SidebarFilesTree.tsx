@@ -44,7 +44,12 @@ import { useGitStatus } from '@/stores/useGitStore';
 import { useDirectoryShowHidden } from '@/lib/directoryShowHidden';
 import { useFilesViewShowGitignored } from '@/lib/filesViewShowGitignored';
 import { copyTextToClipboard } from '@/lib/clipboard';
-import { setChatInputFileReferenceOnDataTransfer, type ChatInputFileReferencePayload } from '@/lib/chatInputDragDrop';
+import {
+  clearActiveChatInputFileReferenceDrag,
+  setActiveChatInputFileReferenceDrag,
+  setChatInputFileReferenceOnDataTransfer,
+  type ChatInputFileReferencePayload,
+} from '@/lib/chatInputDragDrop';
 import { cn } from '@/lib/utils';
 import { opencodeClient } from '@/lib/opencode/client';
 import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
@@ -198,9 +203,14 @@ const FileRow: React.FC<FileRowProps> = ({
       return;
     }
 
+    setActiveChatInputFileReferenceDrag(dragReference);
     setChatInputFileReferenceOnDataTransfer(event.dataTransfer, dragReference);
     event.dataTransfer.effectAllowed = 'copy';
   }, [dragReference]);
+
+  const handleDragEnd = React.useCallback(() => {
+    clearActiveChatInputFileReferenceDrag();
+  }, []);
 
   return (
     <div
@@ -213,6 +223,7 @@ const FileRow: React.FC<FileRowProps> = ({
         onContextMenu={handleContextMenu}
         draggable={Boolean(dragReference)}
         onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         className={cn(
           'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-foreground transition-colors pr-8 select-none',
           isActive ? 'bg-interactive-selection/70' : 'hover:bg-interactive-hover/40'
@@ -723,13 +734,11 @@ export const SidebarFilesTree: React.FC = () => {
       const isExpanded = isDir && expandedPaths.includes(node.path);
       const isActive = selectedPath === node.path;
       const isLast = index === nodes.length - 1;
-      const dragReference = !isDir
-        ? {
-          kind: 'file' as const,
-          path: node.path,
-          relativePath: node.relativePath || getRelativePathFromRoot(root, node.path),
-        }
-        : null;
+      const dragReference = {
+        kind: isDir ? 'directory' as const : 'file' as const,
+        path: node.path,
+        relativePath: node.relativePath || getRelativePathFromRoot(root, node.path),
+      };
 
       return (
         <li key={node.path} className="relative">
@@ -843,8 +852,12 @@ export const SidebarFilesTree: React.FC = () => {
                     onClick={() => handleOpenFile(node)}
                     draggable
                     onDragStart={(event) => {
+                      setActiveChatInputFileReferenceDrag(dragReference);
                       setChatInputFileReferenceOnDataTransfer(event.dataTransfer, dragReference);
                       event.dataTransfer.effectAllowed = 'copy';
+                    }}
+                    onDragEnd={() => {
+                      clearActiveChatInputFileReferenceDrag();
                     }}
                     className={cn(
                       'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-foreground transition-colors',

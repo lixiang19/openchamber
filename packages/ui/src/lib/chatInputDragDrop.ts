@@ -1,10 +1,12 @@
 export const CHAT_INPUT_FILE_REFERENCE_MIME = 'application/x-openaurora-chat-file-reference';
 
 export type ChatInputFileReferencePayload = {
-  kind: 'file';
+  kind: 'file' | 'directory';
   path: string;
   relativePath?: string;
 };
+
+let activeChatInputFileReferenceDrag: ChatInputFileReferencePayload | null = null;
 
 const parsePayload = (raw: string): ChatInputFileReferencePayload | null => {
   if (!raw) {
@@ -13,12 +15,13 @@ const parsePayload = (raw: string): ChatInputFileReferencePayload | null => {
 
   try {
     const parsed = JSON.parse(raw) as Partial<ChatInputFileReferencePayload>;
-    if (parsed.kind !== 'file' || typeof parsed.path !== 'string' || parsed.path.trim().length === 0) {
+    const kind = parsed.kind === 'directory' ? 'directory' : parsed.kind === 'file' ? 'file' : null;
+    if (!kind || typeof parsed.path !== 'string' || parsed.path.trim().length === 0) {
       return null;
     }
 
     return {
-      kind: 'file',
+      kind,
       path: parsed.path,
       relativePath: typeof parsed.relativePath === 'string' && parsed.relativePath.trim().length > 0
         ? parsed.relativePath
@@ -52,11 +55,23 @@ export const setChatInputFileReferenceOnDataTransfer = (
   payload: ChatInputFileReferencePayload,
 ): void => {
   const serialized = JSON.stringify({
-    kind: 'file',
+    kind: payload.kind,
     path: payload.path,
     ...(payload.relativePath ? { relativePath: payload.relativePath } : {}),
   } satisfies ChatInputFileReferencePayload);
 
   dataTransfer.setData(CHAT_INPUT_FILE_REFERENCE_MIME, serialized);
   dataTransfer.setData('text/plain', payload.relativePath || payload.path);
+};
+
+export const setActiveChatInputFileReferenceDrag = (payload: ChatInputFileReferencePayload): void => {
+  activeChatInputFileReferenceDrag = payload;
+};
+
+export const getActiveChatInputFileReferenceDrag = (): ChatInputFileReferencePayload | null => {
+  return activeChatInputFileReferenceDrag;
+};
+
+export const clearActiveChatInputFileReferenceDrag = (): void => {
+  activeChatInputFileReferenceDrag = null;
 };

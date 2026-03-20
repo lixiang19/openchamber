@@ -56,6 +56,8 @@ import { GitHubPrPickerDialog } from '@/components/session/GitHubPrPickerDialog'
 import { useChatSearchDirectory } from '@/hooks/useChatSearchDirectory';
 import { opencodeClient } from '@/lib/opencode/client';
 import {
+    clearActiveChatInputFileReferenceDrag,
+    getActiveChatInputFileReferenceDrag,
     getChatInputFileReferenceFromDataTransfer,
     hasChatInputFileReferenceType,
 } from '@/lib/chatInputDragDrop';
@@ -1743,7 +1745,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
     }, []);
 
     const getDragIntent = React.useCallback((dataTransfer: DataTransfer | null | undefined): ChatDropIntent | null => {
-        if (hasChatInputFileReferenceType(dataTransfer)) {
+        if (hasChatInputFileReferenceType(dataTransfer) || getActiveChatInputFileReferenceDrag()) {
             return 'insert-path';
         }
 
@@ -1950,7 +1952,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
     };
 
     const handleDrop = async (e: React.DragEvent) => {
-        const internalReference = getChatInputFileReferenceFromDataTransfer(e.dataTransfer);
+        const internalReference = getChatInputFileReferenceFromDataTransfer(e.dataTransfer) || getActiveChatInputFileReferenceDrag();
         const nextDragIntent = internalReference ? 'insert-path' : getDragIntent(e.dataTransfer);
         if (!nextDragIntent) {
             return;
@@ -1962,6 +1964,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
         if (!currentSessionId && !newSessionDraftOpen) return;
 
         if (internalReference?.path) {
+            clearActiveChatInputFileReferenceDrag();
             insertDroppedFileReference(internalReference.path, internalReference.relativePath);
             return;
         }

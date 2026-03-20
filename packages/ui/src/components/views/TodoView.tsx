@@ -12,6 +12,7 @@ import { toast } from '@/components/ui';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
+import { isIMECompositionEvent } from '@/lib/ime';
 import {
   createProjectTodoId,
   getProjectTodoPath,
@@ -313,6 +314,9 @@ export const TodoView: React.FC = () => {
             value={draft}
             onChange={(event) => setDraft(event.target.value.slice(0, PROJECT_TODO_TEXT_MAX_LENGTH))}
             onKeyDown={(event) => {
+              if (isIMECompositionEvent(event)) {
+                return;
+              }
               if (event.key === 'Enter') {
                 event.preventDefault();
                 void handleAddTodo();
@@ -368,7 +372,7 @@ export const TodoView: React.FC = () => {
         {!currentDirectory.trim() ? (
           <div className="flex h-full min-h-[180px] items-center justify-center rounded-xl border border-dashed border-[var(--interactive-border)] bg-[var(--surface-muted)] px-6 text-center">
             <p className="typography-ui-label text-muted-foreground">
-              Open a project or session first. Todo items are stored in `.opencode/todo.json`.
+              Open a project or session first. Todo items are stored in `.work/todo.json`.
             </p>
           </div>
         ) : filteredItems.length === 0 ? (
@@ -404,6 +408,9 @@ export const TodoView: React.FC = () => {
                           onChange={(event) => setEditingText(event.target.value.slice(0, PROJECT_TODO_TEXT_MAX_LENGTH))}
                           onBlur={() => void handleSaveEdit()}
                           onKeyDown={(event) => {
+                            if (isIMECompositionEvent(event)) {
+                              return;
+                            }
                             if (event.key === 'Enter') {
                               event.preventDefault();
                               void handleSaveEdit();
@@ -463,7 +470,7 @@ export const TodoView: React.FC = () => {
       <div className="border-t border-[var(--interactive-border)] px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <p className="typography-meta text-muted-foreground">
-            {isSaving ? 'Saving to .opencode/todo.json…' : 'Tracked in Git with the project'}
+            {isSaving ? 'Saving to .work/todo.json…' : 'Tracked in Git with the project'}
           </p>
           <button
             type="button"
