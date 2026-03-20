@@ -219,6 +219,7 @@ async function execGit(args: string[], cwd: string): Promise<{ stdout: string; s
       const proc = spawn(gitPath, args, {
         cwd: normalizedCwd,
         env,
+        windowsHide: true,
       });
 
       let stdout = '';
@@ -2573,6 +2574,23 @@ export async function getRemotes(directory: string): Promise<GitRemote[]> {
   }
 
   return Array.from(remoteMap.values());
+}
+
+export async function removeRemote(directory: string, remote: string): Promise<{ success: boolean }> {
+  const remoteName = String(remote || '').trim();
+  if (!remoteName) {
+    throw new Error('Remote name is required');
+  }
+  if (remoteName === 'origin') {
+    throw new Error('Cannot remove origin remote');
+  }
+
+  const result = await execGit(['remote', 'remove', remoteName], directory);
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || result.stdout || `Failed to remove remote ${remoteName}`);
+  }
+
+  return { success: true };
 }
 
 // ============== Merge & Rebase Operations ==============

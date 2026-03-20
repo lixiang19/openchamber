@@ -15,7 +15,6 @@ export const useKeyboardShortcuts = () => {
     toggleCommandPalette,
     toggleHelpDialog,
     toggleSidebar,
-    toggleNavRail,
     toggleRightSidebar,
     setRightSidebarOpen,
     setRightSidebarTab,
@@ -131,12 +130,6 @@ export const useKeyboardShortcuts = () => {
         } else {
           toggleSidebar();
         }
-        return;
-      }
-
-      if (eventMatchesShortcut(e, combo('toggle_nav_rail'))) {
-        e.preventDefault();
-        toggleNavRail();
         return;
       }
 
@@ -438,7 +431,6 @@ export const useKeyboardShortcuts = () => {
     toggleCommandPalette,
     toggleHelpDialog,
     toggleSidebar,
-    toggleNavRail,
     toggleRightSidebar,
     setRightSidebarOpen,
     setRightSidebarTab,

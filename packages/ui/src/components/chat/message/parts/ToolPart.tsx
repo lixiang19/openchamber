@@ -13,6 +13,7 @@ import { useOptionalThemeSystem } from '@/contexts/useThemeSystem';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useUIStore } from '@/stores/useUIStore';
+import { useSessionActivity } from '@/hooks/useSessionActivity';
 import { opencodeClient } from '@/lib/opencode/client';
 import { ScrollShadow } from '@/components/ui/ScrollShadow';
 import { Text } from '@/components/ui/text';
@@ -32,6 +33,7 @@ import { DiffViewToggle, type DiffViewMode } from '../DiffViewToggle';
 import { MinDurationShineText } from './MinDurationShineText';
 import { ToolRevealOnMount } from './ToolRevealOnMount';
 import { getToolIcon } from './toolPresentation';
+import { useDurationTickerNow } from './useDurationTicker';
 
 type ToolStateWithMetadata = ToolStateUnion & { metadata?: Record<string, unknown>; input?: Record<string, unknown>; output?: string; error?: string; time?: { start: number; end?: number } };
 
@@ -103,7 +105,7 @@ const getMultiFileDescription = (
                     <span key={entry.path} className="inline-flex min-w-0 max-w-full items-center gap-1 typography-meta leading-5" style={{ color: 'var(--tools-description)' }}>
                         {showFileIcons ? <FileTypeIcon filePath={entry.path} className="h-3.5 w-3.5" /> : null}
                         <Text
-                            variant={animate ? 'generate-effect' : undefined}
+                            variant={animate ? 'generate-effect' : 'static'}
                             className="min-w-0 max-w-full truncate typography-meta leading-5"
                             style={{ color: 'var(--tools-description)' }}
                             title={entry.path}
@@ -144,6 +146,14 @@ const normalizeToolName = (toolName: string | undefined | null): string => {
 };
 
 const MAX_DURATION_MS = 5 * 60 * 1000; // 5 minutes cap
+const TASK_TOOL_POLL_FAST_MS = 1200;
+const TASK_TOOL_POLL_IDLE_MS = 3200;
+const TASK_TOOL_POLL_HIDDEN_MS = 6000;
+const TASK_TOOL_INITIAL_FETCH_LIMIT = 500;
+const TASK_TOOL_ACTIVE_FETCH_LIMIT = 160;
+const TASK_TOOL_IDLE_FETCH_LIMIT = 80;
+const TASK_TOOL_NO_CHANGE_BACKOFF_AFTER_POLLS = 3;
+const TASK_TOOL_SETTLE_GRACE_MS = 2500;
 
 const formatDuration = (start: number, end?: number, now: number = Date.now()) => {
     const duration = Math.min(Math.max(0, (end ?? now) - start), MAX_DURATION_MS);
@@ -154,17 +164,7 @@ const formatDuration = (start: number, end?: number, now: number = Date.now()) =
 };
 
 const LiveDuration: React.FC<{ start: number; end?: number; active: boolean }> = ({ start, end, active }) => {
-    const [now, setNow] = React.useState(() => Date.now());
-
-    React.useEffect(() => {
-        if (!active) {
-            return;
-        }
-        const timer = window.setInterval(() => {
-            setNow(Date.now());
-        }, 100);
-        return () => window.clearInterval(timer);
-    }, [active]);
+    const now = useDurationTickerNow(active, 250);
 
     return <>{formatDuration(start, end, now)}</>;
 };
@@ -302,14 +302,36 @@ const getPrimaryDiffFromMetadata = (
     return undefined;
 };
 
-const getRelativePath = (absolutePath: string, currentDirectory: string): string => {
-    if (absolutePath.startsWith(currentDirectory)) {
-        const relativePath = absolutePath.substring(currentDirectory.length);
+const normalizeDisplayPath = (value: string): string => {
+    const trimmed = value.trim().replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+    if (!trimmed || trimmed === '/') {
+        return trimmed;
+    }
+    return trimmed.replace(/\/+$/, '');
+};
 
-        return relativePath.startsWith('/') ? relativePath.substring(1) : relativePath;
+const getRelativePath = (absolutePath: string, currentDirectory: string): string => {
+    const normalizedAbsolutePath = normalizeDisplayPath(absolutePath);
+    const normalizedCurrentDirectory = normalizeDisplayPath(currentDirectory);
+
+    if (!normalizedAbsolutePath) {
+        return '';
     }
 
-    return absolutePath;
+    if (!normalizedCurrentDirectory) {
+        return normalizedAbsolutePath;
+    }
+
+    if (normalizedAbsolutePath === normalizedCurrentDirectory) {
+        return '.';
+    }
+
+    const prefix = `${normalizedCurrentDirectory}/`;
+    if (normalizedAbsolutePath.startsWith(prefix)) {
+        return normalizedAbsolutePath.slice(prefix.length);
+    }
+
+    return normalizedAbsolutePath;
 };
 
 const usePierreThemeConfig = () => {
@@ -384,6 +406,13 @@ const getToolDescriptionPath = (part: ToolPartType, state: ToolStateUnion, curre
     }
 
     if ((part.tool === 'edit' || part.tool === 'multiedit') && input) {
+        const filePath = input?.filePath || input?.file_path || input?.path || metadata?.filePath || metadata?.file_path || metadata?.path;
+        if (typeof filePath === 'string') {
+            return getRelativePath(filePath, currentDirectory);
+        }
+    }
+
+    if (part.tool === 'read' && input) {
         const filePath = input?.filePath || input?.file_path || input?.path || metadata?.filePath || metadata?.file_path || metadata?.path;
         if (typeof filePath === 'string') {
             return getRelativePath(filePath, currentDirectory);
@@ -613,6 +642,41 @@ const buildTaskSummaryEntriesFromSession = (messages: SessionMessageWithParts[])
     return entries;
 };
 
+const buildTaskSessionMessagesSignature = (messages: SessionMessageWithParts[]): string => {
+    if (!Array.isArray(messages) || messages.length === 0) {
+        return '0';
+    }
+
+    const lastMessage = messages[messages.length - 1];
+    const lastMessageId = typeof lastMessage?.info?.id === 'string' ? lastMessage.info.id : '';
+    const lastMessageUpdated =
+        typeof lastMessage?.info?.time?.completed === 'number'
+            ? lastMessage.info.time.completed
+            : typeof lastMessage?.info?.time?.created === 'number'
+                ? lastMessage.info.time.created
+                : 0;
+    const lastParts = Array.isArray(lastMessage?.parts) ? lastMessage.parts : [];
+    const lastPart = lastParts[lastParts.length - 1] as Record<string, unknown> | undefined;
+    const tailType = typeof lastPart?.type === 'string' ? lastPart.type : '';
+    const tailId = typeof lastPart?.id === 'string' ? lastPart.id : '';
+    const tailTextLength = (() => {
+        const textCandidate = lastPart?.text;
+        if (typeof textCandidate === 'string') {
+            return textCandidate.length;
+        }
+        const stateCandidate = lastPart?.state;
+        if (stateCandidate && typeof stateCandidate === 'object') {
+            const stateStatus = (stateCandidate as Record<string, unknown>).status;
+            if (typeof stateStatus === 'string') {
+                return stateStatus.length;
+            }
+        }
+        return 0;
+    })();
+
+    return `${messages.length}:${lastMessageId}:${lastMessageUpdated}:${lastParts.length}:${tailType}:${tailId}:${tailTextLength}`;
+};
+
 const getTaskSummaryLabel = (entry: TaskToolSummaryEntry): string => {
     const title = entry.state?.title;
     if (typeof title === 'string' && title.trim().length > 0) {
@@ -658,7 +722,16 @@ const shouldRenderGitPathLabel = (toolName: string, label: string): boolean => {
         return false;
     }
 
-    return trimmed.includes('/') || trimmed.includes('\\');
+    if (trimmed.includes('/') || trimmed.includes('\\')) {
+        return true;
+    }
+
+    const baseName = trimmed.split(/[\\/]/).pop() || trimmed;
+    if (baseName.startsWith('.') || baseName.includes('.')) {
+        return true;
+    }
+
+    return /^[A-Za-z0-9_-]+$/.test(baseName);
 };
 
 const stripTaskMetadataFromOutput = (output: string): string => {
@@ -853,7 +926,7 @@ const TaskToolSummary: React.FC<{
                                                     </span>
                                                 ) : (
                                                     <Text
-                                                        variant={animateTailText ? 'generate-effect' : undefined}
+                                                        variant={animateTailText ? 'generate-effect' : 'static'}
                                                         className={cn(
                                                             'typography-meta flex-1 min-w-0 text-muted-foreground/70',
                                                             isMobile ? 'whitespace-normal break-words' : 'truncate'
@@ -964,11 +1037,14 @@ const renderPathLikeGitChanges = (path: string, grow = true) => {
 
     const dir = path.slice(0, lastSlash);
     const name = path.slice(lastSlash + 1);
+    const hasAbsoluteRoot = dir.startsWith('/');
+    const displayDir = hasAbsoluteRoot ? dir.slice(1) : dir;
 
     return (
         <span className={cn('min-w-0 flex items-baseline overflow-hidden typography-ui-label', grow && 'flex-1')} title={path}>
+            {hasAbsoluteRoot ? <span className="flex-shrink-0 text-muted-foreground">/</span> : null}
             <span className="min-w-0 truncate text-muted-foreground" style={{ direction: 'rtl', textAlign: 'left' }}>
-                {dir}
+                {displayDir}
             </span>
             <span className="flex-shrink-0">
                 <span className="text-muted-foreground">/</span>
@@ -998,20 +1074,23 @@ const renderAnimatedPathWithIcon = (path: string, _animate = true, grow = true, 
 
     const dir = path.slice(0, lastSlash);
     const name = path.slice(lastSlash + 1);
+    const hasAbsoluteRoot = dir.startsWith('/');
+    const displayDir = hasAbsoluteRoot ? dir.slice(1) : dir;
 
     return (
         <span className={cn('min-w-0 inline-flex items-center gap-1 overflow-hidden', grow && 'flex-1')} title={path}>
             {showFileIcons ? <FileTypeIcon filePath={path} className="h-3.5 w-3.5 flex-shrink-0" /> : null}
-            <span className={cn('min-w-0 inline-flex items-baseline overflow-hidden typography-meta', grow && 'flex-1')}>
+            <span className={cn('min-w-0 inline-flex max-w-full items-baseline overflow-hidden typography-meta', grow && 'flex-1')}>
+                {hasAbsoluteRoot ? <span className="flex-shrink-0" style={{ color: 'var(--tools-description)' }}>/</span> : null}
                 <span
-                    className="min-w-0 flex-1 truncate whitespace-nowrap"
+                    className="min-w-0 shrink truncate whitespace-nowrap"
                     style={{
                         color: 'var(--tools-description)',
                         direction: 'rtl',
                         textAlign: 'left',
                     }}
                 >
-                    {dir}
+                    {displayDir}
                 </span>
                 <span className="flex-shrink-0" style={{ color: 'var(--tools-description)' }}>/</span>
                 <span className="flex-shrink-0" style={{ color: 'var(--tools-title)' }}>
@@ -1657,6 +1736,69 @@ const ToolPart: React.FC<ToolPartProps> = ({
         return false;
     }, [childSessionMessages, isTaskTool, taskSessionId]);
 
+    const childSessionActivity = useSessionActivity(taskSessionId);
+    const [taskChildSeenActive, setTaskChildSeenActive] = React.useState(false);
+    const [taskChildPollingStopped, setTaskChildPollingStopped] = React.useState(false);
+
+    const taskPollNoChangeCountRef = React.useRef(0);
+    const taskPollLastSignatureRef = React.useRef<string>('');
+
+    React.useEffect(() => {
+        setTaskChildSeenActive(false);
+        setTaskChildPollingStopped(false);
+        taskPollNoChangeCountRef.current = 0;
+        taskPollLastSignatureRef.current = '';
+    }, [taskSessionId]);
+
+    React.useEffect(() => {
+        if (!isTaskTool || !taskSessionId) {
+            return;
+        }
+
+        const childSessionIsActive =
+            childSessionActivity.phase === 'busy'
+            || childSessionActivity.phase === 'retry'
+            || childSessionHasInFlightTools
+            || (!isFinalized && activeLatched);
+
+        if (childSessionIsActive) {
+            if (!taskChildSeenActive) {
+                setTaskChildSeenActive(true);
+            }
+            if (taskChildPollingStopped) {
+                setTaskChildPollingStopped(false);
+            }
+            return;
+        }
+
+        if (!taskChildSeenActive || taskChildPollingStopped || childSessionTaskSummaryEntries.length === 0) {
+            return;
+        }
+
+        if (typeof window === 'undefined') {
+            setTaskChildPollingStopped(true);
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            setTaskChildPollingStopped(true);
+        }, TASK_TOOL_SETTLE_GRACE_MS);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [
+        childSessionActivity.phase,
+        childSessionHasInFlightTools,
+        childSessionTaskSummaryEntries.length,
+        activeLatched,
+        isFinalized,
+        isTaskTool,
+        taskChildPollingStopped,
+        taskChildSeenActive,
+        taskSessionId,
+    ]);
+
     React.useEffect(() => {
         if (typeof time?.end === 'number' || typeof pinnedTime.end === 'number') {
             setLocalFinalizedAt(undefined);
@@ -1695,7 +1837,10 @@ const ToolPart: React.FC<ToolPartProps> = ({
             return;
         }
 
-        const shouldPoll = isActive || childSessionHasInFlightTools || childSessionTaskSummaryEntries.length === 0;
+        const childSessionActive = childSessionActivity.phase === 'busy' || childSessionActivity.phase === 'retry';
+        const shouldPoll =
+            !taskChildPollingStopped
+            && (isActive || childSessionHasInFlightTools || childSessionActive || childSessionTaskSummaryEntries.length === 0);
         const shouldFetchSnapshot = childSessionTaskSummaryEntries.length === 0 || shouldPoll;
         if (!shouldFetchSnapshot) {
             return;
@@ -1704,33 +1849,83 @@ const ToolPart: React.FC<ToolPartProps> = ({
         let cancelled = false;
         let pollTimer: number | undefined;
 
-        const fetchSessionMessages = async () => {
+        const isVisible = () => {
+            if (typeof document === 'undefined') {
+                return true;
+            }
+            return document.visibilityState === 'visible';
+        };
+
+        const resolveFetchLimit = (isInitialFetch: boolean) => {
+            if (isInitialFetch && childSessionTaskSummaryEntries.length === 0) {
+                return TASK_TOOL_INITIAL_FETCH_LIMIT;
+            }
+            if (isActive || childSessionHasInFlightTools || childSessionActive) {
+                return TASK_TOOL_ACTIVE_FETCH_LIMIT;
+            }
+            return TASK_TOOL_IDLE_FETCH_LIMIT;
+        };
+
+        const resolvePollDelay = () => {
+            if (!isVisible()) {
+                return TASK_TOOL_POLL_HIDDEN_MS;
+            }
+            if (taskPollNoChangeCountRef.current >= TASK_TOOL_NO_CHANGE_BACKOFF_AFTER_POLLS) {
+                return TASK_TOOL_POLL_IDLE_MS;
+            }
+            return TASK_TOOL_POLL_FAST_MS;
+        };
+
+        const scheduleNextPoll = () => {
+            if (!shouldPoll || typeof window === 'undefined' || cancelled) {
+                return;
+            }
+            pollTimer = window.setTimeout(() => {
+                pollTimer = undefined;
+                void fetchSessionMessages(false);
+            }, resolvePollDelay());
+        };
+
+        const fetchSessionMessages = async (isInitialFetch: boolean) => {
             try {
-                const messages = await opencodeClient.getSessionMessages(taskSessionId, 500);
+                const messages = await opencodeClient.getSessionMessages(taskSessionId, resolveFetchLimit(isInitialFetch));
                 if (cancelled || !Array.isArray(messages) || messages.length === 0) {
                     return;
                 }
+
+                const nextSignature = buildTaskSessionMessagesSignature(messages as SessionMessageWithParts[]);
+                if (nextSignature === taskPollLastSignatureRef.current) {
+                    taskPollNoChangeCountRef.current += 1;
+                    return;
+                }
+
+                taskPollLastSignatureRef.current = nextSignature;
+                taskPollNoChangeCountRef.current = 0;
                 useSessionStore.getState().syncMessages(taskSessionId, messages);
             } catch {
                 // Ignore transient subagent fetch errors.
+            } finally {
+                scheduleNextPoll();
             }
         };
 
-        void fetchSessionMessages();
-
-        if (shouldPoll && typeof window !== 'undefined') {
-            pollTimer = window.setInterval(() => {
-                void fetchSessionMessages();
-            }, 1200);
-        }
+        void fetchSessionMessages(true);
 
         return () => {
             cancelled = true;
             if (typeof pollTimer === 'number') {
-                window.clearInterval(pollTimer);
+                window.clearTimeout(pollTimer);
             }
         };
-    }, [childSessionHasInFlightTools, childSessionTaskSummaryEntries.length, isActive, isTaskTool, taskSessionId]);
+    }, [
+        childSessionActivity.phase,
+        childSessionHasInFlightTools,
+        childSessionTaskSummaryEntries.length,
+        isActive,
+        isTaskTool,
+        taskChildPollingStopped,
+        taskSessionId,
+    ]);
 
 
     const taskSummaryLenRef = React.useRef<number>(taskSummaryEntries.length);
@@ -1933,7 +2128,7 @@ const ToolPart: React.FC<ToolPartProps> = ({
                                     renderAnimatedPathWithIcon(descriptionPath, animateTailText, false, showToolFileIcons)
                                 ) : (
                                     <Text
-                                        variant={animateTailText ? 'generate-effect' : undefined}
+                                        variant={animateTailText ? 'generate-effect' : 'static'}
                                         className="min-w-0 truncate typography-meta"
                                         style={{ color: 'var(--tools-description)' }}
                                         title={description}

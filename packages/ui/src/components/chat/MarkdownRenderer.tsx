@@ -11,6 +11,7 @@ import { toast } from '@/components/ui';
 import { copyTextToClipboard } from '@/lib/clipboard';
 
 import { isVSCodeRuntime } from '@/lib/desktop';
+import { isExternalHttpUrl, openExternalUrl } from '@/lib/url';
 import { useOptionalThemeSystem } from '@/contexts/useThemeSystem';
 import { getStreamdownThemePair } from '@/lib/shiki/appThemeRegistry';
 import { getDefaultTheme } from '@/lib/theme/themes';
@@ -150,6 +151,59 @@ const useCurrentMermaidTheme = () => {
     ?? (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
       ? fallbackDark
       : fallbackLight);
+};
+
+const useExternalLinkInteractions = ({
+  containerRef,
+  enabled,
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  enabled?: boolean;
+}) => {
+  React.useEffect(() => {
+    if (enabled === false) {
+      return;
+    }
+
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const handleClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      const anchor = target.closest('a[href]');
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+
+      if (anchor.getAttribute('data-openchamber-file-link') === 'true') {
+        return;
+      }
+
+      const href = anchor.getAttribute('href') ?? '';
+      if (!isExternalHttpUrl(href)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      void openExternalUrl(href);
+    };
+
+    container.addEventListener('click', handleClick);
+    return () => {
+      container.removeEventListener('click', handleClick);
+    };
+  }, [containerRef, enabled]);
 };
 
 // Table utility functions
@@ -971,12 +1025,14 @@ const useFileReferenceInteractions = ({
   readFile,
   editor,
   preferRuntimeEditor,
+  deferValidationUntilIdle = false,
 }: {
   containerRef: React.RefObject<HTMLDivElement | null>;
   effectiveDirectory: string;
   readFile?: (path: string) => Promise<{ content: string; path: string }>;
   editor?: EditorAPI;
   preferRuntimeEditor?: boolean;
+  deferValidationUntilIdle?: boolean;
 }) => {
   const validationCacheRef = React.useRef<Map<string, boolean>>(new Map());
   const inFlightValidationsRef = React.useRef<Map<string, Promise<boolean>>>(new Map());
@@ -1048,6 +1104,9 @@ const useFileReferenceInteractions = ({
     };
 
     const runValidationSweep = async (paths: string[], expectedPassID: number) => {
+      if (deferValidationUntilIdle) {
+        return;
+      }
       if (isValidationSweepRunningRef.current || paths.length === 0) {
         return;
       }
@@ -1208,9 +1267,13 @@ const useFileReferenceInteractions = ({
       annotationDebounceRef.current = window.setTimeout(() => {
         annotationDebounceRef.current = null;
         void annotateFileLinks();
-      }, 120);
+      }, deferValidationUntilIdle ? 280 : 120);
     });
-    observer.observe(container, { childList: true, subtree: true, characterData: true });
+    observer.observe(container, {
+      childList: true,
+      subtree: true,
+      ...(deferValidationUntilIdle ? {} : { characterData: true }),
+    });
 
     container.addEventListener('click', handleClick);
     container.addEventListener('keydown', handleKeyDown);
@@ -1226,7 +1289,7 @@ const useFileReferenceInteractions = ({
       container.removeEventListener('click', handleClick);
       container.removeEventListener('keydown', handleKeyDown);
     };
-  }, [containerRef, editor, effectiveDirectory, preferRuntimeEditor, readFile]);
+  }, [containerRef, deferValidationUntilIdle, editor, effectiveDirectory, preferRuntimeEditor, readFile]);
 };
 
 const useMermaidInlineInteractions = ({
@@ -1345,7 +1408,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     readFile: files.readFile,
     editor,
     preferRuntimeEditor: runtime.isVSCode,
+    deferValidationUntilIdle: isStreaming,
   });
+  useExternalLinkInteractions({ containerRef: streamdownContainerRef });
 
   const shikiThemes = useMarkdownShikiThemes();
   const streamdownPlugins = useStreamdownPlugins(shikiThemes);
@@ -1358,10 +1423,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       ? 'streamdown-content streamdown-reasoning'
       : 'streamdown-content';
 
-  const streamdownAnimated = React.useMemo(
-    () => ({ animation: 'blurIn' as const, duration: 150, easing: 'ease-out' }),
-    [],
-  );
+  const streamdownAnimated = undefined;
 
   const markdownContent = (
     <div className={cn('break-words w-full min-w-0', className)} ref={streamdownContainerRef}>
@@ -1370,12 +1432,14 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
          mode={isStreaming && !disableStreamAnimation ? 'streaming' : 'static'}
          shikiTheme={shikiThemes}
          className={streamdownClassName}
-         controls={streamdownControls}
-         plugins={streamdownPlugins}
-         components={streamdownComponents}
-         animated={disableStreamAnimation ? undefined : streamdownAnimated}
-         isAnimating={disableStreamAnimation ? false : isStreaming}
-        >
+          controls={streamdownControls}
+          plugins={streamdownPlugins}
+          components={streamdownComponents}
+          animated={disableStreamAnimation ? undefined : streamdownAnimated}
+          isAnimating={disableStreamAnimation ? false : isStreaming}
+          // @ts-expect-error Streamdown type missing linkSafety in older minor
+          linkSafety={{ enabled: false }}
+         >
         {content}
       </Streamdown>
     </div>
@@ -1431,6 +1495,7 @@ export const SimpleMarkdownRenderer: React.FC<{
     editor,
     preferRuntimeEditor: runtime.isVSCode,
   });
+  useExternalLinkInteractions({ containerRef: streamdownContainerRef, enabled: !disableLinkSafety });
 
   const shikiThemes = useMarkdownShikiThemes();
   const streamdownPlugins = useStreamdownPlugins(shikiThemes);
@@ -1453,7 +1518,7 @@ export const SimpleMarkdownRenderer: React.FC<{
         plugins={streamdownPlugins}
         components={streamdownComponents}
         // @ts-expect-error Streamdown type missing linkSafety in older minor
-        linkSafety={disableLinkSafety ? { enabled: false } : undefined}
+        linkSafety={{ enabled: false }}
       >
         {renderedContent}
       </Streamdown>

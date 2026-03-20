@@ -15,7 +15,7 @@ import { useChatScrollManager } from '@/hooks/useChatScrollManager';
 import { useChatTimelineController } from './hooks/useChatTimelineController';
 import { useChatTurnNavigation } from './hooks/useChatTurnNavigation';
 import { useDeviceInfo } from '@/lib/device';
-import { ButtonSmall } from '@/components/ui/button-small';
+import { Button } from '@/components/ui/button';
 import { OverlayScrollbar } from '@/components/ui/OverlayScrollbar';
 import { TimelineDialog } from './TimelineDialog';
 import type { PermissionRequest } from '@/types/permission';
@@ -30,6 +30,7 @@ const EMPTY_MESSAGES: Array<{ info: Message; parts: Part[] }> = [];
 const EMPTY_PERMISSIONS: PermissionRequest[] = [];
 const EMPTY_QUESTIONS: QuestionRequest[] = [];
 const IDLE_SESSION_STATUS = { type: 'idle' as const };
+const SESSION_RESELECTED_EVENT = 'openchamber:session-reselected';
 
 type HydratingToolSkeletonRow = {
     id: string;
@@ -193,7 +194,7 @@ export const ChatContainer: React.FC = () => {
     }, [parentSession, setCurrentSession]);
 
     const returnToParentButton = parentSession ? (
-        <ButtonSmall
+        <Button
             type="button"
             variant="outline"
             size="xs"
@@ -204,7 +205,7 @@ export const ChatContainer: React.FC = () => {
         >
             <RiArrowLeftLine className="h-4 w-4" />
             Parent
-        </ButtonSmall>
+        </Button>
     ) : null;
 
     React.useEffect(() => {
@@ -255,6 +256,7 @@ export const ChatContainer: React.FC = () => {
         isPinned,
         isOverflowing,
     });
+    const { resumeToBottomInstant } = timelineController;
 
     React.useEffect(() => {
         activeTurnChangeRef.current = timelineController.handleActiveTurnChange;
@@ -269,6 +271,26 @@ export const ChatContainer: React.FC = () => {
         resumeToBottom: timelineController.resumeToBottom,
     });
 
+    React.useEffect(() => {
+        if (typeof window === 'undefined' || !currentSessionId) {
+            return;
+        }
+
+        const handleSessionReselected = (event: Event) => {
+            const customEvent = event as CustomEvent<string>;
+            if (customEvent.detail !== currentSessionId) {
+                return;
+            }
+
+            resumeToBottomInstant();
+        };
+
+        window.addEventListener(SESSION_RESELECTED_EVENT, handleSessionReselected as EventListener);
+        return () => {
+            window.removeEventListener(SESSION_RESELECTED_EVENT, handleSessionReselected as EventListener);
+        };
+    }, [currentSessionId, resumeToBottomInstant]);
+
     React.useLayoutEffect(() => {
         const container = scrollRef.current;
         if (!container) {
@@ -281,17 +303,28 @@ export const ChatContainer: React.FC = () => {
 
         updateChatScrollHeight();
 
+        let rafId = 0;
+        const scheduleUpdate = () => {
+            if (rafId) return;
+            rafId = requestAnimationFrame(() => {
+                rafId = 0;
+                updateChatScrollHeight();
+            });
+        };
+
         if (typeof ResizeObserver === 'undefined') {
-            window.addEventListener('resize', updateChatScrollHeight);
+            window.addEventListener('resize', scheduleUpdate);
             return () => {
-                window.removeEventListener('resize', updateChatScrollHeight);
+                if (rafId) cancelAnimationFrame(rafId);
+                window.removeEventListener('resize', scheduleUpdate);
             };
         }
 
-        const resizeObserver = new ResizeObserver(updateChatScrollHeight);
+        const resizeObserver = new ResizeObserver(scheduleUpdate);
         resizeObserver.observe(container);
 
         return () => {
+            if (rafId) cancelAnimationFrame(rafId);
             resizeObserver.disconnect();
         };
     }, [currentSessionId, isDesktopExpandedInput, scrollRef]);
@@ -355,7 +388,7 @@ export const ChatContainer: React.FC = () => {
             >
                 {!isDesktopExpandedInput ? (
                 <div className="flex-1 flex items-center justify-center">
-                    <ChatEmptyState showDraftContext />
+                    <ChatEmptyState />
                 </div>
                 ) : null}
                 <div
@@ -363,7 +396,7 @@ export const ChatContainer: React.FC = () => {
                         'relative z-10',
                         isDesktopExpandedInput
                             ? 'flex-1 min-h-0 bg-background'
-                            : 'bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80'
+                            : 'bg-background/95 supports-[backdrop-filter]:bg-background/80'
                     )}
                 >
                     <ChatInput scrollToBottom={scrollToBottom} />
@@ -433,7 +466,7 @@ export const ChatContainer: React.FC = () => {
                         'relative z-10',
                         isDesktopExpandedInput
                             ? 'flex-1 min-h-0 bg-background'
-                            : 'bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80'
+                            : 'bg-background/95 supports-[backdrop-filter]:bg-background/80'
                     )}
                 >
                     <ChatInput scrollToBottom={scrollToBottom} />
@@ -496,7 +529,7 @@ export const ChatContainer: React.FC = () => {
                     'relative z-10',
                     isDesktopExpandedInput
                         ? 'flex-1 min-h-0 bg-background'
-                        : 'bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80'
+                        : 'bg-background/95 supports-[backdrop-filter]:bg-background/80'
                 )}
             >
                 {!isDesktopExpandedInput && sessionMessages.length > 0 && (

@@ -472,7 +472,6 @@ interface UIStore {
   isBottomTerminalExpanded: boolean;
   bottomTerminalHeight: number;
   hasManuallyResizedBottomTerminal: boolean;
-  isNavRailExpanded: boolean;
   isSessionSwitcherOpen: boolean;
   appPage: AppPage;
   activeMainTab: MainTab;
@@ -591,8 +590,6 @@ interface UIStore {
   setBottomTerminalOpen: (open: boolean) => void;
   setBottomTerminalExpanded: (expanded: boolean) => void;
   setBottomTerminalHeight: (height: number) => void;
-  setNavRailExpanded: (expanded: boolean) => void;
-  toggleNavRail: () => void;
   setSessionSwitcherOpen: (open: boolean) => void;
   setAppPage: (page: AppPage) => void;
   setActiveMainTab: (tab: MainTab) => void;
@@ -706,7 +703,6 @@ export const useUIStore = create<UIStore>()(
         isBottomTerminalExpanded: false,
         bottomTerminalHeight: 300,
         hasManuallyResizedBottomTerminal: false,
-        isNavRailExpanded: false,
         isSessionSwitcherOpen: false,
         appPage: 'workspace',
         activeMainTab: 'chat',
@@ -743,7 +739,7 @@ export const useUIStore = create<UIStore>()(
         fontSize: 100,
         terminalFontSize: 13,
         padding: 100,
-        cornerRadius: 12,
+        cornerRadius: 18,
         inputBarOffset: 0,
         favoriteModels: [],
         hiddenModels: [],
@@ -1171,13 +1167,6 @@ export const useUIStore = create<UIStore>()(
 
         setBottomTerminalHeight: (height) => {
           set({ bottomTerminalHeight: height, hasManuallyResizedBottomTerminal: true });
-        },
-
-        setNavRailExpanded: (expanded) => {
-          set({ isNavRailExpanded: expanded });
-        },
-        toggleNavRail: () => {
-          set({ isNavRailExpanded: !get().isNavRailExpanded });
         },
 
         setSessionSwitcherOpen: (open) => {
@@ -1857,7 +1846,6 @@ export const useUIStore = create<UIStore>()(
           isBottomTerminalOpen: state.isBottomTerminalOpen,
           isBottomTerminalExpanded: state.isBottomTerminalExpanded,
           bottomTerminalHeight: state.bottomTerminalHeight,
-          isNavRailExpanded: state.isNavRailExpanded,
           isSessionSwitcherOpen: state.isSessionSwitcherOpen,
           activeMainTab: state.activeMainTab,
           sidebarSection: state.sidebarSection,
