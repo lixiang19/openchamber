@@ -17,20 +17,22 @@ export function SessionDeleteConfirmDialog(props: {
   onConfirm: () => Promise<void> | void;
 }): React.ReactNode {
   const { value, setValue, showDeletionDialog, setShowDeletionDialog, onConfirm } = props;
+  const sessionTitle = value?.session.title || '未命名会话';
+  const subTaskLabel = value && value.descendantCount > 0 ? `${value.descendantCount} 个子任务` : '';
 
   return (
     <Dialog open={Boolean(value)} onOpenChange={(open) => { if (!open) setValue(null); }}>
       <DialogContent showCloseButton={false} className="max-w-sm gap-5">
         <DialogHeader>
-          <DialogTitle>{value?.archivedBucket ? 'Delete conversation?' : 'Archive conversation?'}</DialogTitle>
+          <DialogTitle>{value?.archivedBucket ? '删除会话？' : '归档会话？'}</DialogTitle>
           <DialogDescription>
             {value && value.descendantCount > 0
               ? value.archivedBucket
-                ? `"${value.session.title || 'Untitled Conversation'}" and its ${value.descendantCount} sub-task${value.descendantCount === 1 ? '' : 's'} will be permanently deleted.`
-                : `"${value.session.title || 'Untitled Conversation'}" and its ${value.descendantCount} sub-task${value.descendantCount === 1 ? '' : 's'} will be archived.`
+                ? `“${sessionTitle}”及其 ${subTaskLabel}将被永久删除。`
+                : `“${sessionTitle}”及其 ${subTaskLabel}将被归档。`
               : value?.archivedBucket
-                ? `"${value?.session.title || 'Untitled Conversation'}" will be permanently deleted.`
-                : `"${value?.session.title || 'Untitled Conversation'}" will be archived.`}
+                ? `“${sessionTitle}”将被永久删除。`
+                : `“${sessionTitle}”将被归档。`}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="w-full sm:items-center sm:justify-between">
@@ -41,7 +43,7 @@ export function SessionDeleteConfirmDialog(props: {
             aria-pressed={!showDeletionDialog}
           >
             {!showDeletionDialog ? <RiCheckboxLine className="h-4 w-4 text-primary" /> : <RiCheckboxBlankLine className="h-4 w-4" />}
-            Never ask
+            不再询问
           </button>
           <div className="flex items-center gap-2">
             <button
@@ -49,14 +51,14 @@ export function SessionDeleteConfirmDialog(props: {
               onClick={() => setValue(null)}
               className="inline-flex h-8 items-center justify-center rounded-md border border-border px-3 typography-ui-label text-foreground hover:bg-interactive-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             >
-              Cancel
+              取消
             </button>
             <button
               type="button"
               onClick={() => void onConfirm()}
               className="inline-flex h-8 items-center justify-center rounded-md bg-destructive px-3 typography-ui-label text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
             >
-              {value?.archivedBucket ? 'Delete' : 'Archive'}
+              {value?.archivedBucket ? '删除' : '归档'}
             </button>
           </div>
         </DialogFooter>
@@ -84,11 +86,11 @@ export function FolderDeleteConfirmDialog(props: {
     <Dialog open={Boolean(value)} onOpenChange={(open) => { if (!open) setValue(null); }}>
       <DialogContent showCloseButton={false} className="max-w-sm gap-5">
         <DialogHeader>
-          <DialogTitle>Delete folder?</DialogTitle>
+          <DialogTitle>删除文件夹？</DialogTitle>
           <DialogDescription>
             {value && (value.subFolderCount > 0 || value.sessionCount > 0)
-              ? `"${value.folderName}" will be deleted${value.subFolderCount > 0 ? ` along with ${value.subFolderCount} sub-folder${value.subFolderCount === 1 ? '' : 's'}` : ''}. Sessions inside will not be deleted.`
-              : `"${value?.folderName}" will be permanently deleted.`}
+              ? `“${value.folderName}”将被删除${value.subFolderCount > 0 ? `，同时删除 ${value.subFolderCount} 个子文件夹` : ''}。其中的会话不会被删除。`
+              : `“${value?.folderName}”将被永久删除。`}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -97,14 +99,14 @@ export function FolderDeleteConfirmDialog(props: {
             onClick={() => setValue(null)}
             className="inline-flex h-8 items-center justify-center rounded-md border border-border px-3 typography-ui-label text-foreground hover:bg-interactive-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
           >
-            Cancel
+            取消
           </button>
           <button
             type="button"
             onClick={onConfirm}
             className="inline-flex h-8 items-center justify-center rounded-md bg-destructive px-3 typography-ui-label text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
           >
-            Delete
+            删除
           </button>
         </DialogFooter>
       </DialogContent>

@@ -11,6 +11,8 @@ import {
   RiSparklingLine,
 } from '@remixicon/react';
 
+import { useI18n } from '@/contexts/useI18n';
+
 type ProjectCreateDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -54,14 +56,16 @@ export const ProjectCreateDialog: React.FC<ProjectCreateDialogProps> = ({
   onOpenExistingFolder,
   onOpenTemplateCreate,
 }) => {
+  const { t } = useI18n();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[min(680px,100vw-2rem)] overflow-hidden rounded-3xl border border-[var(--interactive-border)] bg-[var(--surface-background)] p-0">
         <div className="border-b border-[var(--interactive-border)] bg-[var(--surface-muted)]/70 px-6 py-5">
           <DialogHeader className="space-y-2 text-left">
-            <DialogTitle className="typography-ui-header font-semibold text-foreground">Add project</DialogTitle>
+            <DialogTitle className="typography-ui-header font-semibold text-foreground">{t('projectCreate.title')}</DialogTitle>
             <DialogDescription className="typography-meta text-muted-foreground">
-              Start from an existing folder, or create a fresh workspace from the built-in template.
+              {t('projectCreate.description')}
             </DialogDescription>
           </DialogHeader>
         </div>
@@ -69,15 +73,15 @@ export const ProjectCreateDialog: React.FC<ProjectCreateDialogProps> = ({
         <div className="grid gap-3 p-5 md:grid-cols-2">
           <ProjectCreateOptionCard
             icon={<RiFolderOpenLine className="h-5 w-5" />}
-            title="Open existing folder"
-            description="Register a folder that already exists on disk and use it directly as a project."
+            title={t('projectCreate.openExistingFolder.title')}
+            description={t('projectCreate.openExistingFolder.description')}
             onClick={onOpenExistingFolder}
           />
 
           <ProjectCreateOptionCard
             icon={<RiSparklingLine className="h-5 w-5" />}
-            title="Use template"
-            description="Create a new project folder from the built-in OpenAurora workspace template."
+            title={t('projectCreate.useTemplate.title')}
+            description={t('projectCreate.useTemplate.description')}
             onClick={onOpenTemplateCreate}
           />
         </div>

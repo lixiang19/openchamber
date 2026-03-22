@@ -3,7 +3,6 @@ import { motion, useMotionValue, animate } from 'motion/react';
 import { Header } from './Header';
 import { BottomTerminalDock } from './BottomTerminalDock';
 import { Sidebar } from './Sidebar';
-import { NavRail } from './NavRail';
 import { RightSidebar } from './RightSidebar';
 import { RightSidebarTabs } from './RightSidebarTabs';
 import { ContextPanel } from './ContextPanel';
@@ -546,7 +545,7 @@ export const MainLayout: React.FC = () => {
 
     const isInboxPage = appPage === 'inbox';
     const isChatActive = activeMainTab === 'chat';
-    const useMobileChatShell = isMobile && isChatActive && !isSettingsDialogOpen && !isMultiRunLauncherOpen;
+    const useMobileChatShell = isMobile && !isInboxPage && isChatActive && !isSettingsDialogOpen && !isMultiRunLauncherOpen;
 
     return (
         <DiffWorkerProvider>
@@ -585,15 +584,7 @@ export const MainLayout: React.FC = () => {
                     setMobileLeftDrawerOpen,
                     setRightSidebarOpen,
                 }}>
-                    {isInboxPage && !(isSettingsDialogOpen || isMultiRunLauncherOpen) ? (
-                        <div className="flex flex-1 overflow-hidden relative">
-                            <main className="w-full h-full overflow-hidden bg-background relative">
-                                <div className="absolute inset-0">
-                                    <ErrorBoundary><InboxView /></ErrorBoundary>
-                                </div>
-                            </main>
-                        </div>
-                    ) : useMobileChatShell ? (
+                    {useMobileChatShell ? (
                         <div className="flex flex-1 overflow-hidden relative">
                             <main className="w-full h-full overflow-hidden bg-background relative">
                                 <div className="absolute inset-0">
@@ -676,10 +667,10 @@ export const MainLayout: React.FC = () => {
                                 )}
                                 aria-hidden={!mobileLeftDrawerOpen}
                             >
-                                <div className="h-full overflow-hidden flex bg-sidebar shadow-none drawer-safe-area">
-                                    <div onPointerDownCapture={(e) => e.stopPropagation()}>
-                                      <NavRail className="shrink-0" mobile />
-                                    </div>
+                                <div
+                                    className="h-full overflow-hidden flex shadow-none drawer-safe-area"
+                                    style={{ backgroundImage: 'linear-gradient(var(--surface-muted), var(--surface-muted))' }}
+                                >
                                     <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
                                         <ErrorBoundary>
                                             <SessionSidebar mobileVariant />
@@ -743,13 +734,21 @@ export const MainLayout: React.FC = () => {
                                 style={{ paddingTop: 'var(--oc-header-height, 56px)' }}
                             >
                                 <main className="w-full h-full overflow-hidden bg-background relative">
-                                    <div className={cn('absolute inset-0', !isChatActive && 'invisible')}>
-                                        <ErrorBoundary><ChatView /></ErrorBoundary>
-                                    </div>
-                                    {secondaryView && (
+                                    {isInboxPage ? (
                                         <div className="absolute inset-0">
-                                            <ErrorBoundary>{secondaryView}</ErrorBoundary>
+                                            <ErrorBoundary><InboxView /></ErrorBoundary>
                                         </div>
+                                    ) : (
+                                        <>
+                                            <div className={cn('absolute inset-0', !isChatActive && 'invisible')}>
+                                                <ErrorBoundary><ChatView /></ErrorBoundary>
+                                            </div>
+                                            {secondaryView && (
+                                                <div className="absolute inset-0">
+                                                    <ErrorBoundary>{secondaryView}</ErrorBoundary>
+                                                </div>
+                                            )}
+                                        </>
                                     )}
                                 </main>
                             </div>
@@ -778,53 +777,53 @@ export const MainLayout: React.FC = () => {
                 </DrawerProvider>
             ) : (
                 <>
-                    {/* Desktop: header/workspace shell or standalone inbox page */}
+                    {/* Desktop: shared shell for home and workspace */}
                     <div className="flex flex-1 flex-col overflow-hidden relative">
-                        {isInboxPage ? (
-                            <div className={cn('absolute inset-0 flex overflow-hidden', isMultiRunLauncherOpen && 'invisible')}>
-                                <NavRail />
-                                <main className="flex-1 min-w-0 overflow-hidden bg-background relative">
-                                    <div className="absolute inset-0">
-                                        <ErrorBoundary><InboxView /></ErrorBoundary>
-                                    </div>
-                                </main>
-                            </div>
-                        ) : (
-                            <div className={cn('absolute inset-0 flex flex-col', isMultiRunLauncherOpen && 'invisible')}>
+                        <div className={cn('absolute inset-0 flex overflow-hidden bg-sidebar', isMultiRunLauncherOpen && 'invisible')}>
+                            <Sidebar isOpen={isSidebarOpen} isMobile={isMobile}>
+                                <SessionSidebar />
+                            </Sidebar>
+                            <div className={cn(
+                                'relative flex flex-1 min-w-0 flex-col overflow-hidden bg-sidebar',
+                                isSidebarOpen && 'border-l border-border/50 rounded-tl-md rounded-bl-md',
+                                isRightSidebarOpen && 'border-r border-border/50 rounded-tr-md rounded-br-md'
+                            )}>
                                 <Header />
-                                <div className="flex flex-1 overflow-hidden">
-                                    <NavRail />
-                                    <div className="flex flex-1 min-w-0 overflow-hidden border-t border-l border-border/50 rounded-tl-xl">
-                                        <Sidebar isOpen={isSidebarOpen} isMobile={isMobile}>
-                                            <SessionSidebar hideProjectSelector />
-                                        </Sidebar>
-                                        <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
-                                            <div className="flex flex-1 min-h-0 overflow-hidden">
-                                                <div className="relative flex flex-1 min-h-0 min-w-0 overflow-hidden">
-                                                    <main className="flex-1 overflow-hidden bg-background relative">
-                                                        <div className={cn('absolute inset-0', !isChatActive && 'invisible')}>
-                                                            <ErrorBoundary><ChatView /></ErrorBoundary>
-                                                        </div>
-                                                        {secondaryView && (
-                                                            <div className="absolute inset-0">
-                                                                <ErrorBoundary>{secondaryView}</ErrorBoundary>
-                                                            </div>
-                                                        )}
-                                                    </main>
-                                                    <ContextPanel />
+                                <div className={cn(
+                                    'flex flex-1 min-h-0 overflow-hidden',
+                                    isSidebarOpen || isChatActive ? '' : 'border-l border-border/50',
+                                    isRightSidebarOpen ? '' : 'border-r border-border/50'
+                                )}>
+                                    <div className="relative flex flex-1 min-h-0 min-w-0 overflow-hidden">
+                                        <main className="flex-1 overflow-hidden bg-background relative">
+                                            {isInboxPage ? (
+                                                <div className="absolute inset-0">
+                                                    <ErrorBoundary><InboxView /></ErrorBoundary>
                                                 </div>
-                                                <RightSidebar isOpen={isRightSidebarOpen}>
-                                                    <ErrorBoundary><RightSidebarTabs /></ErrorBoundary>
-                                                </RightSidebar>
-                                            </div>
-                                            <BottomTerminalDock isOpen={isBottomTerminalOpen} isMobile={isMobile}>
-                                                <ErrorBoundary><TerminalView /></ErrorBoundary>
-                                            </BottomTerminalDock>
-                                        </div>
+                                            ) : (
+                                                <>
+                                                    <div className={cn('absolute inset-0', !isChatActive && 'invisible')}>
+                                                        <ErrorBoundary><ChatView /></ErrorBoundary>
+                                                    </div>
+                                                    {secondaryView && (
+                                                        <div className="absolute inset-0">
+                                                            <ErrorBoundary>{secondaryView}</ErrorBoundary>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                        </main>
+                                        <ContextPanel />
                                     </div>
+                                    <RightSidebar isOpen={isRightSidebarOpen}>
+                                        <ErrorBoundary><RightSidebarTabs /></ErrorBoundary>
+                                    </RightSidebar>
                                 </div>
+                                <BottomTerminalDock isOpen={isBottomTerminalOpen} isMobile={isMobile}>
+                                    <ErrorBoundary><TerminalView /></ErrorBoundary>
+                                </BottomTerminalDock>
                             </div>
-                        )}
+                        </div>
 
                         {/* Multi-Run Launcher: replaces tabs content only */}
                         {isMultiRunLauncherOpen && (

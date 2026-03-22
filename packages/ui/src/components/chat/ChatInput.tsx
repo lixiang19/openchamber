@@ -882,7 +882,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                 normalized === 'failed to send message';
 
             if (normalized.includes('payload too large') || normalized.includes('413') || normalized.includes('entity too large')) {
-                toast.error('Attachments are too large to send. Please try reducing the number or size of images.');
+                toast.error('附件过大，无法发送。请减少图片数量或缩小图片体积。');
                 if (allAttachments.length > 0) {
                     useFileStore.setState({ attachedFiles: allAttachments });
                 }
@@ -892,7 +892,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
             if (isSoftNetworkError) {
                 if (allAttachments.length > 0) {
                     useFileStore.setState({ attachedFiles: allAttachments });
-                    toast.error('Failed to send attachments. Try fewer files or smaller images.');
+                    toast.error('发送附件失败。请减少文件数量或缩小图片体积。');
                 }
                 return;
             }
@@ -900,7 +900,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
             if (allAttachments.length > 0) {
                 useFileStore.setState({ attachedFiles: allAttachments });
             }
-            toast.error(rawMessage || 'Message failed to send. Attachments restored.');
+            toast.error(rawMessage || '消息发送失败，附件已恢复。');
         });
 
         if (!isMobile) {
@@ -1542,12 +1542,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                 }
             } catch (error) {
                 console.error('Clipboard image attach failed', error);
-                toast.error(error instanceof Error ? error.message : 'Failed to attach image from clipboard');
+                toast.error(error instanceof Error ? error.message : '从剪贴板附加图片失败');
             }
         }
 
         if (attachedCount > 0) {
-            toast.success(`Attached ${attachedCount} image${attachedCount > 1 ? 's' : ''} from clipboard`);
+            toast.success(`已从剪贴板附加 ${attachedCount} 张图片`);
         }
     }, [addAttachedFile, currentSessionId, newSessionDraftOpen, insertTextAtSelection]);
 
@@ -1809,7 +1809,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                 const summary = skipped
                     .map((entry: { name?: string; reason?: string }) => `${entry?.name || 'file'}: ${entry?.reason || 'skipped'}`)
                     .join('\n');
-                toast.error(`Some dropped files were skipped:\n${summary}`);
+                toast.error(`部分拖放文件已跳过：\n${summary}`);
             }
 
             let attachedCount = 0;
@@ -1838,16 +1838,16 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                     }
                 } catch (error) {
                     console.error('Dropped file attach failed', error);
-                    toast.error(error instanceof Error ? error.message : 'Failed to attach dropped file');
+                    toast.error(error instanceof Error ? error.message : '附加拖放文件失败');
                 }
             }
 
             if (attachedCount > 0) {
-                toast.success(`Attached ${attachedCount} file${attachedCount > 1 ? 's' : ''}`);
+                toast.success(`已附加 ${attachedCount} 个文件`);
             }
         } catch (error) {
             console.error('VS Code dropped file attach failed', error);
-            toast.error(error instanceof Error ? error.message : 'Failed to attach dropped files');
+            toast.error(error instanceof Error ? error.message : '附加拖放文件失败');
         }
     }, [addAttachedFile]);
 
@@ -1990,13 +1990,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                     }
                 } catch (error) {
                     console.error('File attach failed', error);
-                    toast.error(error instanceof Error ? error.message : 'Failed to attach file');
+                    toast.error(error instanceof Error ? error.message : '附加文件失败');
                 }
             }
         }
 
         if (attachedCount > 0) {
-            toast.success(`Attached ${attachedCount} file${attachedCount > 1 ? 's' : ''}`);
+            toast.success(`已附加 ${attachedCount} 个文件`);
         }
     };
 
@@ -2093,11 +2093,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                 if (sizeAfter > sizeBefore) attachedCount++;
                             } catch (error) {
                                 console.error('Failed to attach dropped file:', path, error);
-                                toast.error(`Failed to attach ${path.split(/[\\/]/).pop() || 'file'}`);
+                                toast.error(`附加 ${path.split(/[\\/]/).pop() || '文件'} 失败`);
                             }
                         }
                         if (attachedCount > 0) {
-                            toast.success(`Attached ${attachedCount} file${attachedCount > 1 ? 's' : ''}`);
+                            toast.success(`已附加 ${attachedCount} 个文件`);
                         }
                     }
                 });
@@ -2136,12 +2136,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                 }
             } catch (error) {
                 console.error('File attach failed', error);
-                toast.error(error instanceof Error ? error.message : 'Failed to attach file');
+                toast.error(error instanceof Error ? error.message : '附加文件失败');
             }
         }
 
         if (attachedCount > 0) {
-            toast.success(`Attached ${attachedCount} file${attachedCount > 1 ? 's' : ''}`);
+            toast.success(`已附加 ${attachedCount} 个文件`);
         }
     }, [addAttachedFile]);
 
@@ -2156,7 +2156,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                 const summary = skipped
                     .map((s: { name?: string; reason?: string }) => `${s?.name || 'file'}: ${s?.reason || 'skipped'}`)
                     .join('\n');
-                toast.error(`Some files were skipped:\n${summary}`);
+                toast.error(`部分文件已跳过：\n${summary}`);
             }
 
             const asFiles = picked
@@ -2185,7 +2185,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
             }
         } catch (error) {
             console.error('VS Code file pick failed', error);
-            toast.error(error instanceof Error ? error.message : 'Failed to pick files in VS Code');
+            toast.error(error instanceof Error ? error.message : '在 VS Code 中选择文件失败');
         }
     }, [attachFiles]);
 
@@ -2234,7 +2234,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                     ? 'text-primary hover:text-primary'
                     : 'opacity-30'
             )}
-            aria-label="Send message"
+            aria-label="发送消息"
         >
             <RiSendPlane2Line className={cn(sendIconSizeClass)} />
         </button>
@@ -2258,7 +2258,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                     ? 'text-primary hover:text-primary'
                     : 'opacity-30'
             )}
-            aria-label="Queue message"
+            aria-label="加入消息队列"
         >
             <RiSendPlane2Line className={cn(sendIconSizeClass, '-rotate-90')} />
         </button>
@@ -2273,7 +2273,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                 footerIconButtonClass,
                 'text-[var(--status-error)] hover:text-[var(--status-error)]'
             )}
-            aria-label="Stop generating"
+            aria-label="停止生成"
         >
             <StopIcon className={cn(stopIconSizeClass)} />
         </button>
@@ -2306,8 +2306,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                         type="button"
                         className={footerIconButtonClass}
                         onClick={() => handlePickLocalFiles()}
-                        title="Attach files"
-                        aria-label="Attach files"
+                        title="附加文件"
+                        aria-label="附加文件"
                     >
                         <RiAttachment2 className={cn(iconSizeClass, 'text-current')} />
                     </button>
@@ -2317,8 +2317,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                             <button
                                 type="button"
                                 className={footerIconButtonClass}
-                                title="Add attachment"
-                                aria-label="Add attachment"
+                                title="添加附件"
+                                aria-label="添加附件"
                             >
                                 <RiAddCircleLine className={cn(iconSizeClass, 'text-current')} />
                             </button>
@@ -2330,7 +2330,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                 }}
                             >
                                 <RiAttachment2 />
-                                Attach files
+                                附加文件
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 onSelect={() => {
@@ -2340,7 +2340,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                 }}
                             >
                                 <RiGithubLine />
-                                Link GitHub Issue
+                                关联 GitHub Issue
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 onSelect={() => {
@@ -2350,7 +2350,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                 }}
                             >
                                 <RiGitPullRequestLine />
-                                Link GitHub PR
+                                关联 GitHub PR
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
@@ -2364,8 +2364,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
             type='button'
             onClick={onOpenSettings}
             className={footerIconButtonClass}
-            title='Model and agent settings'
-            aria-label='Model and agent settings'
+            title='模型与智能体设置'
+            aria-label='模型与智能体设置'
         >
             <RiAiAgentLine className={cn(iconSizeClass, 'text-current')} />
         </button>
@@ -2388,8 +2388,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                         }
                     }}
                     onClick={handleOpenCommandMenu}
-                    title="Commands"
-                    aria-label="Commands"
+                    title="命令"
+                    aria-label="命令"
                 >
                     <RiCommandLine className={cn(iconSizeClass)} />
                 </button>
@@ -2498,7 +2498,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                             rel="noopener noreferrer"
                                             onClick={(e) => e.stopPropagation()}
                                             className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors"
-                                            aria-label="Open issue in browser"
+                                            aria-label="在浏览器中打开 Issue"
                                         >
                                             <RiExternalLinkLine className="h-4 w-4 text-muted-foreground" />
                                         </a>
@@ -2508,7 +2508,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                                 setLinkedIssue(null);
                                             }}
                                             className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors cursor-pointer"
-                                            aria-label="Remove linked issue"
+                                            aria-label="移除已关联的 Issue"
                                         >
                                             <RiCloseLine className="h-4 w-4 text-muted-foreground" />
                                         </span>
@@ -2549,7 +2549,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                             rel="noopener noreferrer"
                                             onClick={(e) => e.stopPropagation()}
                                             className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors"
-                                            aria-label="Open pull request in browser"
+                                            aria-label="在浏览器中打开 Pull Request"
                                         >
                                             <RiExternalLinkLine className="h-4 w-4 text-muted-foreground" />
                                         </a>
@@ -2559,7 +2559,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                                 setLinkedPr(null);
                                             }}
                                             className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors cursor-pointer"
-                                            aria-label="Remove linked pull request"
+                                            aria-label="移除已关联的 Pull Request"
                                         >
                                             <RiCloseLine className="h-4 w-4 text-muted-foreground" />
                                         </span>
@@ -2610,8 +2610,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                         type="button"
                                         className={iconButtonBaseClass}
                                         onClick={() => handlePickLocalFiles()}
-                                        title="Attach files"
-                                        aria-label="Attach files"
+                                        title="附加文件"
+                                        aria-label="附加文件"
                                     >
                                         <RiAttachment2 className={cn(iconSizeClass, 'text-current')} />
                                     </button>
@@ -2738,9 +2738,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                             onSelect={updateAutocompleteOverlayPosition}
                             placeholder={currentSessionId || newSessionDraftOpen
                                 ? inputMode === 'shell'
-                                    ? "Enter shell command..."
-                                    : "@ for files/agents; / for commands; ! for shell"
-                                : "Select or create a session to start chatting"}
+                                    ? '输入 shell 命令...'
+                                    : '@ 选择文件/智能体；/ 选择命令；! 进入 shell'
+                                : '选择或创建一个会话后开始聊天'}
                             disabled={!currentSessionId && !newSessionDraftOpen}
                             autoCorrect={isMobile ? "on" : "off"}
                             autoCapitalize={isMobile ? "sentences" : "off"}
@@ -2833,7 +2833,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                                     event.preventDefault();
                                                 }}
                                                 onClick={() => setExpandedInput(!isExpandedInput)}
-                                                aria-label="Toggle focus mode"
+                                                aria-label="切换专注模式"
                                                 aria-pressed={isExpandedInput}
                                             >
                                                 <RiFullscreenLine className={cn(iconSizeClass)} />
@@ -2841,7 +2841,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                         </TooltipTrigger>
                                         <TooltipContent side="top" sideOffset={8}>
                                             <div className="flex flex-col gap-0.5 text-center">
-                                                <span>Focus mode</span>
+                                                <span>专注模式</span>
                                                 <span className="font-mono opacity-60">
                                                     {isMacOS() ? '⌘⇧E' : 'Ctrl+Shift+E'}
                                                 </span>

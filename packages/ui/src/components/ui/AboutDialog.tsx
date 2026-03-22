@@ -8,6 +8,7 @@ import { RiDiscordFill, RiGithubFill, RiTwitterXFill } from '@remixicon/react';
 import { debugUtils } from '@/lib/debug';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui';
+import { useI18n } from '@/contexts/useI18n';
 
 declare const __APP_VERSION__: string | undefined;
 
@@ -20,6 +21,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
   open,
   onOpenChange,
 }) => {
+  const { t } = useI18n();
   const [version, setVersion] = React.useState<string | null>(null);
   const [isCopyingDiagnostics, setIsCopyingDiagnostics] = React.useState(false);
   const [copiedDiagnostics, setCopiedDiagnostics] = React.useState(false);
@@ -32,8 +34,8 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
     setCopiedDiagnostics(false);
     try {
       if (!diagnosticsReport) {
-        toast.error('Copy failed', {
-          description: 'Diagnostics not ready yet. Wait a second and retry.',
+        toast.error(t('about.copyFailed'), {
+          description: t('about.diagnosticsNotReady'),
         });
         return;
       }
@@ -41,19 +43,19 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
       const result = await debugUtils.copyTextToClipboard(diagnosticsReport);
       if (result.ok) {
         setCopiedDiagnostics(true);
-        toast.success('Diagnostics copied');
+        toast.success(t('about.diagnosticsCopied'));
       } else {
-        toast.error('Copy failed', {
+        toast.error(t('about.copyFailed'), {
           description: result.error,
         });
       }
     } catch (error) {
-      toast.error('Copy failed');
+      toast.error(t('about.copyFailed'));
       console.error('Failed to copy diagnostics:', error);
     } finally {
       setIsCopyingDiagnostics(false);
     }
-  }, [diagnosticsReport, isCopyingDiagnostics]);
+  }, [diagnosticsReport, isCopyingDiagnostics, t]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -117,13 +119,13 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
             <h2 className="text-lg font-semibold">OpenAurora</h2>
             {displayVersion && (
               <p className="typography-meta text-muted-foreground">
-                Version {displayVersion}
+                {t('about.version', { version: displayVersion })}
               </p>
             )}
           </div>
 
           <p className="typography-meta text-muted-foreground">
-            A fan-made interface for{' '}
+            {t('about.taglinePrefix')}
             <a
               href="https://opencode.ai/"
               target="_blank"
@@ -131,8 +133,8 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
               className="hover:text-foreground transition-colors"
             >
               OpenCode
-            </a>{' '}
-            agent
+            </a>
+            {t('about.taglineSuffix')}
           </p>
 
           <div className="flex flex-col items-center gap-2 pt-2">
@@ -144,15 +146,15 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
                 'underline-offset-2 hover:underline',
                 'disabled:opacity-50 disabled:cursor-not-allowed'
               )}
-            >
+              >
               {copiedDiagnostics
-                ? 'Diagnostics copied'
+                ? t('about.diagnosticsCopied')
                 : isPreparingDiagnostics
-                  ? 'Preparing diagnostics...'
-                  : 'Copy diagnostics'}
+                  ? t('about.preparingDiagnostics')
+                  : t('about.copyDiagnostics')}
             </button>
             <p className="typography-micro text-muted-foreground">
-              Includes OpenAurora state, OpenCode health, directories, and projects.
+              {t('about.diagnosticsDescription')}
             </p>
           </div>
 
@@ -187,7 +189,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
           </div>
 
           <p className="typography-meta text-muted-foreground/60 pt-2">
-            Made with love to comunity
+            {t('about.madeWithLove')}
           </p>
         </div>
       </DialogContent>

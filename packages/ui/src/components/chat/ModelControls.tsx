@@ -50,6 +50,7 @@ import { useContextStore } from '@/stores/contextStore';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useUIStore } from '@/stores/useUIStore';
+import { isAgentBuiltIn } from '@/stores/useAgentsStore';
 import { useModelLists } from '@/hooks/useModelLists';
 import { useIsTextTruncated } from '@/hooks/useIsTextTruncated';
 import type { MobileControlsPanel } from './mobileControlsUtils';
@@ -475,7 +476,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
     }, [desktopModelQuery]);
 
     const selectableDesktopAgents = React.useMemo(() => {
-        return agents.filter((agent) => agent.mode !== 'subagent');
+        return agents.filter((agent) => !isAgentBuiltIn(agent) && agent.mode !== 'subagent');
     }, [agents]);
 
     const sortedAndFilteredAgents = React.useMemo(() => {
@@ -494,8 +495,6 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
             const found = selectableDesktopAgents.find(a => a.name === settingsDefaultAgent);
             if (found) return found.name;
         }
-        const buildAgent = selectableDesktopAgents.find(a => a.name === 'build');
-        if (buildAgent) return buildAgent.name;
         return selectableDesktopAgents[0]?.name;
     }, [settingsDefaultAgent, selectableDesktopAgents]);
 
@@ -1164,9 +1163,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
 
     const getAgentDisplayName = () => {
         if (!uiAgentName) {
-            const buildAgent = primaryAgents.find(agent => agent.name === 'build');
-            const defaultAgent = buildAgent || primaryAgents[0];
-            return defaultAgent ? capitalizeAgentName(defaultAgent.name) : 'Select Agent';
+            return defaultAgentName ? capitalizeAgentName(defaultAgentName) : 'Select Agent';
         }
         const agent = agents.find(a => a.name === uiAgentName);
         return agent ? capitalizeAgentName(agent.name) : capitalizeAgentName(uiAgentName);
@@ -2727,7 +2724,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                                         )}
                                         {sortedAndFilteredAgents.length === 0 ? (
                                             <div className="px-2 py-4 text-center typography-meta text-muted-foreground">
-                                                No agents found
+                                                No custom agents found
                                             </div>
                                         ) : (
                                             sortedAndFilteredAgents.map((agent) => (

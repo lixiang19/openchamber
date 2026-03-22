@@ -4,28 +4,10 @@ import { RiGitBranchLine } from '@remixicon/react';
 import { OpenAuroraLogo } from '@/components/ui/OpenAuroraLogo';
 import { TextLoop } from '@/components/ui/TextLoop';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
+import { useI18n } from '@/contexts/useI18n';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { useGitStatus, useGitStore } from '@/stores/useGitStore';
-
-const phrases = [
-    "Fix the failing tests",
-    "Refactor this to be more readable",
-    "Add form validation",
-    "Optimize this function",
-    "Write tests for this",
-    "Explain how this works",
-    "Add a new feature",
-    "Help me debug this",
-    "Review my code",
-    "Simplify this logic",
-    "Add error handling",
-    "Create a new component",
-    "Update the documentation",
-    "Find the bug here",
-    "Improve performance",
-    "Add type definitions",
-];
 
 interface ChatEmptyStateProps {
     showDraftContext?: boolean;
@@ -34,6 +16,7 @@ interface ChatEmptyStateProps {
 const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
     showDraftContext = false,
 }) => {
+    const { t } = useI18n();
     const { currentTheme } = useThemeSystem();
     const { git } = useRuntimeAPIs();
     const effectiveDirectory = useEffectiveDirectory();
@@ -45,6 +28,24 @@ const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
     const branchName = typeof gitStatus?.current === 'string' && gitStatus.current.trim().length > 0
         ? gitStatus.current.trim()
         : null;
+    const phrases = React.useMemo(() => [
+        t('chat.emptyState.fixTests'),
+        t('chat.emptyState.refactorReadable'),
+        t('chat.emptyState.addValidation'),
+        t('chat.emptyState.optimizeFunction'),
+        t('chat.emptyState.writeTests'),
+        t('chat.emptyState.explainHowItWorks'),
+        t('chat.emptyState.addFeature'),
+        t('chat.emptyState.debugHelp'),
+        t('chat.emptyState.reviewCode'),
+        t('chat.emptyState.simplifyLogic'),
+        t('chat.emptyState.addErrorHandling'),
+        t('chat.emptyState.createComponent'),
+        t('chat.emptyState.updateDocs'),
+        t('chat.emptyState.findBug'),
+        t('chat.emptyState.improvePerformance'),
+        t('chat.emptyState.addTypeDefinitions'),
+    ], [t]);
 
     React.useEffect(() => {
         if (!showDraftContext || !effectiveDirectory) {

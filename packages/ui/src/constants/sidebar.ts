@@ -1,6 +1,8 @@
 import { RiBrainAi3Line, RiChatAi3Line, RiCommandLine, RiGitBranchLine, RiSettings3Line, RiStackLine, RiBookLine, RiBarChart2Line, RiPlugLine } from '@remixicon/react';
 import type { ComponentType } from 'react';
 
+import { translate } from '@/i18n/core';
+
 export type SidebarSection = 'sessions' | 'agents' | 'commands' | 'skills' | 'mcp' | 'providers' | 'usage' | 'git-identities' | 'settings';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -16,56 +18,56 @@ export interface SidebarSectionConfig {
 export const SIDEBAR_SECTIONS: SidebarSectionConfig[] = [
     {
         id: 'sessions',
-        label: 'Sessions',
-        description: 'Browse and manage chat sessions scoped to the current directory.',
+        label: translate('sidebar.sessions.label'),
+        description: translate('sidebar.sessions.description'),
         icon: RiChatAi3Line,
     },
     {
         id: 'agents',
-        label: 'Agents',
-        description: 'Configure OpenCode agents, prompts, and permissions.',
+        label: translate('sidebar.agents.label'),
+        description: translate('sidebar.agents.description'),
         icon: RiBrainAi3Line,
     },
     {
         id: 'commands',
-        label: 'Commands',
-        description: 'Create and maintain custom slash commands for OpenCode.',
+        label: translate('sidebar.commands.label'),
+        description: translate('sidebar.commands.description'),
         icon: RiCommandLine,
     },
     {
         id: 'skills',
-        label: 'Skills',
-        description: 'Create reusable instruction files for agents to load on-demand.',
+        label: translate('sidebar.skills.label'),
+        description: translate('sidebar.skills.description'),
         icon: RiBookLine,
     },
     {
         id: 'mcp',
-        label: 'MCP',
-        description: 'Manage Model Context Protocol servers and their configurations.',
+        label: translate('sidebar.mcp.label'),
+        description: translate('sidebar.mcp.description'),
         icon: RiPlugLine,
     },
     {
         id: 'providers',
-        label: 'Providers',
-        description: 'Configure AI model providers and API credentials.',
+        label: translate('sidebar.providers.label'),
+        description: translate('sidebar.providers.description'),
         icon: RiStackLine,
     },
     {
         id: 'usage',
-        label: 'Usage',
-        description: 'Monitor API quota and usage across providers.',
+        label: translate('sidebar.usage.label'),
+        description: translate('sidebar.usage.description'),
         icon: RiBarChart2Line,
     },
     {
         id: 'git-identities',
-        label: 'Git Identities',
-        description: 'Manage Git profiles with different credentials and SSH keys.',
+        label: translate('sidebar.gitIdentities.label'),
+        description: translate('sidebar.gitIdentities.description'),
         icon: RiGitBranchLine,
     },
     {
         id: 'settings',
-        label: 'OpenAurora',
-        description: 'OpenAurora app settings: themes, fonts, and preferences.',
+        label: translate('sidebar.settings.label'),
+        description: translate('sidebar.settings.description'),
         icon: RiSettings3Line,
     },
 ];

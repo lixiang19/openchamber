@@ -21,6 +21,7 @@ type Args = {
   setSessionSearchQuery: (value: string) => void;
   setIsSessionSearchOpen: (open: boolean) => void;
   setActiveProjectIdOnly: (id: string) => void;
+  setAppPage: (page: 'workspace' | 'inbox') => void;
   setDirectory: (directory: string, options?: { showOverlay?: boolean }) => void;
   setActiveMainTab: (tab: 'chat' | 'plan' | 'git' | 'diff' | 'terminal' | 'files') => void;
   setSessionSwitcherOpen: (open: boolean) => void;
@@ -76,6 +77,8 @@ export const useSessionActions = (args: Args) => {
         args.setDirectory(sessionDirectory, { showOverlay: false });
       }
 
+      args.setAppPage('workspace');
+
       if (args.mobileVariant) {
         args.setActiveMainTab('chat');
         args.setSessionSwitcherOpen(false);
@@ -96,6 +99,7 @@ export const useSessionActions = (args: Args) => {
   );
 
   const handleSessionDoubleClick = React.useCallback(() => {
+    args.setAppPage('workspace');
     args.setActiveMainTab('chat');
   }, [args]);
 

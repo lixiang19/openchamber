@@ -29,9 +29,9 @@ import { useUIStore } from '@/stores/useUIStore';
 type TodoFilter = 'all' | 'active' | 'done';
 
 const FILTERS: Array<{ id: TodoFilter; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'active', label: 'Active' },
-  { id: 'done', label: 'Done' },
+  { id: 'all', label: '全部' },
+  { id: 'active', label: '进行中' },
+  { id: 'done', label: '已完成' },
 ];
 
 export const TodoView: React.FC = () => {
@@ -139,7 +139,7 @@ export const TodoView: React.FC = () => {
     async (nextItems: ProjectTodoItem[], previousItems: ProjectTodoItem[], failureTitle: string) => {
       const directory = currentDirectory.trim();
       if (!directory) {
-        toast.error('No project directory available');
+        toast.error('当前没有可用的项目目录');
         return false;
       }
 
@@ -168,7 +168,7 @@ export const TodoView: React.FC = () => {
     }
 
     if (text.length > PROJECT_TODO_TEXT_MAX_LENGTH) {
-      toast.error(`Todo text must be ${PROJECT_TODO_TEXT_MAX_LENGTH} characters or less`);
+      toast.error(`待办内容不能超过 ${PROJECT_TODO_TEXT_MAX_LENGTH} 个字符`);
       return;
     }
 
@@ -186,7 +186,7 @@ export const TodoView: React.FC = () => {
     ];
 
     setDraft('');
-    const saved = await persistItems(nextItems, previousItems, 'Failed to add todo');
+    const saved = await persistItems(nextItems, previousItems, '添加待办失败');
     if (!saved) {
       setDraft(text);
     }
@@ -199,13 +199,13 @@ export const TodoView: React.FC = () => {
         ? { ...item, done, updatedAt: Date.now() }
         : item
     ));
-    await persistItems(nextItems, previousItems, 'Failed to update todo');
+    await persistItems(nextItems, previousItems, '更新待办失败');
   }, [persistItems]);
 
   const handleDeleteTodo = React.useCallback(async (id: string) => {
     const previousItems = itemsRef.current;
     const nextItems = previousItems.filter((item) => item.id !== id);
-    await persistItems(nextItems, previousItems, 'Failed to delete todo');
+    await persistItems(nextItems, previousItems, '删除待办失败');
   }, [persistItems]);
 
   const handleClearDone = React.useCallback(async () => {
@@ -214,18 +214,18 @@ export const TodoView: React.FC = () => {
     if (nextItems.length === previousItems.length) {
       return;
     }
-    await persistItems(nextItems, previousItems, 'Failed to clear completed todos');
+    await persistItems(nextItems, previousItems, '清除已完成待办失败');
   }, [persistItems]);
 
   const handleSendToCurrentChat = React.useCallback((item: ProjectTodoItem) => {
     if (!currentSessionId) {
-      toast.error('No active session', { description: 'Open a chat session first.' });
+      toast.error('当前没有活动会话', { description: '请先打开一个聊天会话。' });
       return;
     }
 
     setPendingInputText(item.text, 'append');
     setActiveMainTab('chat');
-    toast.success('Todo added to current chat input');
+    toast.success('已将待办加入当前聊天输入框');
   }, [currentSessionId, setActiveMainTab, setPendingInputText]);
 
   const startEditing = React.useCallback((item: ProjectTodoItem) => {
@@ -245,11 +245,11 @@ export const TodoView: React.FC = () => {
       return;
     }
     if (!text) {
-      toast.error('Todo text cannot be empty');
+      toast.error('待办内容不能为空');
       return;
     }
     if (text.length > PROJECT_TODO_TEXT_MAX_LENGTH) {
-      toast.error(`Todo text must be ${PROJECT_TODO_TEXT_MAX_LENGTH} characters or less`);
+      toast.error(`待办内容不能超过 ${PROJECT_TODO_TEXT_MAX_LENGTH} 个字符`);
       return;
     }
 
@@ -259,7 +259,7 @@ export const TodoView: React.FC = () => {
         ? { ...item, text, updatedAt: Date.now() }
         : item
     ));
-    const saved = await persistItems(nextItems, previousItems, 'Failed to update todo');
+    const saved = await persistItems(nextItems, previousItems, '更新待办失败');
     if (saved) {
       stopEditing();
     }
@@ -286,10 +286,10 @@ export const TodoView: React.FC = () => {
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               <RiFileList3Line className="h-4 w-4 text-[var(--surface-muted-foreground)]" />
-              <h2 className="typography-ui-header font-medium text-foreground">Todo</h2>
+              <h2 className="typography-ui-header font-medium text-foreground">待办</h2>
             </div>
             <p className="typography-meta text-muted-foreground">
-              {currentDirectory.trim() ? `${activeCount} active · ${doneCount} done` : 'Open a project to manage project todo items'}
+              {currentDirectory.trim() ? `${activeCount} 个进行中 · ${doneCount} 个已完成` : '打开一个项目后即可管理项目待办'}
             </p>
             {todoPath ? (
               <p className="truncate typography-meta text-muted-foreground/80" title={todoPath}>
@@ -303,7 +303,7 @@ export const TodoView: React.FC = () => {
             onClick={() => void loadTodos()}
             disabled={isLoading || !currentDirectory.trim()}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--interactive-border)] bg-transparent text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Reload project todo file"
+            aria-label="重新加载项目待办文件"
           >
             {isLoading ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiRefreshLine className="h-4 w-4" />}
           </button>
@@ -322,7 +322,7 @@ export const TodoView: React.FC = () => {
                 void handleAddTodo();
               }
             }}
-            placeholder="Add the next concrete task"
+            placeholder="添加下一条明确任务"
             disabled={disableEditing || isSaving}
             className="h-8 bg-[var(--surface-elevated)]"
           />
@@ -331,7 +331,7 @@ export const TodoView: React.FC = () => {
             onClick={() => void handleAddTodo()}
             disabled={disableEditing || isSaving || draft.trim().length === 0}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--interactive-border)] bg-[var(--surface-elevated)] text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Add todo"
+            aria-label="添加待办"
           >
             <RiAddLine className="h-4 w-4" />
           </button>
@@ -362,7 +362,7 @@ export const TodoView: React.FC = () => {
       {loadError ? (
         <div className="mx-4 mt-4 rounded-lg border border-[var(--status-error-border)] bg-[var(--status-error-background)] px-3 py-2">
           <p className="typography-ui-label text-[var(--status-error-foreground)]">
-            {loadIssueKind === 'error' ? 'Failed to load todo.json' : 'todo.json is invalid'}
+            {loadIssueKind === 'error' ? '加载 todo.json 失败' : 'todo.json 格式无效'}
           </p>
           <p className="mt-1 typography-meta text-[var(--status-error-foreground)]">{loadError}</p>
         </div>
@@ -372,15 +372,15 @@ export const TodoView: React.FC = () => {
         {!currentDirectory.trim() ? (
           <div className="flex h-full min-h-[180px] items-center justify-center rounded-xl border border-dashed border-[var(--interactive-border)] bg-[var(--surface-muted)] px-6 text-center">
             <p className="typography-ui-label text-muted-foreground">
-              Open a project or session first. Todo items are stored in `.work/todo.json`.
+              请先打开项目或会话。待办项保存在 `.work/todo.json` 中。
             </p>
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="flex h-full min-h-[180px] items-center justify-center rounded-xl border border-dashed border-[var(--interactive-border)] bg-[var(--surface-muted)] px-6 text-center">
             <p className="typography-ui-label text-muted-foreground">
               {items.length === 0
-                ? 'No todos yet. Add the next concrete task for this project.'
-                : 'No todos match the current filter.'}
+                ? '还没有待办，给当前项目添加下一条明确任务吧。'
+                : '当前筛选条件下没有匹配的待办。'}
             </p>
           </div>
         ) : (
@@ -397,7 +397,7 @@ export const TodoView: React.FC = () => {
                       <Checkbox
                         checked={item.done}
                         onChange={(checked) => void handleToggleTodo(item.id, checked)}
-                        ariaLabel={`Mark ${item.text} complete`}
+                        ariaLabel={`将 ${item.text} 标记为完成`}
                       />
                     </div>
 
@@ -446,7 +446,7 @@ export const TodoView: React.FC = () => {
                       onClick={() => handleSendToCurrentChat(item)}
                       disabled={!currentSessionId}
                       className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
-                      aria-label={`Send ${item.text} to current chat`}
+                      aria-label={`将 ${item.text} 发送到当前聊天`}
                     >
                       <RiSendPlaneLine className="h-3.5 w-3.5" />
                     </button>
@@ -455,7 +455,7 @@ export const TodoView: React.FC = () => {
                       type="button"
                       onClick={() => void handleDeleteTodo(item.id)}
                       className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)]"
-                      aria-label={`Delete ${item.text}`}
+                      aria-label={`删除 ${item.text}`}
                     >
                       <RiDeleteBinLine className="h-3.5 w-3.5" />
                     </button>
@@ -470,7 +470,7 @@ export const TodoView: React.FC = () => {
       <div className="border-t border-[var(--interactive-border)] px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <p className="typography-meta text-muted-foreground">
-            {isSaving ? 'Saving to .work/todo.json…' : 'Tracked in Git with the project'}
+            {isSaving ? '正在保存到 .work/todo.json…' : '随项目一起纳入 Git 跟踪'}
           </p>
           <button
             type="button"
@@ -478,7 +478,7 @@ export const TodoView: React.FC = () => {
             disabled={isSaving || doneCount === 0 || Boolean(loadError) || !currentDirectory.trim()}
             className="inline-flex h-7 items-center rounded-md px-2.5 typography-meta text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Clear done
+            清除已完成
           </button>
         </div>
       </div>

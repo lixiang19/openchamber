@@ -41,6 +41,7 @@ import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CodeMirrorEditor } from '@/components/ui/CodeMirrorEditor';
+import { MilkdownMarkdownEditor, type MilkdownMarkdownEditorHandle } from '@/components/ui/MilkdownMarkdownEditor';
 import { PreviewToggleButton } from './PreviewToggleButton';
 import { SimpleMarkdownRenderer } from '@/components/chat/MarkdownRenderer';
 import { languageByExtension, loadLanguageByExtension } from '@/lib/codemirror/languageByExtension';
@@ -667,6 +668,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
   const copiedContentTimeoutRef = React.useRef<number | null>(null);
   const copiedPathTimeoutRef = React.useRef<number | null>(null);
   const editorViewRef = React.useRef<EditorView | null>(null);
+  const milkdownEditorRef = React.useRef<MilkdownMarkdownEditorHandle | null>(null);
   const editorWrapperRef = React.useRef<HTMLDivElement | null>(null);
   const [editorViewReadyNonce, setEditorViewReadyNonce] = React.useState(0);
   const pendingNavigationRafRef = React.useRef<number | null>(null);
@@ -1309,13 +1311,23 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
         }
       } else if (e.key.toLowerCase() === 'f') {
         e.preventDefault();
-        setIsSearchOpen(true);
+        const isMarkdownEditingShortcutBlocked = Boolean(
+          selectedFile?.path
+          && !isImageFile(selectedFile.path)
+          && files.writeFile
+          && fileContent.length <= MAX_VIEW_CHARS
+          && isMarkdownFile(selectedFile.path)
+          && previewMode === 'edit'
+        );
+        if (!isMarkdownEditingShortcutBlocked) {
+          setIsSearchOpen(true);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSaving, saveDraft]);
+  }, [fileContent.length, files.writeFile, isSaving, previewMode, saveDraft, selectedFile?.path]);
 
   const loadSelectedFile = React.useCallback(async (node: FileNode) => {
     setFileError(null);
@@ -1727,6 +1739,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
   const isTextFile = Boolean(selectedFile && !isSelectedImage);
   const canUseShikiFileView = isTextFile && !isMarkdown;
   const previewContent = canEdit ? draftContent : fileContent;
+  const isMilkdownEditing = canEdit && isMarkdown && previewMode === 'edit';
+  const showSearchControls = textViewMode === 'edit' && !isMilkdownEditing;
   const staticLanguageExtension = React.useMemo(
     () => (selectedFilePath ? languageByExtension(selectedFilePath) : null),
     [selectedFilePath],
@@ -1759,6 +1773,16 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
       setTextViewMode('view');
     }
   }, [canEdit, textViewMode]);
+
+  React.useEffect(() => {
+    if (!isMilkdownEditing) {
+      return;
+    }
+
+    setIsSearchOpen(false);
+    setLineSelection(null);
+    editorViewRef.current = null;
+  }, [isMilkdownEditing]);
 
   React.useEffect(() => {
     setTextViewMode('edit');
@@ -1869,6 +1893,13 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
       return;
     }
 
+    if (isMilkdownEditing) {
+      milkdownEditorRef.current?.focus();
+      setPendingFileNavigation(null);
+      pendingNavigationCycleRef.current = { key: '', attempts: 0 };
+      return;
+    }
+
     const view = editorViewRef.current;
     if (!view) {
       scheduleNavigationRetry();
@@ -1929,6 +1960,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
     root,
     selectedFile?.path,
     selectedPath,
+    isMilkdownEditing,
     setPendingFileNavigation,
     setSelectedPath,
     textViewMode,
@@ -1961,6 +1993,12 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
       return;
     }
 
+    if (isMilkdownEditing) {
+      milkdownEditorRef.current?.focus();
+      setPendingFileFocusPath(null);
+      return;
+    }
+
     if (canEdit) {
       const view = editorViewRef.current;
       if (!view) {
@@ -1980,6 +2018,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
     root,
     selectedFile?.path,
     selectedPath,
+    isMilkdownEditing,
     setPendingFileFocusPath,
     setSelectedPath,
     textViewMode,
@@ -2485,7 +2524,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                 >
                   <RiTextWrap className="size-4" />
                 </Button>
-                {textViewMode === 'edit' && (
+                {showSearchControls && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -2736,99 +2775,119 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
               style={isMobile ? { height: 'calc(100% - var(--oc-keyboard-inset, 0px))' } : undefined}
             >
               <div className={cn('h-full', shouldMaskEditorForPendingNavigation && 'invisible')}>
-                <CodeMirrorEditor
-                  value={draftContent}
-                  onChange={setDraftContent}
-                  extensions={editorExtensions}
-                  className="h-full"
-                  blockWidgets={blockWidgets}
-                  onViewReady={(view) => {
-                    editorViewRef.current = view;
-                    setEditorViewReadyNonce((value) => value + 1);
-                    window.requestAnimationFrame(() => {
-                      nudgeEditorSelectionAboveKeyboard(view);
-                    });
-                  }}
-                  onViewDestroy={() => {
-                    if (editorViewRef.current) {
-                      editorViewRef.current = null;
+                {isMilkdownEditing ? (
+                  <ErrorBoundary
+                    fallback={
+                      <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
+                        <div className="mb-1 font-medium text-destructive">Markdown editor unavailable</div>
+                        <div className="text-sm text-muted-foreground">
+                          Reload the file and try again.
+                        </div>
+                      </div>
                     }
-                    setEditorViewReadyNonce((value) => value + 1);
-                  }}
-                  enableSearch
-                  searchOpen={isSearchOpen}
-                  onSearchOpenChange={setIsSearchOpen}
-                  highlightLines={lineSelection
-                    ? {
-                      start: Math.min(lineSelection.start, lineSelection.end),
-                      end: Math.max(lineSelection.start, lineSelection.end),
-                    }
-                    : undefined}
-                  lineNumbersConfig={{
-                    domEventHandlers: {
-                      mousedown: (view: EditorView, line: { from: number; to: number }, event: Event) => {
-                        if (!(event instanceof MouseEvent)) {
-                          return false;
-                        }
-                        if (event.button !== 0) {
-                          return false;
-                        }
-                        event.preventDefault();
+                  >
+                    <MilkdownMarkdownEditor
+                      ref={milkdownEditorRef}
+                      value={draftContent}
+                      onChange={setDraftContent}
+                      className="h-full"
+                    />
+                  </ErrorBoundary>
+                ) : (
+                  <CodeMirrorEditor
+                    value={draftContent}
+                    onChange={setDraftContent}
+                    extensions={editorExtensions}
+                    className="h-full"
+                    blockWidgets={blockWidgets}
+                    onViewReady={(view) => {
+                      editorViewRef.current = view;
+                      setEditorViewReadyNonce((value) => value + 1);
+                      window.requestAnimationFrame(() => {
+                        nudgeEditorSelectionAboveKeyboard(view);
+                      });
+                    }}
+                    onViewDestroy={() => {
+                      if (editorViewRef.current) {
+                        editorViewRef.current = null;
+                      }
+                      setEditorViewReadyNonce((value) => value + 1);
+                    }}
+                    enableSearch
+                    searchOpen={isSearchOpen}
+                    onSearchOpenChange={setIsSearchOpen}
+                    highlightLines={lineSelection
+                      ? {
+                        start: Math.min(lineSelection.start, lineSelection.end),
+                        end: Math.max(lineSelection.start, lineSelection.end),
+                      }
+                      : undefined}
+                    lineNumbersConfig={{
+                      domEventHandlers: {
+                        mousedown: (view: EditorView, line: { from: number; to: number }, event: Event) => {
+                          if (!(event instanceof MouseEvent)) {
+                            return false;
+                          }
+                          if (event.button !== 0) {
+                            return false;
+                          }
+                          event.preventDefault();
 
-                        const lineNumber = view.state.doc.lineAt(line.from).number;
+                          const lineNumber = view.state.doc.lineAt(line.from).number;
 
-                        // Mobile: tap-to-extend selection
-                          if (isMobile && lineSelection && !event.shiftKey) {
-                            const start = Math.min(lineSelection.start, lineSelection.end, lineNumber);
-                            const end = Math.max(lineSelection.start, lineSelection.end, lineNumber);
+                          // Mobile: tap-to-extend selection
+                            if (isMobile && lineSelection && !event.shiftKey) {
+                              const start = Math.min(lineSelection.start, lineSelection.end, lineNumber);
+                              const end = Math.max(lineSelection.start, lineSelection.end, lineNumber);
+                              setLineSelection({ start, end });
+                              isSelectingRef.current = false;
+                              selectionStartRef.current = null;
+                              setIsDragging(false);
+                              return true;
+                            }
+
+                            isSelectingRef.current = true;
+                            selectionStartRef.current = lineNumber;
+                            setIsDragging(true);
+
+                            if (lineSelection && event.shiftKey) {
+                            const start = Math.min(lineSelection.start, lineNumber);
+                            const end = Math.max(lineSelection.end, lineNumber);
                             setLineSelection({ start, end });
+                          } else {
+                            setLineSelection({ start: lineNumber, end: lineNumber });
+                          }
+
+                          return true;
+                        },
+                        mouseover: (view: EditorView, line: { from: number; to: number }, event: Event) => {
+                          if (!(event instanceof MouseEvent)) {
+                            return false;
+                          }
+                          if (event.buttons !== 1) {
+                            return false;
+                          }
+                          if (!isSelectingRef.current || selectionStartRef.current === null) {
+                            return false;
+                          }
+
+                          const lineNumber = view.state.doc.lineAt(line.from).number;
+                            const start = Math.min(selectionStartRef.current, lineNumber);
+                            const end = Math.max(selectionStartRef.current, lineNumber);
+                            setLineSelection({ start, end });
+                            setIsDragging(true);
+                            return false;
+                          },
+                          mouseup: () => {
                             isSelectingRef.current = false;
                             selectionStartRef.current = null;
                             setIsDragging(false);
-                            return true;
-                          }
-
-                          isSelectingRef.current = true;
-                          selectionStartRef.current = lineNumber;
-                          setIsDragging(true);
-
-                          if (lineSelection && event.shiftKey) {
-                          const start = Math.min(lineSelection.start, lineNumber);
-                          const end = Math.max(lineSelection.end, lineNumber);
-                          setLineSelection({ start, end });
-                        } else {
-                          setLineSelection({ start: lineNumber, end: lineNumber });
-                        }
-
-                        return true;
-                      },
-                      mouseover: (view: EditorView, line: { from: number; to: number }, event: Event) => {
-                        if (!(event instanceof MouseEvent)) {
-                          return false;
-                        }
-                        if (event.buttons !== 1) {
-                          return false;
-                        }
-                        if (!isSelectingRef.current || selectionStartRef.current === null) {
-                          return false;
-                        }
-
-                        const lineNumber = view.state.doc.lineAt(line.from).number;
-                          const start = Math.min(selectionStartRef.current, lineNumber);
-                          const end = Math.max(selectionStartRef.current, lineNumber);
-                          setLineSelection({ start, end });
-                          setIsDragging(true);
-                          return false;
+                            return false;
+                          },
                         },
-                        mouseup: () => {
-                          isSelectingRef.current = false;
-                          selectionStartRef.current = null;
-                          setIsDragging(false);
-                          return false;
-                        },
-                      },
-                  }}
-                />
+                    }}
+                  />
+                )}
               </div>
               {shouldMaskEditorForPendingNavigation && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background">
@@ -3274,23 +3333,43 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
           ) : (
             <div className={cn('relative h-full', shouldMaskEditorForPendingNavigation && 'overflow-hidden')}>
               <div className={cn('h-full', shouldMaskEditorForPendingNavigation && 'invisible')}>
-              <CodeMirrorEditor
-                value={draftContent}
-                onChange={setDraftContent}
-                extensions={editorExtensions}
-                className="h-full"
-                onViewReady={(view) => {
-                  editorViewRef.current = view;
-                  window.requestAnimationFrame(() => {
-                    nudgeEditorSelectionAboveKeyboard(view);
-                  });
-                }}
-                onViewDestroy={() => {
-                  if (editorViewRef.current) {
-                    editorViewRef.current = null;
+              {isMilkdownEditing ? (
+                <ErrorBoundary
+                  fallback={
+                    <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
+                      <div className="mb-1 font-medium text-destructive">Markdown editor unavailable</div>
+                      <div className="text-sm text-muted-foreground">
+                        Reload the file and try again.
+                      </div>
+                    </div>
                   }
-                }}
-              />
+                >
+                  <MilkdownMarkdownEditor
+                    ref={milkdownEditorRef}
+                    value={draftContent}
+                    onChange={setDraftContent}
+                    className="h-full"
+                  />
+                </ErrorBoundary>
+              ) : (
+                <CodeMirrorEditor
+                  value={draftContent}
+                  onChange={setDraftContent}
+                  extensions={editorExtensions}
+                  className="h-full"
+                  onViewReady={(view) => {
+                    editorViewRef.current = view;
+                    window.requestAnimationFrame(() => {
+                      nudgeEditorSelectionAboveKeyboard(view);
+                    });
+                  }}
+                  onViewDestroy={() => {
+                    if (editorViewRef.current) {
+                      editorViewRef.current = null;
+                    }
+                  }}
+                />
+              )}
               </div>
               {shouldMaskEditorForPendingNavigation && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background">
