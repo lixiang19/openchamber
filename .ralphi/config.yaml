@@ -1,0 +1,27 @@
+# ralphi configuration
+# Auto-generated during ralphi-init — edit as needed
+
+project:
+  name: "openchamber"
+  language: "TypeScript"
+  framework: "Bun monorepo (React/Vite + Express + Tauri + VS Code extension)"
+
+commands:
+  lint: "bun run lint"
+  typecheck: "bun run type-check"
+
+rules:
+  - "保持严格 TypeScript，主要包的 tsconfig 均开启 strict。"
+  - "优先沿用 monorepo 分层：packages/web 负责 Web 运行时，packages/ui 承载共享 UI，desktop 与 vscode 维护各自宿主入口。"
+  - "共享实现优先通过 workspace 包与路径别名复用，不要复制逻辑。"
+  - "提交前必须通过 lint 与 type-check，build 仅在大型改动或发版前运行。"
+  - "当前仓库没有稳定的单元测试命令，不要伪造 test 脚本；发布验证使用 release 脚本。"
+  - "修改前优先阅读文档目录中的中文方案与模块梳理资料。"
+
+boundaries:
+  never_touch:
+    - "*.lock"
+    - ".env*"
+
+engine: "pi"
+max_retries: 3
