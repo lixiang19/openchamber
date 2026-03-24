@@ -1,0 +1,828 @@
+{
+  "version": 2,
+  "id": "pi-plugin-bridge",
+  "slug": "pi-plugin-bridge",
+  "title": "Pi 插件接入分阶段落地",
+  "status": "completed",
+  "docRefs": [
+    "文档/功能开发/2026-03-22_Pi插件接入调研方案.md"
+  ],
+  "milestones": [
+    {
+      "id": "m1",
+      "title": "跑通 Pi 基础消息层",
+      "status": "pending",
+      "goal": "在保留现有 Web UI 的前提下，让 Pi 会话的普通消息、工具调用和工具结果能够通过现有 SSE 通道稳定显示。",
+      "exitCriteria": [
+        "Pi 会话可通过 server 侧适配层接收 prompt 并产出可消费的 SSE 事件",
+        "Web 端可复用现有消息列表与 ToolPart 展示 subagent 相关工具输出"
+      ]
+    },
+    {
+      "id": "m2",
+      "title": "补齐 custom message 与结构化交互",
+      "status": "pending",
+      "goal": "让 custom message、问题请求和权限确认在现有前端模型中有明确映射与降级行为。",
+      "exitCriteria": [
+        "custom message 关键字段不会在 server 到 UI 链路中丢失",
+        "ask_user 与 permission 类交互在 Web 端可应答或明确展示 unsupported 状态"
+      ]
+    },
+    {
+      "id": "m3",
+      "title": "按需支持扩展 UI 请求",
+      "status": "pending",
+      "goal": "为最有价值的 extension UI request 建立映射策略、回复通道和支持边界说明。",
+      "exitCriteria": [
+        "至少支持 input/select/confirm 三类扩展 UI 请求",
+        "对 setStatus、setWidget、setEditorText 以及典型插件支持边界有清晰定义与日志兜底"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "milestoneId": "m1",
+      "title": "梳理 pi-coding-agent 的消息、工具、custom message 与 extension UI 事件类型，并定义 server 内部标准化映射模型",
+      "status": "done"
+    },
+    {
+      "id": "t2",
+      "milestoneId": "m1",
+      "title": "在 packages/web/server 中接入 Pi 会话启动与 prompt 提交链路，并通过运行时开关保留 OpenCode 回退路径",
+      "status": "done"
+    },
+    {
+      "id": "t3",
+      "milestoneId": "m1",
+      "title": "实现 Pi 普通消息与工具结果到现有 /api/event、/api/global/event SSE 语义的翻译层",
+      "status": "done"
+    },
+    {
+      "id": "t4",
+      "milestoneId": "m1",
+      "title": "补齐 ToolPart 与消息列表所需的 subagent 元数据映射，确保子代理工具输出在 Web 端可读且关联清晰",
+      "status": "done"
+    },
+    {
+      "id": "t5",
+      "milestoneId": "m2",
+      "title": "扩展消息存储与渲染链路，保留 customType、details、payload 等 custom message 字段并提供基础展示",
+      "status": "done"
+    },
+    {
+      "id": "t6",
+      "milestoneId": "m2",
+      "title": "将 Pi 的问答与确认使用的是插件npm:pi-ask-user请求桥接到现有 QuestionCard、并为未支持交互返回显式降级提示",
+      "status": "done"
+    },
+    {
+      "id": "t7",
+      "milestoneId": "m3",
+      "title": "建立 extension UI request 映射表与 reply 通道，优先支持 input、select、confirm 三类 Web 可承接交互",
+      "status": "done"
+    },
+    {
+      "id": "t8",
+      "milestoneId": "m3",
+      "title": "无需兼容插件信息，暂时只支持兼容pi自身核心功能",
+      "status": "done"
+    }
+  ],
+  "bugs": [
+    {
+      "id": "b1",
+      "title": "Pi custom message payload is dropped during normalization",
+      "status": "resolved",
+      "description": "`packages/web/server/lib/pi/bridge-schema.js:278` only preserves `details` for `role === 'custom'` messages and never reads an upstream `payload` field. The translated part then backfills `metadata.pi.payload` from `details` in `packages/web/server/lib/pi/runtime.js:610`, so any custom payload that differs from `details` is lost before it reaches storage/rendering. This breaks the task goal of preserving custom message `payload` metadata for Web display and plugin interoperability.",
+      "severity": "medium"
+    },
+    {
+      "id": "b2",
+      "title": "Pi confirm/select questions accept invalid freeform answers",
+      "status": "resolved",
+      "description": "Pi `select` and `confirm` requests are mapped onto the generic `QuestionCard` without any constraint metadata in `packages/web/server/lib/pi/runtime.js:720` and `packages/web/server/lib/pi/runtime.js:739`. `packages/ui/src/components/chat/QuestionCard.tsx:324` always renders the `Other…` freeform path, so users can submit arbitrary text for what should be fixed-choice requests. The backend then treats any non-empty confirm answer as approval in `packages/web/server/lib/pi/runtime.js:1198`, meaning answers like `no` or `cancel` still become `{ confirmed: true }`. This can acknowledge Pi confirmation prompts incorrectly and send invalid values back for `select`.",
+      "severity": "high"
+    },
+    {
+      "id": "b3",
+      "title": "QuestionCard no longer allows freeform answers for non-Pi questions",
+      "status": "resolved",
+      "description": "`packages/ui/src/components/chat/QuestionCard.tsx` now gates the custom-text path on `question.metadata?.bridgeMethod === 'input'`. Native/OpenCode questions do not populate that metadata, so the existing `Other…` textarea disappears and any question with empty options becomes impossible to answer. This regresses the pre-existing ask-user flow while fixing Pi confirm/select validation.",
+      "severity": "high",
+      "relatedTaskIds": [
+        "t6"
+      ]
+    },
+    {
+      "id": "b4",
+      "title": "Pi prompt failure leaves session stuck in busy state",
+      "status": "resolved",
+      "description": "`packages/web/server/lib/pi/runtime.js:1128` marks the session busy before sending `set_model` / `prompt`, but there is no rollback on command/process startup failure. Reproduced by creating a runtime with a missing `cliPath`: `promptAsync()` rejects and `getSessionStatus()[session.id]` remains `{ type: 'busy' }`, so the UI never recovers from startup/config errors.",
+      "severity": "medium",
+      "relatedTaskIds": [
+        "t2"
+      ]
+    },
+    {
+      "id": "b5",
+      "title": "Pi SSE bridge drops assistant streaming updates until message end",
+      "status": "resolved",
+      "description": "`handlePiSseStream()` only emits translated events on `message_end`, `tool_execution_end`, and `agent_end`, while `translateOpenCodeMessagesToSseEvents()` only produces full `message.updated` / `message.part.updated` snapshots. The normalized `message_update` assistant stream payloads are never bridged into SSE deltas, so text-only Pi turns do not appear in the Web UI until the whole response finishes. This regresses the existing live-streaming chat behavior for long responses.",
+      "severity": "medium",
+      "relatedTaskIds": [
+        "t3"
+      ]
+    },
+    {
+      "id": "b6",
+      "title": "Pi prompt bridge strips file attachment content down to a label",
+      "status": "resolved",
+      "description": "`buildPromptTextFromParts()` only serializes file parts as `[file] <path-or-name>` and ignores the attached data URL / payload entirely. In the current Web client, file parts can contain uploaded text or image content, so Pi sessions lose the actual attachment content and only receive a filename placeholder. Prompts that depend on screenshots or uploaded files therefore behave incorrectly under the Pi runtime.",
+      "severity": "medium",
+      "relatedTaskIds": [
+        "t2"
+      ]
+    },
+    {
+      "id": "b7",
+      "title": "Pi prompt bridge still drops text from server file URL attachments",
+      "status": "resolved",
+      "description": "`buildPromptInputFromParts()` in `packages/web/server/lib/pi/runtime.js:126` only inlines text when the file part carries a data URL or `source.path`. The Web client sends server-backed text attachments and inline `@path` mentions as `type: 'file'`, `mime: 'text/plain'`, `url: 'file:///…'` (see `packages/ui/src/stores/messageStore.ts:646` and `packages/ui/src/components/chat/ChatInput.tsx:319`). Repro: calling `buildPromptTextFromParts([{ type: 'file', filename: 'pi-file-url-fixture.txt', mime: 'text/plain', url: 'file:///…' }])` returns `[file] pi-file-url-fixture.txt` instead of embedding the file contents, so Pi still loses the actual attachment text for server files.",
+      "severity": "medium"
+    }
+  ],
+  "workflow": {
+    "phase": "idle",
+    "round": 0,
+    "gates": {
+      "tasksComplete": true,
+      "reviewPassed": true
+    },
+    "loopCounts": {
+      "task": 0,
+      "bug": 0
+    },
+    "maxLoops": {
+      "task": 6,
+      "bug": 4
+    },
+    "activeBugIds": [],
+    "lastUpdatedAt": "2026-03-24T14:23:05.460Z"
+  },
+  "runtime": {
+    "status": "completed",
+    "currentStage": "implement",
+    "currentAttempt": 1,
+    "stopRequested": false,
+    "sessionRef": {
+      "provider": "pi",
+      "sessionId": "2d0071ad-c1ba-47bf-b427-af6a4e998c56",
+      "sessionFile": "/Users/lixiang/.pi/agent/sessions/--Users-lixiang-Documents-myCode-openchamber-.worktrees-pi-plugin-bridge-a1--/2026-03-24T14-14-49-276Z_2d0071ad-c1ba-47bf-b427-af6a4e998c56.jsonl"
+    },
+    "implementSessionRef": {
+      "provider": "pi",
+      "sessionId": "91d9d667-ae2b-40c3-994f-7731aa8ef796",
+      "sessionFile": "/Users/lixiang/.pi/agent/sessions/--Users-lixiang-Documents-myCode-openchamber-.worktrees-pi-plugin-bridge-a1--/2026-03-24T11-47-30-350Z_91d9d667-ae2b-40c3-994f-7731aa8ef796.jsonl"
+    },
+    "lastReviewSessionRef": {
+      "provider": "pi",
+      "sessionId": "2d0071ad-c1ba-47bf-b427-af6a4e998c56",
+      "sessionFile": "/Users/lixiang/.pi/agent/sessions/--Users-lixiang-Documents-myCode-openchamber-.worktrees-pi-plugin-bridge-a1--/2026-03-24T14-14-49-276Z_2d0071ad-c1ba-47bf-b427-af6a4e998c56.jsonl"
+    },
+    "worktree": {
+      "path": "/Users/lixiang/Documents/myCode/openchamber/.worktrees/pi-plugin-bridge/a1",
+      "branch": "wf/pi-plugin-bridge/a1",
+      "baseBranch": "work",
+      "baseCommit": "50cf514d7ff874291f88b0348af59f5598e150c0",
+      "headCommit": "50cf514d7ff874291f88b0348af59f5598e150c0",
+      "status": "dirty"
+    },
+    "stages": [
+      {
+        "name": "implement",
+        "status": "done",
+        "startedAt": "2026-03-24T11:47:31.054Z",
+        "summary": "Open tasks: 0, open bugs: 0",
+        "endedAt": "2026-03-24T14:14:49.271Z"
+      },
+      {
+        "name": "review",
+        "status": "done",
+        "startedAt": "2026-03-24T12:53:20.178Z",
+        "summary": "Review finished with no remaining tasks or bugs",
+        "endedAt": "2026-03-24T14:23:05.418Z"
+      }
+    ],
+    "attempts": [
+      {
+        "attempt": 1,
+        "status": "completed",
+        "sessionRef": {
+          "provider": "pi",
+          "sessionId": "2d0071ad-c1ba-47bf-b427-af6a4e998c56",
+          "sessionFile": "/Users/lixiang/.pi/agent/sessions/--Users-lixiang-Documents-myCode-openchamber-.worktrees-pi-plugin-bridge-a1--/2026-03-24T14-14-49-276Z_2d0071ad-c1ba-47bf-b427-af6a4e998c56.jsonl"
+        },
+        "implementSessionRef": {
+          "provider": "pi",
+          "sessionId": "91d9d667-ae2b-40c3-994f-7731aa8ef796",
+          "sessionFile": "/Users/lixiang/.pi/agent/sessions/--Users-lixiang-Documents-myCode-openchamber-.worktrees-pi-plugin-bridge-a1--/2026-03-24T11-47-30-350Z_91d9d667-ae2b-40c3-994f-7731aa8ef796.jsonl"
+        },
+        "lastReviewSessionRef": {
+          "provider": "pi",
+          "sessionId": "2d0071ad-c1ba-47bf-b427-af6a4e998c56",
+          "sessionFile": "/Users/lixiang/.pi/agent/sessions/--Users-lixiang-Documents-myCode-openchamber-.worktrees-pi-plugin-bridge-a1--/2026-03-24T14-14-49-276Z_2d0071ad-c1ba-47bf-b427-af6a4e998c56.jsonl"
+        },
+        "worktreePath": "/Users/lixiang/Documents/myCode/openchamber/.worktrees/pi-plugin-bridge/a1",
+        "branch": "wf/pi-plugin-bridge/a1",
+        "startedAt": "2026-03-24T11:47:31.052Z",
+        "reviewCount": 6,
+        "resumePoint": {
+          "stage": "review",
+          "summary": "**Review** - No new defects found in the current Pi bridge implementation after reviewing `packages/web/server/lib/pi/runtime.js`, `packages/web/server/index.js`, `packages/ui/src/components/chat/QuestionCard.tsx`, `packages/ui/src/components/chat/message/parts/AssistantTextPart."
+        },
+        "endedAt": "2026-03-24T14:23:05.456Z"
+      }
+    ],
+    "lease": null,
+    "lastError": null,
+    "lastUpdatedAt": "2026-03-24T14:23:05.460Z"
+  },
+  "history": [
+    {
+      "at": "2026-03-24T11:42:13Z",
+      "event": "created",
+      "note": "Work item initialized"
+    },
+    {
+      "at": "2026-03-24T11:47:30.063Z",
+      "event": "lease-acquired",
+      "note": "Lease acquired by workflow-13988"
+    },
+    {
+      "at": "2026-03-24T11:47:30.064Z",
+      "event": "start-requested",
+      "note": "Starting workflow attempt"
+    },
+    {
+      "at": "2026-03-24T11:47:31.052Z",
+      "event": "attempt-started",
+      "note": "Attempt 1 started",
+      "meta": {
+        "attempt": 1,
+        "branch": "wf/pi-plugin-bridge/a1",
+        "worktreePath": "/Users/lixiang/Documents/myCode/openchamber/.worktrees/pi-plugin-bridge/a1"
+      }
+    },
+    {
+      "at": "2026-03-24T11:47:31.054Z",
+      "event": "implement-pass-started",
+      "note": "Implement pass started",
+      "meta": {
+        "openTaskCount": 8,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T12:04:46.420Z",
+      "event": "tasks-completed",
+      "note": "Added packages/web/server/lib/pi bridge schema catalog, normalization helpers, documentation, and bun tests covering Pi agent events, custom messages, tool results, and extension UI request mapping.",
+      "meta": {
+        "taskIds": [
+          "t1"
+        ],
+        "missingTaskIds": []
+      }
+    },
+    {
+      "at": "2026-03-24T12:05:09.392Z",
+      "event": "implement-pass-complete",
+      "note": "Implemented the Pi bridge schema groundwork in `packages/web/server/lib/pi/bridge-schema.js` and exposed it via `packages/web/server/lib/pi/index.js`. - Added a server-side normalized mapping model for Pi RPC output, covering: - agent events and assistant stream deltas - core/cus",
+      "meta": {
+        "openTaskCount": 7,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T12:05:09.400Z",
+      "event": "implement-pass-started",
+      "note": "Implement pass started",
+      "meta": {
+        "openTaskCount": 7,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T12:21:22.079Z",
+      "event": "tasks-completed",
+      "note": "Added Pi runtime switch in packages/web/server/index.js, introduced in-memory Pi session runtime with Pi RPC process management in packages/web/server/lib/pi/runtime.js, wired session create/list/get/messages/prompt_async/abort routes for Pi mode, and kept OpenCode proxy path as fallback when Pi runtime is not enabled. The bridge intentionally omits plugin/package identity compatibility and only targets Pi core runtime behavior.",
+      "meta": {
+        "taskIds": [
+          "t2",
+          "t8"
+        ],
+        "missingTaskIds": []
+      }
+    },
+    {
+      "at": "2026-03-24T12:21:47.220Z",
+      "event": "implement-pass-complete",
+      "note": "接着把 Pi 会话启动和 prompt 提交链路接进了 Web server，并用运行时开关保留了现有 OpenCode 路径。 - 在 `packages/web/server/index.js` 增加 Pi 运行时切换：设置 `OPENAURORA_AGENT_RUNTIME=pi`（或 `OPENCHAMBER_AGENT_RUNTIME=pi`）时，`/api/session`、`/api/session/:id/message`、`/api/session/:id/prompt_async`、`/api/session/:id/abort` 等",
+      "meta": {
+        "openTaskCount": 5,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T12:21:47.230Z",
+      "event": "implement-pass-started",
+      "note": "Implement pass started",
+      "meta": {
+        "openTaskCount": 5,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T12:24:47.987Z",
+      "event": "tool-error",
+      "note": "implement tool failed: edit",
+      "meta": {
+        "toolName": "edit",
+        "stage": "implement"
+      }
+    },
+    {
+      "at": "2026-03-24T12:28:22.627Z",
+      "event": "tasks-completed",
+      "note": "Added Pi-mode SSE bridge in packages/web/server/index.js for /api/event and /api/global/event, translating Pi session status and projected messages into session.status, message.updated, and message.part.updated payloads. Added translateOpenCodeMessagesToSseEvents helper plus tests in packages/web/server/lib/pi/runtime.test.js.",
+      "meta": {
+        "taskIds": [
+          "t3"
+        ],
+        "missingTaskIds": []
+      }
+    },
+    {
+      "at": "2026-03-24T12:28:46.211Z",
+      "event": "implement-pass-complete",
+      "note": "实现了 Pi 模式下的 SSE 翻译层，先把基础消息流接到现有前端语义上。 - 在 `packages/web/server/index.js` 为 Pi 模式新增 `/api/event` 和 `/api/global/event` 处理： - 连接建立时回放当前会话快照 - 监听 Pi runtime 事件 - 输出现有前端可消费的 `session.status`、`message.updated`、`message.part.updated` - 在 `packages/web/server/lib/pi/runtime.js` 新增 `tran",
+      "meta": {
+        "openTaskCount": 4,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T12:28:46.226Z",
+      "event": "implement-pass-started",
+      "note": "Implement pass started",
+      "meta": {
+        "openTaskCount": 4,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T12:38:35.623Z",
+      "event": "tasks-completed",
+      "note": "Mapped Pi subagent/subagent_status tool output into OpenAurora task-style tool metadata. Updated packages/web/server/lib/pi/runtime.js to alias subagent tools to task, preserve subagent_type/description, and extract summary/session metadata from Pi details. Updated packages/ui/src/components/chat/message/parts/ToolPart.tsx to treat subagent tools as task tools and read Pi-provided summary/session metadata so child tool output renders clearly.",
+      "meta": {
+        "taskIds": [
+          "t4"
+        ],
+        "missingTaskIds": []
+      }
+    },
+    {
+      "at": "2026-03-24T12:38:53.462Z",
+      "event": "implement-pass-complete",
+      "note": "补上了 subagent 到现有 `ToolPart` 的关键映射，让 Pi 子代理输出在 Web 端能按现有 task 视图读出来。 - 在 `packages/web/server/lib/pi/runtime.js`： - 将 Pi 的 `subagent` / `subagent_status` 工具别名为现有 `task` 工具语义 - 把 `agent` / `task` 映射成 `description`、`prompt`、`subagent_type` - 从 Pi tool result 的 `details.results[].mes",
+      "meta": {
+        "openTaskCount": 3,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T12:38:53.475Z",
+      "event": "implement-pass-started",
+      "note": "Implement pass started",
+      "meta": {
+        "openTaskCount": 3,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T12:39:24.210Z",
+      "event": "tool-error",
+      "note": "implement tool failed: read",
+      "meta": {
+        "toolName": "read",
+        "stage": "implement"
+      }
+    },
+    {
+      "at": "2026-03-24T12:49:49.423Z",
+      "event": "tool-error",
+      "note": "implement tool failed: edit",
+      "meta": {
+        "toolName": "edit",
+        "stage": "implement"
+      }
+    },
+    {
+      "at": "2026-03-24T12:52:57.370Z",
+      "event": "tasks-completed",
+      "note": "Completed custom message and extension UI bridge work for Pi mode. In packages/web/server/lib/pi/runtime.js, preserved customType/details/payload metadata on projected custom messages, added extension_ui_request -> QuestionCard request mapping for input/select/confirm, explicit editor downgrade prompts, pending-question tracking, and reply/cancel channels back to Pi via extension_ui_response. In packages/web/server/index.js, added Pi-mode /api/question and /api/permission handlers plus SSE question.asked emission for pending and live requests. In packages/ui/src/components/chat/message/parts/AssistantTextPart.tsx, added basic Pi custom message presentation with customType and payload/details display. Verified with bun tests for bridge/runtime helpers and node --check for server/runtime files.",
+      "meta": {
+        "taskIds": [
+          "t5",
+          "t6",
+          "t7"
+        ],
+        "missingTaskIds": []
+      }
+    },
+    {
+      "at": "2026-03-24T12:53:19.704Z",
+      "event": "implement-pass-complete",
+      "note": "完成了剩余的 Pi 交互桥接与 custom message 基础展示，当前 work item 已无未完成任务。 - 在 `packages/web/server/lib/pi/runtime.js`： - 为 custom message 保留并透传 `customType`、`details`、`payload` - 新增 `mapPiUiRequestToQuestionRequest()`，把 Pi 的 `input` / `select` / `confirm` 映射到现有 `QuestionCard` 请求结构 - 对 `editor` 增",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T12:53:20.178Z",
+      "event": "review-started",
+      "note": "Review pass started",
+      "meta": {
+        "reviewCount": 1
+      }
+    },
+    {
+      "at": "2026-03-24T13:00:34.144Z",
+      "event": "bug-added",
+      "note": "Added bug: b1",
+      "meta": {
+        "bugId": "b1",
+        "title": "Pi custom message payload is dropped during normalization"
+      }
+    },
+    {
+      "at": "2026-03-24T13:00:41.358Z",
+      "event": "bug-added",
+      "note": "Added bug: b2",
+      "meta": {
+        "bugId": "b2",
+        "title": "Pi confirm/select questions accept invalid freeform answers"
+      }
+    },
+    {
+      "at": "2026-03-24T13:01:01.421Z",
+      "event": "review-complete",
+      "note": "**Findings** - High: Pi `confirm`/`select` requests are bridged through `QuestionCard` without restricting answers, so Web users can choose `Other…` and submit arbitrary text from `packages/ui/src/components/chat/QuestionCard.tsx:324`; for `confirm`, the bridge then treats any no",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 2
+      }
+    },
+    {
+      "at": "2026-03-24T13:01:01.434Z",
+      "event": "implement-pass-started",
+      "note": "Implement pass started",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 2
+      }
+    },
+    {
+      "at": "2026-03-24T13:04:05.263Z",
+      "event": "tool-error",
+      "note": "implement tool failed: edit",
+      "meta": {
+        "toolName": "edit",
+        "stage": "implement"
+      }
+    },
+    {
+      "at": "2026-03-24T13:06:47.132Z",
+      "event": "tool-error",
+      "note": "implement tool failed: edit",
+      "meta": {
+        "toolName": "edit",
+        "stage": "implement"
+      }
+    },
+    {
+      "at": "2026-03-24T13:07:30.328Z",
+      "event": "tool-error",
+      "note": "implement tool failed: edit",
+      "meta": {
+        "toolName": "edit",
+        "stage": "implement"
+      }
+    },
+    {
+      "at": "2026-03-24T13:08:01.309Z",
+      "event": "tool-error",
+      "note": "implement tool failed: edit",
+      "meta": {
+        "toolName": "edit",
+        "stage": "implement"
+      }
+    },
+    {
+      "at": "2026-03-24T13:12:21.331Z",
+      "event": "bugs-resolved",
+      "note": "Fixed Pi custom-message normalization to preserve payload separately from details and updated projected custom metadata/display to use it. Fixed Pi confirm/select validation by disabling freeform custom answers in QuestionCard for non-input bridge methods, defaulting input requests to text-entry mode, and adding server-side Pi reply validation for confirm/select/editor downgrade responses.",
+      "meta": {
+        "bugIds": [
+          "b1",
+          "b2"
+        ]
+      }
+    },
+    {
+      "at": "2026-03-24T13:12:52.829Z",
+      "event": "implement-pass-complete",
+      "note": "修了两个 review 提出的 bug，当前没有未完成 task 或 open bug。 - 修复 `b1`： - 在 `packages/web/server/lib/pi/bridge-schema.js` 的 custom message 归一化里，单独保留 `payload` - 在 `packages/web/server/lib/pi/runtime.js` 的 custom message 投影里，改为优先透传真实 `payload`，不再错误复用 `details` - 更新了 `packages/web/server/lib/pi/br",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T13:12:53.283Z",
+      "event": "review-started",
+      "note": "Review pass started",
+      "meta": {
+        "reviewCount": 2
+      }
+    },
+    {
+      "at": "2026-03-24T13:30:55.841Z",
+      "event": "bug-added",
+      "note": "Added bug: b3",
+      "meta": {
+        "bugId": "b3",
+        "title": "QuestionCard no longer allows freeform answers for non-Pi questions"
+      }
+    },
+    {
+      "at": "2026-03-24T13:31:13.500Z",
+      "event": "review-complete",
+      "note": "- High: `packages/ui/src/components/chat/QuestionCard.tsx:34` and `packages/ui/src/components/chat/QuestionCard.tsx:341` now restrict the freeform `Other…` answer path to `question.metadata?.bridgeMethod === 'input'`. Native/OpenCode `question.asked` payloads do not set that meta",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 1
+      }
+    },
+    {
+      "at": "2026-03-24T13:31:13.512Z",
+      "event": "implement-pass-started",
+      "note": "Implement pass started",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 1
+      }
+    },
+    {
+      "at": "2026-03-24T13:32:57.406Z",
+      "event": "bugs-resolved",
+      "note": "Restored freeform answers for native/OpenCode questions in QuestionCard while keeping Pi bridge restrictions. Custom answers are now allowed when question.metadata.bridgeMethod is absent, but Pi-bridged select/confirm remain restricted; only Pi input defaults into freeform mode.",
+      "meta": {
+        "bugIds": [
+          "b3"
+        ]
+      }
+    },
+    {
+      "at": "2026-03-24T13:33:23.936Z",
+      "event": "implement-pass-complete",
+      "note": "修复了 `b3`，恢复了非 Pi 问题卡的自由输入能力，同时保留 Pi 桥接问题的约束。 - 在 `packages/ui/src/components/chat/QuestionCard.tsx`： - 改为“只要不是 Pi bridge 问题，就继续允许 `Other…` 自由输入” - Pi bridge 的 `select` / `confirm` 仍禁止自由输入 - 只有 Pi 的 `input` 请求才默认进入自由输入模式 - 这样既修复了原生/OpenCode `question.asked` 回归，也不影响前面为 Pi 加的校验约束。 已",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T13:33:24.390Z",
+      "event": "review-started",
+      "note": "Review pass started",
+      "meta": {
+        "reviewCount": 3
+      }
+    },
+    {
+      "at": "2026-03-24T13:42:26.042Z",
+      "event": "bug-added",
+      "note": "Added bug: b4",
+      "meta": {
+        "bugId": "b4",
+        "title": "Pi prompt failure leaves session stuck in busy state"
+      }
+    },
+    {
+      "at": "2026-03-24T13:42:50.738Z",
+      "event": "review-complete",
+      "note": "- Medium: `packages/web/server/lib/pi/runtime.js:1128` sets the Pi session status to `busy` before `set_model` / `prompt`, but failures never restore it. I reproduced this with a missing `cliPath`: `promptAsync()` throws, and `getSessionStatus()[session.id]` still returns `{ type",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 1
+      }
+    },
+    {
+      "at": "2026-03-24T13:42:50.753Z",
+      "event": "implement-pass-started",
+      "note": "Implement pass started",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 1
+      }
+    },
+    {
+      "at": "2026-03-24T13:44:56.948Z",
+      "event": "bugs-resolved",
+      "note": "Fixed Pi prompt failure status rollback in packages/web/server/lib/pi/runtime.js by restoring the session to idle when prompt startup/set_model/prompt submission throws. Added regression coverage in packages/web/server/lib/pi/runtime.test.js to verify failed promptAsync calls do not leave the session stuck busy.",
+      "meta": {
+        "bugIds": [
+          "b4"
+        ]
+      }
+    },
+    {
+      "at": "2026-03-24T13:45:26.713Z",
+      "event": "implement-pass-complete",
+      "note": "修复了 `b4`：Pi prompt 启动失败时不再把会话卡在 `busy`。 - 在 `packages/web/server/lib/pi/runtime.js` 的 `promptAsync()` 里补了失败回滚： - `set_model` / `prompt` / 进程启动任一步抛错时 - 立即把该 session 状态恢复为 `{ type: 'idle' }` - 同步更新时间戳后再继续抛出错误 - 在 `packages/web/server/lib/pi/runtime.test.js` 增加回归测试： - 用不存在的 `cliPath",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T13:45:27.192Z",
+      "event": "review-started",
+      "note": "Review pass started",
+      "meta": {
+        "reviewCount": 4
+      }
+    },
+    {
+      "at": "2026-03-24T13:49:42.930Z",
+      "event": "tool-error",
+      "note": "review tool failed: read",
+      "meta": {
+        "toolName": "read",
+        "stage": "review"
+      }
+    },
+    {
+      "at": "2026-03-24T13:52:51.219Z",
+      "event": "bug-added",
+      "note": "Added bug: b5",
+      "meta": {
+        "bugId": "b5",
+        "title": "Pi SSE bridge drops assistant streaming updates until message end"
+      }
+    },
+    {
+      "at": "2026-03-24T13:53:24.416Z",
+      "event": "bug-added",
+      "note": "Added bug: b6",
+      "meta": {
+        "bugId": "b6",
+        "title": "Pi prompt bridge strips file attachment content down to a label"
+      }
+    },
+    {
+      "at": "2026-03-24T13:54:17.797Z",
+      "event": "review-complete",
+      "note": "Review found 2 medium defects in the Pi bridge and I added them as workflow bugs. - `b5`: `packages/web/server/index.js:6555` only refreshes/emits on end events, and `packages/web/server/lib/pi/runtime.js:638` only translates full snapshots, so Pi `message_update` streaming delta",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 2
+      }
+    },
+    {
+      "at": "2026-03-24T13:54:17.809Z",
+      "event": "implement-pass-started",
+      "note": "Implement pass started",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 2
+      }
+    },
+    {
+      "at": "2026-03-24T13:58:06.401Z",
+      "event": "tool-error",
+      "note": "implement tool failed: edit",
+      "meta": {
+        "toolName": "edit",
+        "stage": "implement"
+      }
+    },
+    {
+      "at": "2026-03-24T14:05:01.615Z",
+      "event": "bugs-resolved",
+      "note": "Fixed Pi streaming and attachment regressions. In packages/web/server/lib/pi/runtime.js, added translatePiEnvelopeToSseEvents() and stable synthetic message ids so Pi message_start/message_update events now emit live message.updated/message.part.updated snapshots before message end. In packages/web/server/index.js, wired Pi SSE bridge to forward those streaming events immediately. Also upgraded Pi prompt input building to preserve attached text-file contents (and pass image data URLs through as Pi prompt images) instead of collapsing file parts to labels. Added regression tests in packages/web/server/lib/pi/runtime.test.js for streaming envelope translation and attachment content preservation.",
+      "meta": {
+        "bugIds": [
+          "b5",
+          "b6"
+        ]
+      }
+    },
+    {
+      "at": "2026-03-24T14:05:30.409Z",
+      "event": "implement-pass-complete",
+      "note": "修掉了最后两个 Pi bridge 缺陷，当前没有 open task / bug。 - 修复 `b5`： - 在 `packages/web/server/lib/pi/runtime.js` 增加 `translatePiEnvelopeToSseEvents()`，把 Pi 的 `message_start` / `message_update` 直接翻成现有前端可消费的 `message.updated`、`message.part.updated` - 同时改成稳定的 synthetic message id，避免流式阶段和最终快照阶段 id ",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T14:05:30.882Z",
+      "event": "review-started",
+      "note": "Review pass started",
+      "meta": {
+        "reviewCount": 5
+      }
+    },
+    {
+      "at": "2026-03-24T14:11:36.575Z",
+      "event": "bug-added",
+      "note": "Added bug: b7",
+      "meta": {
+        "bugId": "b7",
+        "title": "Pi prompt bridge still drops text from server file URL attachments"
+      }
+    },
+    {
+      "at": "2026-03-24T14:12:02.505Z",
+      "event": "review-complete",
+      "note": "- Medium — `packages/web/server/lib/pi/runtime.js:126` still drops server-backed text attachments: it only inlines content for data URLs or `source.path`, but the Web client sends server files / inline `@path` mentions as `type: 'file'` with `url: 'file:///…'` from `packages/ui/s",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 1
+      }
+    },
+    {
+      "at": "2026-03-24T14:12:02.518Z",
+      "event": "implement-pass-started",
+      "note": "Implement pass started",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 1
+      }
+    },
+    {
+      "at": "2026-03-24T14:14:19.770Z",
+      "event": "bugs-resolved",
+      "note": "Fixed Pi prompt bridge to inline text attachments referenced by file:// server URLs. In packages/web/server/lib/pi/runtime.js, added fileURLToPath-backed attachment loading and fall back to it when source.path is absent. Added regression coverage in packages/web/server/lib/pi/runtime.test.js for file URL text attachments.",
+      "meta": {
+        "bugIds": [
+          "b7"
+        ]
+      }
+    },
+    {
+      "at": "2026-03-24T14:14:49.271Z",
+      "event": "implement-pass-complete",
+      "note": "修复了 `b7`：Pi prompt bridge 现在会读取 `file://` 形式的服务端文本附件，不再丢掉内容。 - 在 `packages/web/server/lib/pi/runtime.js`： - 新增 `fileURLToPath` 支持 - 增加 `readAttachmentFromFileUrl()` - 构建 Pi prompt 时，在 `source.path` 不存在的情况下，回退读取 `file://...` URL 指向的本地文件 - 在 `packages/web/server/lib/pi/runtime.test",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T14:14:49.735Z",
+      "event": "review-started",
+      "note": "Review pass started",
+      "meta": {
+        "reviewCount": 6
+      }
+    },
+    {
+      "at": "2026-03-24T14:23:05.418Z",
+      "event": "review-complete",
+      "note": "**Review** - No new defects found in the current Pi bridge implementation after reviewing `packages/web/server/lib/pi/runtime.js`, `packages/web/server/index.js`, `packages/ui/src/components/chat/QuestionCard.tsx`, `packages/ui/src/components/chat/message/parts/AssistantTextPart.",
+      "meta": {
+        "openTaskCount": 0,
+        "openBugCount": 0
+      }
+    },
+    {
+      "at": "2026-03-24T14:23:05.456Z",
+      "event": "completed",
+      "note": "Review finished with no remaining tasks or bugs",
+      "meta": {
+        "openTasks": 0,
+        "openBugs": 0
+      }
+    },
+    {
+      "at": "2026-03-24T14:23:05.460Z",
+      "event": "lease-released",
+      "note": "Lease released by workflow-13988"
+    }
+  ]
+}

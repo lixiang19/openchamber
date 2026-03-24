@@ -31,6 +31,12 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
   const [customMode, setCustomMode] = React.useState<Record<number, boolean>>({});
   const [customText, setCustomText] = React.useState<Record<number, string>>({});
 
+  const bridgeMethod = React.useMemo(() => {
+    const value = question.metadata?.bridgeMethod;
+    return typeof value === 'string' ? value : null;
+  }, [question.metadata]);
+  const isPiBridgedQuestion = bridgeMethod !== null;
+  const allowCustomAnswers = !isPiBridgedQuestion || bridgeMethod === 'input';
   const questions = React.useMemo(() => question.questions ?? [], [question.questions]);
   const isSummaryTab = activeTab === SUMMARY_TAB;
   const activeIndex = isSummaryTab ? -1 : Math.max(0, Math.min(questions.length - 1, Number(activeTab) || 0));
@@ -44,10 +50,19 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
   React.useEffect(() => {
     setActiveTab('0');
     setSelectedOptions({});
-    setCustomMode({});
+    setCustomMode(() => {
+      if (bridgeMethod !== 'input') {
+        return {};
+      }
+      const initial: Record<number, boolean> = {};
+      (question.questions ?? []).forEach((_item, index) => {
+        initial[index] = true;
+      });
+      return initial;
+    });
     setCustomText({});
     setHasResponded(false);
-  }, [question.id]);
+  }, [bridgeMethod, question.id, question.questions]);
 
   const tabs = React.useMemo(() => {
     const questionTabs = questions.map((q, index) => ({
@@ -63,23 +78,23 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
 
   // Helper to get answer display for a question index
   const getAnswerDisplay = React.useCallback((index: number): string => {
-    const isCustom = Boolean(customMode[index]);
+    const isCustom = allowCustomAnswers && Boolean(customMode[index]);
     if (isCustom) {
       const value = (customText[index] ?? '').trim();
       return value || '(no answer)';
     }
     const answers = selectedOptions[index] ?? [];
     return answers.length > 0 ? answers.join(', ') : '(no answer)';
-  }, [customMode, customText, selectedOptions]);
+  }, [allowCustomAnswers, customMode, customText, selectedOptions]);
 
   const isMultiple = Boolean(activeQuestion?.multiple);
   const selectedForActive = selectedOptions[activeIndex] ?? [];
-  const isCustomActive = Boolean(customMode[activeIndex]);
+  const isCustomActive = allowCustomAnswers && Boolean(customMode[activeIndex]);
 
   const unansweredIndexes = React.useMemo(() => {
     const pending: number[] = [];
     for (let index = 0; index < questions.length; index += 1) {
-      const isCustom = Boolean(customMode[index]);
+      const isCustom = allowCustomAnswers && Boolean(customMode[index]);
       if (isCustom) {
         const value = (customText[index] ?? '').trim();
         if (!value) pending.push(index);
@@ -92,7 +107,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
       }
     }
     return pending;
-  }, [customMode, customText, questions.length, selectedOptions]);
+  }, [allowCustomAnswers, customMode, customText, questions.length, selectedOptions]);
 
   const requiredSatisfied = React.useMemo(() => {
     if (questions.length === 0) return false;
@@ -118,7 +133,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
     const answers: string[][] = [];
 
     for (let index = 0; index < questions.length; index += 1) {
-      const isCustom = Boolean(customMode[index]);
+      const isCustom = allowCustomAnswers && Boolean(customMode[index]);
       if (isCustom) {
         const value = (customText[index] ?? '').trim();
         answers.push(value ? [value] : []);
@@ -129,13 +144,15 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
     }
 
     return answers;
-  }, [customMode, customText, questions.length, selectedOptions]);
+  }, [allowCustomAnswers, customMode, customText, questions.length, selectedOptions]);
 
   const handleToggleOption = React.useCallback(
     (label: string) => {
       if (!activeQuestion) return;
 
-      setCustomMode((prev) => ({ ...prev, [activeIndex]: false }));
+      if (allowCustomAnswers) {
+        setCustomMode((prev) => ({ ...prev, [activeIndex]: false }));
+      }
 
       setSelectedOptions((prev) => {
         const current = prev[activeIndex] ?? [];
@@ -147,13 +164,14 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
         return { ...prev, [activeIndex]: [label] };
       });
     },
-    [activeIndex, activeQuestion, isMultiple]
+    [activeIndex, activeQuestion, allowCustomAnswers, isMultiple]
   );
 
   const handleSelectCustom = React.useCallback(() => {
+    if (!allowCustomAnswers) return;
     setCustomMode((prev) => ({ ...prev, [activeIndex]: true }));
     setSelectedOptions((prev) => ({ ...prev, [activeIndex]: [] }));
-  }, [activeIndex]);
+  }, [activeIndex, allowCustomAnswers]);
 
   const handleConfirm = React.useCallback(async () => {
     if (!requiredSatisfied) return;
@@ -321,61 +339,64 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
                     );
                   })}
 
-                  {/* Custom answer option */}
-                  <button
-                    type="button"
-                    onClick={handleSelectCustom}
-                    disabled={isResponding}
-                    className={cn(
-                      'w-full px-1.5 py-1 text-left rounded transition-colors',
-                      'hover:bg-interactive-hover/30',
-                      isCustomActive ? 'bg-interactive-selection/20' : null,
-                      isResponding ? 'opacity-60 cursor-not-allowed' : null
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <RiEditLine className={cn(
-                        'h-3.5 w-3.5',
-                        isCustomActive ? 'text-primary' : 'text-muted-foreground/50'
-                      )} />
-                      <span className={cn(
-                        'typography-meta',
-                        isCustomActive ? 'text-foreground font-medium' : 'text-muted-foreground'
-                      )}>
-                        Other…
-                      </span>
-                    </div>
-                  </button>
-
-                  {isCustomActive ? (
-                    <div className="pl-6 pr-1 pt-0.5">
-                      <textarea
-                        ref={(el) => {
-                          if (el) {
-                            el.style.height = 'auto';
-                            const lineHeight = 20; // approx typography-meta line height
-                            const minHeight = lineHeight * 2;
-                            const maxHeight = lineHeight * 4;
-                            el.style.height = `${Math.min(Math.max(el.scrollHeight, minHeight), maxHeight)}px`;
-                          }
-                        }}
-                        value={customText[activeIndex] ?? ''}
-                        onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => {
-                          const el = event.target;
-                          el.style.height = 'auto';
-                          const lineHeight = 20;
-                          const minHeight = lineHeight * 2;
-                          const maxHeight = lineHeight * 4;
-                          el.style.height = `${Math.min(Math.max(el.scrollHeight, minHeight), maxHeight)}px`;
-                          setCustomText((prev) => ({ ...prev, [activeIndex]: el.value }));
-                        }}
-                        placeholder="Your answer"
+                  {allowCustomAnswers ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleSelectCustom}
                         disabled={isResponding}
-                        rows={2}
-                        className="w-full bg-transparent border border-border/30 focus:border-primary rounded px-2 py-1 outline-none typography-meta text-foreground placeholder:text-muted-foreground/50 transition-colors resize-none overflow-hidden"
-                        autoFocus
-                      />
-                    </div>
+                        className={cn(
+                          'w-full px-1.5 py-1 text-left rounded transition-colors',
+                          'hover:bg-interactive-hover/30',
+                          isCustomActive ? 'bg-interactive-selection/20' : null,
+                          isResponding ? 'opacity-60 cursor-not-allowed' : null
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          <RiEditLine className={cn(
+                            'h-3.5 w-3.5',
+                            isCustomActive ? 'text-primary' : 'text-muted-foreground/50'
+                          )} />
+                          <span className={cn(
+                            'typography-meta',
+                            isCustomActive ? 'text-foreground font-medium' : 'text-muted-foreground'
+                          )}>
+                            Other…
+                          </span>
+                        </div>
+                      </button>
+
+                      {isCustomActive ? (
+                        <div className="pl-6 pr-1 pt-0.5">
+                          <textarea
+                            ref={(el) => {
+                              if (el) {
+                                el.style.height = 'auto';
+                                const lineHeight = 20;
+                                const minHeight = lineHeight * 2;
+                                const maxHeight = lineHeight * 4;
+                                el.style.height =                                   `${Math.min(Math.max(el.scrollHeight, minHeight), maxHeight)}px`;
+                              }
+                            }}
+                            value={customText[activeIndex] ?? ''}
+                            onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => {
+                              const el = event.target;
+                              el.style.height = 'auto';
+                              const lineHeight = 20;
+                              const minHeight = lineHeight * 2;
+                              const maxHeight = lineHeight * 4;
+                              el.style.height =                                 `${Math.min(Math.max(el.scrollHeight, minHeight), maxHeight)}px`;
+                              setCustomText((prev) => ({ ...prev, [activeIndex]: el.value }));
+                            }}
+                            placeholder="Your answer"
+                            disabled={isResponding}
+                            rows={2}
+                            className="w-full bg-transparent border border-border/30 focus:border-primary rounded px-2 py-1 outline-none typography-meta text-foreground placeholder:text-muted-foreground/50 transition-colors resize-none overflow-hidden"
+                            autoFocus
+                          />
+                        </div>
+                      ) : null}
+                    </>
                   ) : null}
                 </div>
               </>
