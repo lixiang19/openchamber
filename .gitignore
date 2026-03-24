@@ -56,3 +56,7 @@ Thumbs.db
 data/
 workspaces/
 *.pid
+
+# ralphi
+.ralphi/*
+!.ralphi/config.yaml

@@ -1,179 +1,174 @@
-# OpenAurora - AI Agent Reference (verified)
+# 项目架构说明
+# 禁止
+减少通过构建build来验证代码，只有非常庞大的功能开发或者重构需要允许build，普通的迭代追求速度则不要运行build
 
-## Core purpose
-OpenAurora provides UI runtimes (web/desktop/VS Code) for interacting with an OpenCode server (local auto-start or remote URL). UI uses HTTP + SSE via `@opencode-ai/sdk`.
+# ⚠️ 顶级要求（强制遵循）
 
-## Runtime architecture (IMPORTANT)
-- `Desktop` is a thin Tauri shell that starts the web server sidecar and loads the web UI from `http://127.0.0.1:<port>`.
-- All backend logic lives in `packages/web/server/*` (and `packages/vscode/*` for the VS Code runtime). Desktop Rust is not a feature backend.
-- Tauri is used only for stable native integrations: menu, dialog (open folder), notifications, updater, deep-links.
+1. **语言要求**：所有回答与文档内容必须使用**中文**
+2. 编辑代码时不要任何的兼容，对的就是对的。旧的需要改的就是错误，禁止任何的保留和兼容
+3. 架构设计指南：简单不冗余，任何时候的修改都不要打补丁，即使麻烦复杂也要从根本上解决问题，bug的出现可能是架构问题，要询问用户是否更改设计，禁止使用兜底、if、检测、延迟等方案解决bug
+4. 解决bug时眼光要在全链路，bug的体现一般都在前端，但是根源却在后端。要从根源着手修改
+5. 文档文件夹下的md文档是最重要的
 
-## Tech stack (source of truth: `package.json`, resolved: `bun.lock`)
-- Runtime/tooling: Bun (`package.json` `packageManager`), Node >=20 (`package.json` `engines`)
-- UI: React, TypeScript, Vite, Tailwind v4
-- State: Zustand (`packages/ui/src/stores/`)
-- UI primitives: Radix UI (`package.json` deps), HeroUI (`package.json` deps), Remixicon (`package.json` deps)
-- Server: Express (`packages/web/server/index.js`)
-- Desktop: Tauri v2 (`packages/desktop/src-tauri/`)
-- VS Code: extension + webview (`packages/vscode/`)
 
-## Monorepo layout
-Workspaces are `packages/*` (see `package.json`).
-- Shared UI: `packages/ui`
-- Web app + server + CLI: `packages/web`
-- Desktop app (Tauri): `packages/desktop`
-- VS Code extension: `packages/vscode`
 
-## Documentation map
-Before changing any mapped module, read its module documentation first.
+# 模块梳理的要求
+！！！开始修改前先读取根目录 `文档/模块梳理/` 目录，并只在涉及模块职责、接口契约、主流程、配置边界、数据结构变化时更新对应模块梳理文档
+- 模块梳理文件夹在按照大的功能模块梳理出现有的功能，写成md文档，且应该在AGENTS.md的模块梳理文档目录同步
+- 文档应该使用较长的中文名称方便识别
+- 文档不应该细分，应当宽泛
+- 仅当代码事实已经改变模块认知时才更新文档；局部样式、坐标、文案、小范围实现细节不强制更新模块梳理
 
-### web
-Web runtime and server implementation for OpenAurora.
 
-#### lib
-Server-side integration modules used by API routes and runtime services.
+## 输出格式（必须是 Markdown）
 
-##### quota
-Quota provider registry, dispatch, and provider integrations for usage endpoints.
-- Module docs: `packages/web/server/lib/quota/DOCUMENTATION.md`
+<文档/模块梳理的文档格式要求>
 
-##### git
-Git repository operations for the web server runtime.
-- Module docs: `packages/web/server/lib/git/DOCUMENTATION.md`
+## 文档的要求格式
 
-##### github
-GitHub authentication, OAuth device flow, Octokit client factory, and repository URL parsing.
-- Module docs: `packages/web/server/lib/github/DOCUMENTATION.md`
+# <MODULE_NAME> Module Codemap
 
-##### opencode
-OpenCode server integration utilities including config management, provider authentication, and UI authentication.
-- Module docs: `packages/web/server/lib/opencode/DOCUMENTATION.md`
+## Responsibility
 
-##### notifications
-Notification message preparation utilities for system notifications, including text truncation and optional summarization.
-- Module docs: `packages/web/server/lib/notifications/DOCUMENTATION.md`
+- 用 4–8 条 bullet 说明模块的职责边界（做什么/不做什么）
+- 点出它服务的对象（用户、CI、运行时、上层模块等）
 
-##### terminal
-WebSocket protocol utilities for terminal input handling including message normalization, control frame parsing, and rate limiting.
-- Module docs: `packages/web/server/lib/terminal/DOCUMENTATION.md`
+## Design
 
-##### tts
-Server-side text-to-speech services and summarization helpers for `/api/tts/*` endpoints.
-- Module docs: `packages/web/server/lib/tts/DOCUMENTATION.md`
+### Architecture Pattern
 
-##### skills-catalog
-Skills catalog management including discovery, installation, and configuration of agent skill packages.
-- Module docs: `packages/web/server/lib/skills-catalog/DOCUMENTATION.md`
+- 用“分层/管道/插件式/DDD”等你从代码中观察到的模式命名
+- 给出一张 ASCII 架构图，类似示例的方框+箭头
+- 说明每层的职责、入口/出口、跨层调用方式
 
-## Build / dev commands (verified)
-All scripts are in `package.json`.
-- Validate: `bun run type-check`, `bun run lint`
-- Build all: `bun run build`
-- Desktop build: `bun run desktop:build`
-- VS Code build: `bun run vscode:build`
-- Release smoke build: `bun run release:test` (shell script: `scripts/test-release-build.sh`)
+### Key Abstractions
 
-## Runtime entry points
-- Web bootstrap: `packages/web/src/main.tsx`
-- Web server: `packages/web/server/index.js`
-- Web CLI: `packages/web/bin/cli.js` (package bin: `packages/web/package.json`)
-- Desktop: Tauri entry `packages/desktop/src-tauri/src/main.rs` (spawns web server sidecar + loads web UI)
-- Tauri backend: `packages/desktop/src-tauri/src/main.rs`
-- VS Code extension host: `packages/vscode/src/extension.ts`
-- VS Code webview bootstrap: `packages/vscode/webview/main.tsx`
+按示例风格，至少给出 3 类抽象（如果代码确实存在），每类包括：
 
-## OpenCode integration
-- UI client wrapper: `packages/ui/src/lib/opencode/client.ts` (imports `@opencode-ai/sdk/v2`)
-- SSE hookup: `packages/ui/src/hooks/useEventStream.ts`
-- Web server embeds/starts OpenCode server: `packages/web/server/index.js` (`createOpencodeServer`)
-- Web runtime filesystem endpoints: search `packages/web/server/index.js` for `/api/fs/`
-- External server support: Set `OPENCODE_HOST` (full base URL, e.g. `http://hostname:4096`) or `OPENCODE_PORT`, plus `OPENCODE_SKIP_START=true`, to connect to existing OpenCode instance
+- 抽象名称（类型/接口/类/约定）
+- 代码片段（尽量短，只贴关键字段/方法，TypeScript 用 ```ts）
+- 解释它代表的概念、持有的数据、被谁创建/消费
+- 关联文件与依据（path:line 或 path:function/type）
 
-## Key UI patterns (reference files)
-- Settings shell: `packages/ui/src/components/views/SettingsView.tsx`
-- Settings shared primitives: `packages/ui/src/components/sections/shared/`
-- Settings sections: `packages/ui/src/components/sections/` (incl `skills/`)
-- Chat UI: `packages/ui/src/components/chat/` and `packages/ui/src/components/chat/message/`
-- Theme + typography: `packages/ui/src/lib/theme/`, `packages/ui/src/lib/typography.ts`
-- Terminal UI: `packages/ui/src/components/terminal/` (uses `ghostty-web`)
+建议优先覆盖：
 
-## External / system integrations (active)
-- Git: `packages/ui/src/lib/gitApi.ts`, `packages/web/server/index.js` (`simple-git`)
-- Terminal PTY: `packages/web/server/index.js` (`bun-pty`/`node-pty`)
-- Skills catalog: `packages/web/server/lib/skills-catalog/`, UI: `packages/ui/src/components/sections/skills/`
+1. 配置抽象（Config / Options / Schema）
+2. 核心领域对象或流程输入（InstallConfig / Context / State）
+3. 结果/错误抽象（Result / Error / Diagnostics）
+4. 资源抽象（Skill / Provider / Preset / Task）
 
-## Agent constraints
-- Do not modify `../opencode` (separate repo).
-- Do not run git/GitHub commands unless explicitly asked.
-- Keep baseline green (run `bun run type-check`, `bun run lint`, `bun run build` before finalizing changes).
+### Design Patterns
 
-## Development rules
-- Keep diffs tight; avoid drive-by refactors.
-- Backend changes: keep web/desktop/vscode runtimes consistent (if relevant).
-- Follow local precedent; search nearby code first.
-- TypeScript: avoid `any`/blind casts; keep ESLint/TS green.
-- React: prefer function components + hooks; class only when needed (e.g. error boundaries).
-- Control flow: avoid nested ternaries; prefer early returns + `if/else`/`switch`.
-- Styling: Tailwind v4; typography via `packages/ui/src/lib/typography.ts`; theme vars via `packages/ui/src/lib/theme/`.
-- Toasts: use custom toast wrapper from `@/components/ui` (backed by `packages/ui/src/components/ui/toast.ts`); do not import `sonner` directly in feature code.
-- No new deps unless asked.
-- Never add secrets (`.env`, keys) or log sensitive data.
+列出你从代码中“确实看见”的模式（至少 3 条），每条包含：
 
-## CLI Parity and Safety Policy (MANDATORY)
+- 模式名（例如 Atomic write、JSONC 解析、优先级回退、权限模型、幂等写入等）
+- 在本项目里的实现方式（点名函数/文件）
+- 为什么这么做（从代码行为推断，避免空泛）
 
-### Principle: policy-first, UX-second
+## Flow
 
-All safety and correctness rules MUST be enforced in core command logic, independent of output mode.
+至少给出 2–4 个“端到端流程”。每个流程必须包含：
 
-Interactive/pretty UX (`@clack/prompts`) is a presentation layer only.
-It must never be the only place where validation or restriction is enforced.
+- 场景一句话（例如 Installation Flow / Config Detection Flow / Model Mapping Flow）
+- 一张 ASCII 流程图（带步骤编号、函数名、文件名）
+- 每步做什么、输入输出是什么、关键分支条件是什么
+- 如果存在交互模式（TUI/非交互），要像示例一样拆开写
 
-### Required parity across modes
+（如果这是 CLI 模块，优先输出：安装流程、配置检测流程、模型映射流程、技能安装流程；
+如果不是 CLI 模块，改成该模块最核心的 2–4 条业务流程。）
 
-The same functional outcome and safety gates MUST hold for all execution modes:
+## Integration
 
-- Interactive TTY (full Clack UX)
-- Non-interactive shells (piped/stdin-less automation)
-- `--quiet`
-- `--json`
-- Fully pre-specified flags (no prompts)
+### External Dependencies
 
-In all modes, invalid operations MUST fail with non-zero exit code and deterministic error semantics.
+输出一个表格（Markdown table）：
+| Module/File | Dependency | Purpose |
 
-### Non-negotiable rule
+- 仅写你在 package.json / import / require / spawn 命令里看到的真实依赖
+- 命令行依赖（tmux/git/opencode/npx 等）也算外部依赖
 
-Do not rely on prompts to enforce policy.
+### Internal Dependencies
 
-- Prompts MAY help users choose valid inputs.
-- Core validators MUST run even when prompts are unavailable or skipped.
-- `--quiet` suppresses non-essential output only; it does not weaken validation.
-- `--json` changes output shape only; it does not weaken validation.
+给出模块内依赖关系树（像示例那样用缩进箭头），要求：
 
-Detailed Clack UX patterns (primitives, prompt gating, and implementation checklist)
-are defined in the `clack-cli-patterns` skill and should not be duplicated here.
+- 入口 -> orchestrator -> 子模块/工具
+- 如果有 barrel 文件（index.ts / xxx-manager.ts），标出来
 
-## Clack CLI Skill (MANDATORY for terminal CLI work)
+### Configuration Files
 
-When working on terminal CLI commands, prompts, or output formatting, agents **MUST** study the Clack CLI skill first.
+如果模块读写配置，列出：
+| File | Location | Purpose |
 
-**Before starting terminal CLI work:**
-```
-skill({ name: "clack-cli-patterns" })
+- 路径要与代码一致（例如 ~/.config/... 或 repo 内模板文件）
+- 说明谁写入/谁读取/何时生效
+
+### Consumers
+
+列出谁在用这个模块（最终用户命令、上层模块、CI、运行时等），要能从代码/文档/命令路由推出来。
+
+### Data Flow Summary
+
+用一个简洁的 ASCII 图总结数据如何流动（Input -> Transform -> Output），类似示例。
+
+## Key Files Reference
+
+输出一个表格：
+| File | Lines | Purpose |
+
+- Lines：给出文件总行数（尽量真实统计）；做不到就写 `unknown`
+- Purpose：一句话说明文件的定位
+- 只列最关键的 8–15 个文件，按重要性排序
+</模块梳理的文档格式要求>
+## 模块梳理文档目录（同步）
+
+- 文档/功能spec目录不需要时刻更新，只有当用户明确要求更新时才进行更新
+
+# Ralphi 工作约定
+
+## 项目概览
+
+- 本仓库是 OpenAurora 的 Bun monorepo，包含 Web/PWA、共享 UI、桌面端、 VS Code 扩展（vs废弃不要了）。
+- 运行时入口分散在 `packages/web`、`packages/ui`、`packages/desktop`、`packages/vscode`，文档与方案沉淀在 `文档/`。
+
+## 快速命令
+
+日常代码变更后优先执行：
+
+```bash
+bun run lint
+bun run type-check
 ```
 
-Scope: terminal CLI only (for example `packages/web/bin/*`). Do not apply this requirement to VS Code or web UI work.
+仅在大型改动、跨包重构或发版前执行：
 
-## Theme System (MANDATORY for UI work)
-
-When working on any UI components, styling, or visual changes, agents **MUST** study the theme system skill first.
-
-**Before starting any UI work:**
-```
-skill({ name: "theme-system" })
+```bash
+bun run build
+bun run release:prepare
 ```
 
-This skill contains all color tokens, semantic logic, decision tree, and usage patterns. All UI colors must use theme tokens - never hardcoded values or Tailwind color classes.
+## 质量检查要求
 
-## Recent changes
-- Releases + high-level changes: `CHANGELOG.md`
-- Recent commits: `git log --oneline` (latest tags: `v1.4.6`, `v1.4.5`)
+- 提交前必须通过 `bun run lint` 和 `bun run type-check`。
+- 不要把 `build` 当作日常验证手段，只有大型改动或发版前才运行。
+- 当前仓库没有稳定的仓库级 `test` 命令，发布验证依赖 `release:test` 系列脚本。
+
+## 关键约定
+
+- 保持严格 TypeScript，现有主包 `tsconfig` 均开启 `strict: true`。
+- 优先复用 `packages/ui` 中的共享实现，通过 workspace 包和路径别名接入，不要复制逻辑。
+- `packages/web` 负责 Web 运行时封装，`packages/ui` 负责共享界面层，`packages/desktop` 与 `packages/vscode` 只处理各自宿主集成。
+- 修改前优先阅读 `文档/` 下的中文方案文档；涉及模块职责、接口契约、主流程、配置边界或数据结构变化时，再更新 `文档/模块梳理/`。
+
+## 目录结构
+
+- `packages/web`：Web/PWA 入口、服务端封装、CLI 分发。
+- `packages/ui`：共享 React UI、状态管理、运行时 API 抽象。
+- `packages/desktop`：Tauri/macOS 桌面宿主与 sidecar 构建。
+
+- `文档`：设计方案、功能开发记录、测试与模块梳理文档。
+
+## 测试模式
+
+- 当前没有统一的单元测试框架落地到根脚本，不能假设存在 `bun run test`。
+- 日常迭代以 `lint` 和 `type-check` 为主要质量门禁。
+- 需要发版级验证时，再按场景执行 `bun run release:test`、`bun run release:test:intel` 或 `bun run release:test:arm`。
