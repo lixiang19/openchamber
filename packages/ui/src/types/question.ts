@@ -20,6 +20,7 @@ export interface QuestionRequest {
     messageID: string;
     callID: string;
   };
+  metadata?: Record<string, unknown>;
 }
 
 export interface QuestionAskedEvent {

@@ -52,6 +52,13 @@ import {
   readTerminalInputWsControlFrame,
 } from './lib/terminal/index.js';
 import webPush from 'web-push';
+import {
+  AGENT_RUNTIME_PI,
+  createPiRuntime,
+  resolveAgentRuntimeMode,
+  translateOpenCodeMessagesToSseEvents,
+  translatePiEnvelopeToSseEvents,
+} from './lib/pi/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,6 +73,12 @@ const MODELS_METADATA_CACHE_TTL = 5 * 60 * 1000;
 const CLIENT_RELOAD_DELAY_MS = 800;
 const OPEN_CODE_READY_GRACE_MS = 12000;
 const LONG_REQUEST_TIMEOUT_MS = 4 * 60 * 1000;
+const AGENT_RUNTIME_MODE = resolveAgentRuntimeMode(
+  process.env.OPENAURORA_AGENT_RUNTIME || process.env.OPENCHAMBER_AGENT_RUNTIME || ''
+);
+const PI_RUNTIME = createPiRuntime({
+  cliPath: process.env.OPENAURORA_PI_BIN || process.env.PI_CLI_BIN,
+});
 const TUNNEL_BOOTSTRAP_TTL_DEFAULT_MS = 30 * 60 * 1000;
 const TUNNEL_BOOTSTRAP_TTL_MIN_MS = 60 * 1000;
 const TUNNEL_BOOTSTRAP_TTL_MAX_MS = 24 * 60 * 60 * 1000;
@@ -6450,6 +6463,323 @@ function setupProxy(app) {
     return rewriteWindowsDirectoryParam(stripApiPrefix(rawUrl));
   };
 
+  const isPiRuntimeEnabled = () => AGENT_RUNTIME_MODE === AGENT_RUNTIME_PI;
+
+  const resolvePiRequestedDirectory = (req) => {
+    const headerDirectory = typeof req.get === 'function' ? req.get('x-opencode-directory') : null;
+    const queryDirectory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+    return typeof headerDirectory === 'string' && headerDirectory.trim().length > 0
+      ? headerDirectory.trim()
+      : typeof queryDirectory === 'string' && queryDirectory.trim().length > 0
+        ? queryDirectory.trim()
+        : null;
+  };
+
+  const matchesPiSessionDirectory = (sessionDirectory, requestedDirectory) => {
+    if (!requestedDirectory || typeof requestedDirectory !== 'string') {
+      return true;
+    }
+    if (!sessionDirectory || typeof sessionDirectory !== 'string') {
+      return false;
+    }
+    return sessionDirectory === requestedDirectory || sessionDirectory.startsWith(`${requestedDirectory}${path.sep}`);
+  };
+
+  const writePiSseEventsForSession = async (res, session, options = {}) => {
+    const statusBySession = PI_RUNTIME.getSessionStatus();
+    const messages = await PI_RUNTIME.getMessages(session.id);
+    const events = translateOpenCodeMessagesToSseEvents(
+      { session },
+      messages,
+      {
+        status: options.includeStatus === false ? null : statusBySession[session.id] || { type: 'idle' },
+        directory: session.directory,
+      },
+    );
+
+    for (const event of events) {
+      writeSseEvent(res, event);
+    }
+  };
+
+  const writePiQuestionEvents = (res, questions, directory) => {
+    const items = Array.isArray(questions) ? questions : [];
+    for (const question of items) {
+      if (!question || typeof question !== 'object') {
+        continue;
+      }
+      writeSseEvent(res, {
+        type: 'question.asked',
+        properties: {
+          ...question,
+          ...(directory ? { directory } : {}),
+        },
+      });
+    }
+  };
+
+  const handlePiSseStream = async (req, res, options = {}) => {
+    const requestedDirectory = resolvePiRequestedDirectory(req);
+    const includeAllSessions = options.global === true;
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders();
+    }
+
+    const relevantSessions = PI_RUNTIME.listSessions({
+      directory: includeAllSessions ? undefined : requestedDirectory,
+    }).filter((session) => matchesPiSessionDirectory(session.directory, includeAllSessions ? null : requestedDirectory));
+
+    for (const session of relevantSessions) {
+      await writePiSseEventsForSession(res, session, { includeStatus: true });
+    }
+    writePiQuestionEvents(res, PI_RUNTIME.listPendingQuestions({ directory: includeAllSessions ? undefined : requestedDirectory }), requestedDirectory);
+
+    const heartbeat = setInterval(() => {
+      writeSseEvent(res, { type: 'openaurora:heartbeat', timestamp: Date.now() });
+    }, 15000);
+
+    let closed = false;
+    const unsubscribe = PI_RUNTIME.subscribe(async ({ session, envelope }) => {
+      if (closed) {
+        return;
+      }
+      if (!matchesPiSessionDirectory(session?.directory, includeAllSessions ? null : requestedDirectory)) {
+        return;
+      }
+
+      if (envelope?.envelope === 'agent-event' && (envelope.eventType === 'agent_start' || envelope.eventType === 'turn_start')) {
+        const status = PI_RUNTIME.getSessionStatus()[session.id] || { type: 'busy' };
+        writeSseEvent(res, {
+          type: 'session.status',
+          properties: {
+            sessionID: session.id,
+            status,
+            directory: session.directory,
+          },
+        });
+        return;
+      }
+
+      if (envelope?.envelope === 'agent-event' && (envelope.eventType === 'message_start' || envelope.eventType === 'message_update')) {
+        const events = translatePiEnvelopeToSseEvents({ session }, envelope, { directory: session.directory });
+        for (const event of events) {
+          writeSseEvent(res, event);
+        }
+        return;
+      }
+
+      if (envelope?.envelope === 'extension-ui-request' && envelope.request) {
+        const questions = PI_RUNTIME.listPendingQuestions({ directory: session.directory });
+        const match = questions.filter((question) => question?.id === envelope.request.id);
+        if (match.length > 0) {
+          writePiQuestionEvents(res, match, session.directory);
+        }
+        return;
+      }
+
+      if (envelope?.envelope === 'agent-event' && (envelope.eventType === 'message_end' || envelope.eventType === 'tool_execution_end' || envelope.eventType === 'agent_end')) {
+        try {
+          await PI_RUNTIME.refreshMessages(session.id);
+          await writePiSseEventsForSession(res, session, { includeStatus: true });
+        } catch (error) {
+          writeSseEvent(res, {
+            type: 'session.error',
+            properties: {
+              sessionID: session.id,
+              directory: session.directory,
+              error: {
+                name: 'UnknownError',
+                data: {
+                  message: error?.message || 'Failed to translate Pi runtime events',
+                },
+              },
+            },
+          });
+        }
+      }
+    });
+
+    const cleanup = () => {
+      closed = true;
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+
+    req.on('close', cleanup);
+    req.on('error', cleanup);
+  };
+
+  app.get('/api/global/event', async (req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+    return handlePiSseStream(req, res, { global: true });
+  });
+
+  app.get('/api/event', async (req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+    return handlePiSseStream(req, res, { global: false });
+  });
+
+  app.get('/api/session', async (req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+
+    try {
+      const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+      const search = Array.isArray(req.query.search) ? req.query.search[0] : req.query.search;
+      const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+      const limit = Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : undefined;
+      return res.json(PI_RUNTIME.listSessions({ directory, search, limit }));
+    } catch (error) {
+      return res.status(500).json({ error: error?.message || 'Failed to list Pi sessions' });
+    }
+  });
+
+  app.post('/api/session', async (req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+
+    try {
+      const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+      const session = PI_RUNTIME.createSession({
+        directory,
+        title: req.body?.title,
+        parentID: req.body?.parentID,
+      });
+      return res.json(session);
+    } catch (error) {
+      return res.status(400).json({ error: error?.message || 'Failed to create Pi session' });
+    }
+  });
+
+  app.get('/api/session/status', (_req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+
+    return res.json(PI_RUNTIME.getSessionStatus());
+  });
+
+  app.get('/api/session/:sessionId', async (req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+
+    try {
+      return res.json(PI_RUNTIME.getSession(req.params.sessionId));
+    } catch (error) {
+      return res.status(404).json({ error: error?.message || 'Pi session not found' });
+    }
+  });
+
+  app.get('/api/session/:sessionId/message', async (req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+
+    try {
+      const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+      const limit = Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : undefined;
+      return res.json(await PI_RUNTIME.getMessages(req.params.sessionId, limit));
+    } catch (error) {
+      return res.status(404).json({ error: error?.message || 'Failed to load Pi session messages' });
+    }
+  });
+
+  app.get('/api/question', async (req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+
+    try {
+      const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+      return res.json(PI_RUNTIME.listPendingQuestions({ directory }));
+    } catch (error) {
+      return res.status(500).json({ error: error?.message || 'Failed to list Pi questions' });
+    }
+  });
+
+  app.post('/api/question/:requestId/reply', async (req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+
+    try {
+      const answers = Array.isArray(req.body?.answers) ? req.body.answers : [];
+      return res.json(await PI_RUNTIME.replyToQuestion(req.params.requestId, answers));
+    } catch (error) {
+      const status = /Unknown Pi question request/i.test(error?.message || '') ? 404 : 503;
+      return res.status(status).json({ error: error?.message || 'Failed to reply to Pi question' });
+    }
+  });
+
+  app.post('/api/question/:requestId/reject', async (req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+
+    try {
+      return res.json(await PI_RUNTIME.rejectQuestion(req.params.requestId));
+    } catch (error) {
+      const status = /Unknown Pi question request/i.test(error?.message || '') ? 404 : 503;
+      return res.status(status).json({ error: error?.message || 'Failed to reject Pi question' });
+    }
+  });
+
+  app.get('/api/permission', (_req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+    return res.json([]);
+  });
+
+  app.post('/api/permission/:requestId/reply', (_req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+    return res.json(false);
+  });
+
+  app.post('/api/session/:sessionId/prompt_async', async (req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+
+    try {
+      await PI_RUNTIME.promptAsync(req.params.sessionId, req.body ?? {});
+      return res.status(204).send();
+    } catch (error) {
+      const message = error?.message || 'Failed to submit Pi prompt';
+      const status = /Unknown Pi session/i.test(message) ? 404 : 503;
+      return res.status(status).json({ error: message });
+    }
+  });
+
+  app.post('/api/session/:sessionId/abort', async (req, res, next) => {
+    if (!isPiRuntimeEnabled()) {
+      return next();
+    }
+
+    try {
+      return res.json(await PI_RUNTIME.abort(req.params.sessionId));
+    } catch (error) {
+      const message = error?.message || 'Failed to abort Pi session';
+      const status = /Unknown Pi session/i.test(message) ? 404 : 503;
+      return res.status(status).json({ error: message });
+    }
+  });
+
   app.use('/api', (req, res, next) => {
     if (
       req.path.startsWith('/themes/custom') ||
@@ -6461,6 +6791,10 @@ function setupProxy(app) {
       req.path === '/config/reload' ||
       req.path === '/health'
     ) {
+      return next();
+    }
+
+    if (isPiRuntimeEnabled()) {
       return next();
     }
 
