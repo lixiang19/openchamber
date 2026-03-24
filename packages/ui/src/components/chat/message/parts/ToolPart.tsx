@@ -136,13 +136,20 @@ const normalizeToolName = (toolName: string | undefined | null): string => {
         return '';
     }
 
-    if (trimmed.includes('.')) {
-        const dotParts = trimmed.split('.').filter(Boolean);
-        const last = dotParts[dotParts.length - 1];
-        if (last) return last;
+    const normalized = (() => {
+        if (trimmed.includes('.')) {
+            const dotParts = trimmed.split('.').filter(Boolean);
+            const last = dotParts[dotParts.length - 1];
+            return last || trimmed;
+        }
+        return trimmed;
+    })();
+
+    if (normalized === 'subagent' || normalized === 'subagent_status') {
+        return 'task';
     }
 
-    return trimmed;
+    return normalized;
 };
 
 const MAX_DURATION_MS = 5 * 60 * 1000; // 5 minutes cap
@@ -588,9 +595,15 @@ const readTaskSessionIdFromRecord = (value: unknown): string | undefined => {
     }
 
     const record = value as Record<string, unknown>;
+    const piRecord = (record.pi && typeof record.pi === 'object') ? (record.pi as Record<string, unknown>) : undefined;
+    const taskRecord = (piRecord?.task && typeof piRecord.task === 'object') ? (piRecord.task as Record<string, unknown>) : undefined;
     return (
         normalizeSessionIdCandidate(record.sessionID)
         ?? normalizeSessionIdCandidate(record.sessionId)
+        ?? normalizeSessionIdCandidate(taskRecord?.sessionID)
+        ?? normalizeSessionIdCandidate(taskRecord?.sessionId)
+        ?? normalizeSessionIdCandidate(piRecord?.sessionID)
+        ?? normalizeSessionIdCandidate(piRecord?.sessionId)
     );
 };
 
@@ -1687,9 +1700,19 @@ const ToolPart: React.FC<ToolPartProps> = ({
         if (!isTaskTool) {
             return [];
         }
-        const candidateSummary = (metadata as { summary?: unknown; entries?: unknown; tools?: unknown; calls?: unknown } | undefined);
+        const candidateSummary = (metadata as {
+            summary?: unknown;
+            entries?: unknown;
+            tools?: unknown;
+            calls?: unknown;
+            pi?: { task?: { summary?: unknown } };
+        } | undefined);
         const normalized = normalizeTaskSummaryEntries(
-            candidateSummary?.summary ?? candidateSummary?.entries ?? candidateSummary?.tools ?? candidateSummary?.calls
+            candidateSummary?.summary
+            ?? candidateSummary?.entries
+            ?? candidateSummary?.tools
+            ?? candidateSummary?.calls
+            ?? candidateSummary?.pi?.task?.summary
         );
 
         if (normalized.length > 0) {
