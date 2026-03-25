@@ -1,16 +1,7 @@
 import React from 'react';
 import { useSessionStore } from '@/stores/useSessionStore';
-import { opencodeClient } from '@/lib/opencode/client';
-
-interface SessionState {
-  status: 'idle' | 'busy' | 'retry';
-  lastUpdateAt: number;
-  metadata?: {
-    attempt?: number;
-    message?: string;
-    next?: number;
-  };
-}
+import { piClient } from '@/lib/pi/client';
+import { piSessionStatusToUiStatus } from '@/lib/pi/ui-mappers';
 
 interface SessionAttentionState {
   needsAttention: boolean;
@@ -18,12 +9,6 @@ interface SessionAttentionState {
   lastStatusChangeAt: number;
   status: 'idle' | 'busy' | 'retry';
   isViewed: boolean;
-}
-
-interface ServerSnapshotResponse {
-  statusSessions: Record<string, SessionState>;
-  attentionSessions: Record<string, SessionAttentionState>;
-  serverTime: number;
 }
 
 const IMMEDIATE_POLL_DELAY_MS = 150;
@@ -72,156 +57,49 @@ export function useServerSessionStatus(options?: { enabled?: boolean }) {
     lastSyncAtRef.current = now;
 
     try {
-      const [snapshotResult, upstreamStatusResult] = await Promise.allSettled([
-        fetch('/api/sessions/snapshot', {
-          method: 'GET',
-          cache: 'no-store',
-          headers: { Accept: 'application/json' },
-        }).then(async (r) => {
-          if (!r.ok) {
-            console.warn('[useServerSessionStatus] API returned', r.status);
-            if (r.status === 401) {
-              console.warn('[useServerSessionStatus] Authentication required - session may have expired');
-            }
-            throw new Error(String(r.status));
-          }
-          return (await r.json()) as ServerSnapshotResponse;
-        }),
-        opencodeClient.getGlobalSessionStatus(),
-      ]);
-
-      const snapshotData: ServerSnapshotResponse | null =
-        snapshotResult.status === 'fulfilled' ? snapshotResult.value : null;
-      const statusSessions = snapshotData?.statusSessions ?? {};
-      const attentionSessions = snapshotData?.attentionSessions ?? {};
-
-      const upstreamStatuses =
-        upstreamStatusResult.status === 'fulfilled' ? (upstreamStatusResult.value ?? {}) : {};
-
-      // Update the session store with server state
+      const sessions = await piClient.listSessions();
       const currentStatuses = useSessionStore.getState().sessionStatus || new Map();
-      let newStatuses: Map<string, { type: 'idle' | 'busy' | 'retry'; confirmedAt?: number; attempt?: number; message?: string; next?: number }> | null = null;
-      const ensureStatusesMap = () => {
-        if (!newStatuses) {
-          newStatuses = new Map(currentStatuses);
-        }
-        return newStatuses;
-      };
+      const nextStatuses = new Map<string, { type: 'idle' | 'busy' | 'retry'; confirmedAt?: number; attempt?: number; message?: string; next?: number }>();
 
-      for (const [sessionId, state] of Object.entries(statusSessions)) {
-        const existing = currentStatuses.get(sessionId);
-        const hasChanged =
-          !existing ||
-          existing.type !== state.status ||
-          existing.attempt !== state.metadata?.attempt ||
-          existing.message !== state.metadata?.message ||
-          existing.next !== state.metadata?.next ||
-          existing.confirmedAt !== state.lastUpdateAt;
+      sessions.forEach((session) => {
+        nextStatuses.set(session.id, {
+          ...piSessionStatusToUiStatus(session.status),
+          confirmedAt: session.updatedAt,
+        });
+      });
 
-        // Only update if server state is different
-        if (hasChanged) {
-          ensureStatusesMap().set(sessionId, {
-            type: state.status,
-            confirmedAt: state.lastUpdateAt,
-            attempt: state.metadata?.attempt,
-            message: state.metadata?.message,
-            next: state.metadata?.next,
-          });
-        }
-      }
-
-      // Overlay OpenCode's own session status endpoint.
-      // This is the source-of-truth for retry message payload and works even when
-      // OpenAurora server-side tracking misses transient updates.
-      for (const [sessionId, upstream] of Object.entries(upstreamStatuses)) {
-        const existing = (newStatuses ?? currentStatuses).get(sessionId);
-        const hasChanged =
-          !existing ||
-          existing.type !== upstream.type ||
-          existing.attempt !== upstream.attempt ||
-          existing.message !== upstream.message ||
-          existing.next !== upstream.next;
-
-        if (hasChanged) {
-          ensureStatusesMap().set(sessionId, {
-            type: upstream.type,
-            confirmedAt: Date.now(),
-            attempt: upstream.attempt,
-            message: upstream.message,
-            next: upstream.next,
-          });
-        }
-      }
-
-      // Check for sessions that are no longer in server state (treat as idle)
-      const activeServerStatusIds = new Set(Object.keys(statusSessions));
-      const activeUpstreamIds = new Set(Object.keys(upstreamStatuses));
-
-      for (const [sessionId, currentStatus] of (newStatuses ?? currentStatuses)) {
-        if ((currentStatus.type === 'busy' || currentStatus.type === 'retry') &&
-            !activeServerStatusIds.has(sessionId) &&
-            !activeUpstreamIds.has(sessionId)) {
-          // Session was busy but not in server state anymore -> mark as idle
-          ensureStatusesMap().set(sessionId, {
+      for (const [sessionId, status] of currentStatuses) {
+        if (!nextStatuses.has(sessionId) && (status.type === 'busy' || status.type === 'retry')) {
+          nextStatuses.set(sessionId, {
             type: 'idle',
             confirmedAt: Date.now(),
           });
         }
       }
 
-      // Update attention state from server
       const currentAttentionStates = useSessionStore.getState().sessionAttentionStates || new Map();
-      let newAttentionStates: Map<string, SessionAttentionState> | null = null;
-      const ensureAttentionMap = () => {
-        if (!newAttentionStates) {
-          newAttentionStates = new Map(currentAttentionStates);
-        }
-        return newAttentionStates;
-      };
-      let attentionStatesChanged = false;
-
-      for (const [sessionId, attentionState] of Object.entries(attentionSessions)) {
-        const existing = currentAttentionStates.get(sessionId);
-        const serverState = attentionState as SessionAttentionState;
-        const hasChanged =
-          !existing ||
-          existing.needsAttention !== serverState.needsAttention ||
-          existing.lastUserMessageAt !== serverState.lastUserMessageAt ||
-          existing.lastStatusChangeAt !== serverState.lastStatusChangeAt ||
-          existing.status !== serverState.status ||
-          existing.isViewed !== serverState.isViewed;
-
-        if (hasChanged) {
-          ensureAttentionMap().set(sessionId, serverState);
-          attentionStatesChanged = true;
-        }
-      }
-
-      // Remove attention states for sessions that no longer exist
-      for (const sessionId of (newAttentionStates ?? currentAttentionStates).keys()) {
-        const inStatus = !!statusSessions[sessionId];
-        const inAttention = !!attentionSessions[sessionId];
-        if (!inStatus && !inAttention) {
-          ensureAttentionMap().delete(sessionId);
-          attentionStatesChanged = true;
-        }
-      }
-
-      // Only update store if something actually changed
-      const statusChanged = newStatuses !== null;
-      if (statusChanged || attentionStatesChanged) {
-        useSessionStore.setState({
-          ...(statusChanged && newStatuses ? { sessionStatus: newStatuses } : {}),
-          ...(attentionStatesChanged && newAttentionStates ? { sessionAttentionStates: newAttentionStates } : {}),
+      const nextAttentionStates = new Map<string, SessionAttentionState>();
+      sessions.forEach((session) => {
+        const previous = currentAttentionStates.get(session.id);
+        const uiStatus = piSessionStatusToUiStatus(session.status).type;
+        nextAttentionStates.set(session.id, {
+          needsAttention: false,
+          lastUserMessageAt: previous?.lastUserMessageAt ?? null,
+          lastStatusChangeAt: session.updatedAt,
+          status: uiStatus,
+          isViewed: previous?.isViewed ?? session.id === useSessionStore.getState().currentSessionId,
         });
-      }
+      });
+
+      useSessionStore.setState({
+        sessionStatus: nextStatuses,
+        sessionAttentionStates: nextAttentionStates,
+      });
 
       if (process.env.NODE_ENV === 'development') {
-        console.debug('[useServerSessionStatus] Updated session statuses from server:', {
-          statusCount: Object.keys(statusSessions).length,
-          upstreamCount: Object.keys(upstreamStatuses).length,
-          attentionCount: Object.keys(attentionSessions).length,
-          serverTime: snapshotData?.serverTime,
+        console.debug('[useServerSessionStatus] Updated Pi session statuses:', {
+          statusCount: nextStatuses.size,
+          attentionCount: nextAttentionStates.size,
         });
       }
     } catch (error) {

@@ -3,6 +3,8 @@ import { create } from "zustand";
 import { devtools, persist, createJSONStorage } from "zustand/middleware";
 import type { Message, Part } from "@opencode-ai/sdk/v2";
 import { opencodeClient } from "@/lib/opencode/client";
+import { piClient } from '@/lib/pi/client';
+import { toUiMessageEntries } from '@/lib/pi/ui-mappers';
 import { isExecutionForkMetaText } from "@/lib/messages/executionMeta";
 import { isLikelyProviderAuthFailure, PROVIDER_AUTH_FAILURE_MESSAGE } from "@/lib/messages/providerAuthError";
 import type { SessionMemoryState, SessionHistoryMeta, MessageStreamLifecycle, AttachedFile } from "./types/sessionTypes";
@@ -348,63 +350,31 @@ export const useMessageStore = create<MessageStore>()(
                 pendingUserMessageMetaBySession: new Map(),
 
                 loadMessages: async (sessionId: string, limit?: number) => {
-                        const memLimits = getMemoryLimits();
-                        const noLimit = limit === Infinity;
                         const previousMemoryState = get().sessionMemoryState.get(sessionId);
                         const previousHistoryMeta = get().sessionHistoryMeta.get(sessionId);
                         if (previousHistoryMeta?.loading) {
                             return;
                         }
 
-                        // OpenCode parity: history window is driven by meta.limit.
-                        const baseLimit = previousHistoryMeta?.limit ?? memLimits.HISTORICAL_MESSAGES;
-                        const requestedLimit =
-                            typeof limit === 'number' && Number.isFinite(limit)
-                                ? limit
-                                : baseLimit;
-                        // Never proactively shrink loaded history window on resync.
-                        const targetLimit = Math.max(baseLimit, requestedLimit);
-
                         set((snapshot) => {
                             const nextHistoryMeta = new Map(snapshot.sessionHistoryMeta);
-                            const currentMeta = nextHistoryMeta.get(sessionId);
                             nextHistoryMeta.set(sessionId, {
-                                limit: currentMeta?.limit ?? baseLimit,
-                                complete: currentMeta?.complete ?? false,
+                                limit: typeof limit === 'number' && Number.isFinite(limit) ? limit : Number.MAX_SAFE_INTEGER,
+                                complete: false,
                                 loading: true,
                             });
                             return { sessionHistoryMeta: nextHistoryMeta };
                         });
 
-                        // Don't pass Infinity to API - use undefined for "fetch all".
-                        // Use targetLimit directly and infer "has more" when payload fills the window,
-                        // matching OpenCode behavior and avoiding hidden "load older" on exact-limit responses.
                         try {
-                            const fetchLimit = noLimit ? undefined : targetLimit;
-                            const allMessages = await executeWithSessionDirectory(sessionId, () => opencodeClient.getSessionMessages(sessionId, fetchLimit));
-
-                            // Filter out reverted messages first
-                            const revertMessageId = getSessionRevertMessageId(sessionId);
-                            const messagesWithoutReverted = filterMessagesByRevertPoint<{ info: Message; parts: Part[] }>(
-                                allMessages as { info: Message; parts: Part[] }[],
-                                revertMessageId,
-                            );
-                            const orderedMessages = [...messagesWithoutReverted].sort(compareMessageEntriesChronologically);
-
-                            // If server fills the requested window, assume there may be more above.
-                            const hasMoreAbove = typeof fetchLimit === 'number'
-                                ? orderedMessages.length >= targetLimit
-                                : false;
-
-                            const messagesToKeep = orderedMessages.slice(-targetLimit);
-
-                            set((state) => {
-                            const newMessages = new Map(state.messages);
-                            const previousMessages = state.messages.get(sessionId) || [];
-                            const normalizedMessages = messagesToKeep.map((message) => {
-                                const infoWithMarker = normalizeMessageInfoForProjection(message.info as Message) as any;
-
-                                const serverParts = (Array.isArray(message.parts) ? message.parts : []).map((part) => {
+                            const session = await piClient.getSession(sessionId);
+                            const allMessages = toUiMessageEntries(session);
+                            const targetLimit = typeof limit === 'number' && Number.isFinite(limit) ? limit : allMessages.length;
+                            const messagesToKeep = targetLimit > 0 ? allMessages.slice(-targetLimit) : allMessages;
+                            const normalizedMessages = messagesToKeep.map((message) => ({
+                                ...message,
+                                info: normalizeMessageInfoForProjection(message.info as Message) as any,
+                                parts: (Array.isArray(message.parts) ? message.parts : []).map((part) => {
                                     if (part?.type === 'text') {
                                         const raw = (part as any).text ?? (part as any).content ?? '';
                                         if (isExecutionForkMetaText(raw)) {
@@ -412,112 +382,57 @@ export const useMessageStore = create<MessageStore>()(
                                         }
                                     }
                                     return part;
-                                });
-                                return {
-                                    ...message,
-                                    info: infoWithMarker,
-                                    parts: serverParts,
-                                };
-                            });
+                                }),
+                            }));
 
                             const mergedMessages = dedupeMessagesById(normalizedMessages);
                             const loadedTurnCount = countLoadedTurns(mergedMessages);
 
-                            const previousIds = new Set(previousMessages.map((msg) => msg.info.id));
-                            const nextIds = new Set(mergedMessages.map((msg) => msg.info.id));
-                            const removedIds: string[] = [];
-                            previousIds.forEach((id) => {
-                                if (!nextIds.has(id)) {
-                                    removedIds.push(id);
+                            set((state) => {
+                                const newMessages = new Map(state.messages);
+                                newMessages.set(sessionId, mergedMessages);
+
+                                const newMemoryState = new Map(state.sessionMemoryState);
+                                newMemoryState.set(sessionId, {
+                                    ...previousMemoryState,
+                                    viewportAnchor: Math.max(mergedMessages.length - 1, 0),
+                                    isStreaming: session.isStreaming,
+                                    lastAccessedAt: Date.now(),
+                                    backgroundMessageCount: 0,
+                                    totalAvailableMessages: allMessages.length,
+                                    loadedTurnCount,
+                                    hasMoreAbove: mergedMessages.length < allMessages.length,
+                                    hasMoreTurnsAbove: mergedMessages.length < allMessages.length,
+                                    historyLoading: false,
+                                    historyComplete: mergedMessages.length >= allMessages.length,
+                                    historyLimit: targetLimit,
+                                    streamingCooldownUntil: undefined,
+                                });
+
+                                const newHistoryMeta = new Map(state.sessionHistoryMeta);
+                                newHistoryMeta.set(sessionId, {
+                                    limit: targetLimit,
+                                    complete: mergedMessages.length >= allMessages.length,
+                                    loading: false,
+                                });
+
+                                const nextStreamingIds = new Map(state.streamingMessageIds);
+                                const activeAssistant = session.isStreaming
+                                    ? [...mergedMessages].reverse().find((entry) => entry.info.role === 'assistant')
+                                    : null;
+                                if (activeAssistant?.info?.id) {
+                                    nextStreamingIds.set(sessionId, activeAssistant.info.id);
+                                } else {
+                                    nextStreamingIds.delete(sessionId);
                                 }
-                            });
 
-                            newMessages.set(sessionId, mergedMessages);
-
-                            const newMemoryState = new Map(state.sessionMemoryState);
-                            newMemoryState.set(sessionId, {
-                                ...previousMemoryState,
-                                viewportAnchor: mergedMessages.length - 1,
-                                isStreaming: false,
-                                lastAccessedAt: Date.now(),
-                                backgroundMessageCount: 0,
-                                totalAvailableMessages: previousMemoryState?.totalAvailableMessages,
-                                loadedTurnCount,
-                                hasMoreAbove,
-                                hasMoreTurnsAbove: hasMoreAbove,
-                                historyLoading: false,
-                                historyComplete: !hasMoreAbove,
-                                historyLimit: targetLimit,
-                                streamingCooldownUntil: undefined,
-                            });
-
-                            const newHistoryMeta = new Map(state.sessionHistoryMeta);
-                            newHistoryMeta.set(sessionId, {
-                                limit: targetLimit,
-                                complete: !hasMoreAbove,
-                                loading: false,
-                            });
-
-                            const result: Record<string, any> = {
-                                messages: newMessages,
-                                sessionMemoryState: newMemoryState,
-                                sessionHistoryMeta: newHistoryMeta,
-                            };
-
-                        clearLifecycleTimersForIds(removedIds);
-                        const updatedLifecycle = removeLifecycleEntries(state.messageStreamStates, removedIds);
-                        if (updatedLifecycle !== state.messageStreamStates) {
-                            result.messageStreamStates = updatedLifecycle;
-                        }
-
-                        if (removedIds.length > 0) {
-                            const currentStreaming = state.streamingMessageIds.get(sessionId);
-                            if (currentStreaming && removedIds.includes(currentStreaming)) {
-                                result.streamingMessageIds = setStreamingIdForSession(
-                                    result.streamingMessageIds ?? state.streamingMessageIds,
-                                    sessionId,
-                                    null
-                                );
-                            }
-                        }
-
-                        if (removedIds.length > 0) {
-                            const nextIndex = removeMessageSessionIndexEntries(
-                                result.messageSessionIndex ?? state.messageSessionIndex,
-                                removedIds
-                            );
-                            if (nextIndex !== (result.messageSessionIndex ?? state.messageSessionIndex)) {
-                                result.messageSessionIndex = nextIndex;
-                            }
-                        }
-
-                        if (removedIds.length > 0) {
-                            const nextPendingParts = new Map(state.pendingAssistantParts);
-                            let pendingChanged = false;
-                            removedIds.forEach((id) => {
-                                if (nextPendingParts.delete(id)) {
-                                    pendingChanged = true;
-                                }
-                            });
-                            if (pendingChanged) {
-                                result.pendingAssistantParts = nextPendingParts;
-                            }
-                        }
-
-                        const targetIndex = result.messageSessionIndex ?? state.messageSessionIndex;
-                        let indexAccumulator = targetIndex;
-                        mergedMessages.forEach((message) => {
-                            const id = (message?.info as { id?: unknown })?.id;
-                            if (typeof id === "string" && id.length > 0) {
-                                indexAccumulator = upsertMessageSessionIndex(indexAccumulator, id, sessionId);
-                            }
-                        });
-                        if (indexAccumulator !== targetIndex) {
-                            result.messageSessionIndex = indexAccumulator;
-                        }
-
-                        return result;
-
+                                return {
+                                    messages: newMessages,
+                                    sessionMemoryState: newMemoryState,
+                                    sessionHistoryMeta: newHistoryMeta,
+                                    streamingMessageIds: nextStreamingIds,
+                                    isSyncing: false,
+                                };
                             });
                         } finally {
                             set((snapshot) => {
@@ -683,26 +598,25 @@ export const useMessageStore = create<MessageStore>()(
                                     })),
                                 }));
 
-                                const apiClient = opencodeClient.getApiClient();
                                 const directory = opencodeClient.getDirectory();
 
                                 if (shellPayload || slashShellPayload) {
-                                    await apiClient.session.shell({
-                                        sessionID: sessionId,
-                                        ...(directory ? { directory } : {}),
-                                        ...(agent ? { agent } : {}),
-                                        model: {
-                                            providerID,
-                                            modelID,
-                                        },
-                                        command: (shellPayload ?? slashShellPayload)!.command,
-                                    });
-                                } else if (commandPayload && commandPayload.command.toLowerCase() === 'compact') {
-                                    await apiClient.session.summarize({
-                                        sessionID: sessionId,
-                                        ...(directory ? { directory } : {}),
+                                    await opencodeClient.sendMessage({
+                                        id: sessionId,
                                         providerID,
                                         modelID,
+                                        text: `/shell ${(shellPayload ?? slashShellPayload)!.command}`,
+                                        agent,
+                                        variant,
+                                    });
+                                } else if (commandPayload && commandPayload.command.toLowerCase() === 'compact') {
+                                    await opencodeClient.sendMessage({
+                                        id: sessionId,
+                                        providerID,
+                                        modelID,
+                                        text: '/compact',
+                                        agent,
+                                        variant,
                                     });
                                 } else if (commandPayload) {
                                     await opencodeClient.sendCommand({

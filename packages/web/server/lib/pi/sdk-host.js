@@ -2,6 +2,10 @@ import crypto from 'crypto';
 
 import { createAgentSession } from '@mariozechner/pi-coding-agent';
 
+import { normalizePiRpcEnvelope } from './bridge-schema.js';
+
+const EVENT_HISTORY_LIMIT = 200;
+
 const cloneJson = (value) => {
   if (value === undefined || value === null) {
     return value;
@@ -14,8 +18,7 @@ const cloneJson = (value) => {
 
 const normalizeString = (value) => {
   if (typeof value !== 'string') return '';
-  const trimmed = value.trim();
-  return trimmed;
+  return value.trim();
 };
 
 const createRequestLabel = (method) => {
@@ -74,14 +77,30 @@ export const createPiSdkHost = () => {
     statusEntries: serializeStatusEntries(record.statusEntries),
     widgets: serializeWidgets(record.widgets),
     workingMessage: record.workingMessage,
+    sequence: record.sequence,
   });
 
-  const emitSessionSnapshot = (record) => {
+  const rememberEnvelope = (record, envelope) => {
+    record.eventHistory.push(envelope);
+    if (record.eventHistory.length > EVENT_HISTORY_LIMIT) {
+      record.eventHistory.splice(0, record.eventHistory.length - EVENT_HISTORY_LIMIT);
+    }
+  };
+
+  const emitEventEnvelope = (record, type, payload) => {
     record.updatedAt = Date.now();
-    emit({
-      type: 'session_snapshot',
-      session: buildSessionSnapshot(record),
-    });
+    record.sequence += 1;
+    const envelope = {
+      type,
+      sessionId: record.id,
+      eventId: `${record.id}:${record.sequence}`,
+      sequence: record.sequence,
+      emittedAt: record.updatedAt,
+      payload,
+    };
+    rememberEnvelope(record, envelope);
+    emit(envelope);
+    return envelope;
   };
 
   const emitNotification = (record, level, message) => {
@@ -90,6 +109,14 @@ export const createPiSdkHost = () => {
       sessionId: record.id,
       level,
       message,
+    });
+  };
+
+  const emitSystemStatus = (record, status, message = null) => {
+    emitEventEnvelope(record, 'pi_system', {
+      kind: 'status',
+      status,
+      ...(message ? { message } : {}),
     });
   };
 
@@ -121,7 +148,10 @@ export const createPiSdkHost = () => {
       };
       record.interactiveRequests.set(id, request);
       interactiveRequestIndex.set(id, { record, resolve, request });
-      emitSessionSnapshot(record);
+      emitEventEnvelope(record, 'pi_ui_event', {
+        kind: 'interactive_request',
+        request,
+      });
     });
   };
 
@@ -161,31 +191,58 @@ export const createPiSdkHost = () => {
       } else {
         record.statusEntries.set(key, text);
       }
-      emitSessionSnapshot(record);
+      emitEventEnvelope(record, 'pi_ui_event', {
+        kind: 'status',
+        key,
+        text: text || null,
+      });
     },
     setWorkingMessage(message) {
       record.workingMessage = typeof message === 'string' && message.trim().length > 0 ? message : null;
-      emitSessionSnapshot(record);
+      emitEventEnvelope(record, 'pi_ui_event', {
+        kind: 'working_message',
+        message: record.workingMessage,
+      });
     },
     setWidget(key, content, options) {
       if (!content) {
         record.widgets.delete(key);
-      } else if (Array.isArray(content)) {
-        record.widgets.set(key, {
+        emitEventEnvelope(record, 'pi_ui_event', {
+          kind: 'widget',
+          key,
+          content: null,
+          placement: null,
+          bordered: false,
+        });
+        return;
+      }
+
+      if (Array.isArray(content)) {
+        const nextWidget = {
           content,
           placement: options?.placement || 'above-editor',
           bordered: options?.bordered !== false,
+        };
+        record.widgets.set(key, nextWidget);
+        emitEventEnvelope(record, 'pi_ui_event', {
+          kind: 'widget',
+          key,
+          content,
+          placement: nextWidget.placement,
+          bordered: nextWidget.bordered,
         });
       }
-      emitSessionSnapshot(record);
     },
     setFooter() {},
     setHeader() {},
     setTitle(title) {
       if (typeof title === 'string' && title.trim().length > 0) {
         record.title = title.trim();
+        emitEventEnvelope(record, 'pi_ui_event', {
+          kind: 'title',
+          title: record.title,
+        });
       }
-      emitSessionSnapshot(record);
     },
     async custom() {
       throw new Error('Pi custom UI is not supported in the web host yet');
@@ -193,7 +250,10 @@ export const createPiSdkHost = () => {
     pasteToEditor() {},
     setEditorText(text) {
       record.editorText = typeof text === 'string' ? text : '';
-      emitSessionSnapshot(record);
+      emitEventEnvelope(record, 'pi_ui_event', {
+        kind: 'editor_text',
+        text: record.editorText,
+      });
     },
     getEditorText() {
       return record.editorText || '';
@@ -227,7 +287,10 @@ export const createPiSdkHost = () => {
       onError(error) {
         record.lastError = typeof error?.error === 'string' ? error.error : 'Extension error';
         record.status = 'error';
-        emitSessionSnapshot(record);
+        emitEventEnvelope(record, 'pi_system', {
+          kind: 'session_error',
+          message: record.lastError,
+        });
       },
     });
 
@@ -268,21 +331,29 @@ export const createPiSdkHost = () => {
           break;
         case 'auto_retry_start':
           record.status = 'retrying';
-          break;
+          emitSystemStatus(record, 'retrying');
+          return;
         case 'auto_retry_end':
           updateStatusFromSession(record);
-          break;
+          emitSystemStatus(record, record.status);
+          return;
         case 'auto_compaction_start':
           record.status = 'compacting';
-          break;
+          emitSystemStatus(record, 'compacting');
+          return;
         case 'auto_compaction_end':
           if (event.errorMessage) {
             record.lastError = event.errorMessage;
             record.status = 'error';
+            emitEventEnvelope(record, 'pi_system', {
+              kind: 'session_error',
+              message: record.lastError,
+            });
           } else {
             updateStatusFromSession(record);
+            emitSystemStatus(record, record.status);
           }
-          break;
+          return;
         default:
           break;
       }
@@ -316,7 +387,16 @@ export const createPiSdkHost = () => {
         });
       }
 
-      emitSessionSnapshot(record);
+      const normalized = normalizePiRpcEnvelope(event);
+      if (normalized?.envelope === 'agent-event') {
+        emitEventEnvelope(record, 'pi_event', normalized);
+        return;
+      }
+
+      emitEventEnvelope(record, 'pi_system', {
+        kind: 'status',
+        status: record.status,
+      });
     });
   };
 
@@ -335,6 +415,7 @@ export const createPiSdkHost = () => {
         cwd: normalizedCwd,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        sequence: 0,
         session,
         status: 'idle',
         lastError: null,
@@ -345,13 +426,17 @@ export const createPiSdkHost = () => {
         widgets: new Map(),
         workingMessage: null,
         editorText: '',
+        eventHistory: [],
       };
       if (record.title) {
         session.setSessionName(record.title);
       }
       sessions.set(id, record);
       await attachSession(record);
-      emitSessionSnapshot(record);
+      emitEventEnvelope(record, 'pi_system', {
+        kind: 'session_created',
+        title: record.title,
+      });
       return buildSessionSnapshot(record);
     },
     listSessions() {
@@ -366,6 +451,23 @@ export const createPiSdkHost = () => {
       }
       return buildSessionSnapshot(record);
     },
+    renameSession(sessionId, { title } = {}) {
+      const record = sessions.get(sessionId);
+      if (!record) {
+        throw new Error(`Unknown Pi session: ${sessionId}`);
+      }
+      const nextTitle = normalizeString(title);
+      if (!nextTitle) {
+        throw new Error('Session title is required');
+      }
+      record.title = nextTitle;
+      record.session.setSessionName(nextTitle);
+      emitEventEnvelope(record, 'pi_ui_event', {
+        kind: 'title',
+        title: nextTitle,
+      });
+      return buildSessionSnapshot(record);
+    },
     async prompt(sessionId, { text } = {}) {
       const record = sessions.get(sessionId);
       if (!record) {
@@ -377,13 +479,16 @@ export const createPiSdkHost = () => {
       }
       record.lastError = null;
       record.status = 'streaming';
-      emitSessionSnapshot(record);
+      emitSystemStatus(record, 'streaming');
       try {
         await record.session.prompt(promptText, { source: 'interactive' });
       } catch (error) {
         record.lastError = error instanceof Error ? error.message : String(error);
         record.status = 'error';
-        emitSessionSnapshot(record);
+        emitEventEnvelope(record, 'pi_system', {
+          kind: 'session_error',
+          message: record.lastError,
+        });
         throw error;
       }
     },
@@ -394,7 +499,9 @@ export const createPiSdkHost = () => {
       }
       await record.session.abort();
       updateStatusFromSession(record);
-      emitSessionSnapshot(record);
+      emitEventEnvelope(record, 'pi_system', {
+        kind: 'session_aborted',
+      });
       return true;
     },
     async respondToInteractiveRequest(requestId, response) {
@@ -412,7 +519,10 @@ export const createPiSdkHost = () => {
       } else {
         resolve(typeof response === 'string' ? response : undefined);
       }
-      emitSessionSnapshot(record);
+      emitEventEnvelope(record, 'pi_ui_event', {
+        kind: 'interactive_request_resolved',
+        requestId,
+      });
       return true;
     },
     async rejectInteractiveRequest(requestId) {
@@ -424,7 +534,10 @@ export const createPiSdkHost = () => {
       interactiveRequestIndex.delete(requestId);
       record.interactiveRequests.delete(requestId);
       resolve(undefined);
-      emitSessionSnapshot(record);
+      emitEventEnvelope(record, 'pi_ui_event', {
+        kind: 'interactive_request_resolved',
+        requestId,
+      });
       return true;
     },
     getHealth() {

@@ -13,7 +13,8 @@ import { useOptionalThemeSystem } from '@/contexts/useThemeSystem';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useUIStore } from '@/stores/useUIStore';
-import { opencodeClient } from '@/lib/opencode/client';
+import { piClient } from '@/lib/pi/client';
+import { toUiMessageEntries } from '@/lib/pi/ui-mappers';
 import { ScrollShadow } from '@/components/ui/ScrollShadow';
 import { Text } from '@/components/ui/text';
 import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
@@ -1729,11 +1730,12 @@ const ToolPart: React.FC<ToolPartProps> = ({
 
         const fetchSessionMessages = async () => {
             try {
-                const messages = await opencodeClient.getSessionMessages(taskSessionId, 500);
+                const session = await piClient.getSession(taskSessionId);
+                const messages = toUiMessageEntries(session).slice(-500);
                 if (cancelled || !Array.isArray(messages) || messages.length === 0) {
                     return;
                 }
-                useSessionStore.getState().syncMessages(taskSessionId, messages);
+                useSessionStore.getState().syncMessages(taskSessionId, messages, { replace: true });
             } catch {
                 // Ignore transient subagent fetch errors.
             }
