@@ -29,7 +29,7 @@ interface ServerSnapshotResponse {
 const IMMEDIATE_POLL_DELAY_MS = 150;
 const FOLLOW_UP_POLL_DELAY_MS = 1100;
 
-// Ref to be accessed from outside (e.g., useEventStream) for triggering immediate poll
+// Ref exposed for non-hook callers that need to force an immediate poll.
 let triggerImmediatePollRef: (() => void) | null = null;
 
 // Global function to trigger immediate poll from outside React

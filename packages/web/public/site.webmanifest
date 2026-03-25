@@ -1,7 +1,7 @@
 {
-  "name": "OpenAurora - AI Coding Companion",
+  "name": "OpenAurora - Pi Native Coding Assistant",
   "short_name": "OpenAurora",
-  "description": "OpenAurora desktop companion for the OpenCode AI coding agent",
+  "description": "Pi-native coding workspace and chat interface",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#151313",

@@ -823,7 +823,7 @@ function parseArgs(argv = process.argv.slice(2)) {
 
 function showHelp() {
   console.log(`
- OpenAurora - Web interface for the OpenCode AI coding agent
+ OpenAurora - Web UI for the Pi coding agent runtime
 
 USAGE:
   ${CLI_BIN_NAME} [COMMAND] [OPTIONS]
@@ -846,9 +846,6 @@ OPTIONS:
 ENVIRONMENT:
   OPENAURORA_UI_PASSWORD      Alternative to --ui-password flag
   OPENAURORA_DATA_DIR         Override OpenAurora data directory
-  OPENCODE_HOST               External OpenCode server base URL, e.g. http://hostname:4096
-  OPENCODE_PORT               Port of external OpenCode server to connect to
-  OPENCODE_SKIP_START          Skip starting OpenCode, use external server
 
 EXAMPLES:
   ${CLI_BIN_NAME}                    # Start in daemon mode on default port 3000 (or free port)
@@ -1590,33 +1587,6 @@ function searchPathFor(command) {
     }
   }
   return null;
-}
-
-async function checkOpenCodeCLI(onNotice) {
-  if (process.env.OPENCODE_BINARY) {
-    const override = resolveExplicitBinary(process.env.OPENCODE_BINARY);
-    if (override) {
-      process.env.OPENCODE_BINARY = override;
-      return override;
-    }
-    const message = `OPENCODE_BINARY="${process.env.OPENCODE_BINARY}" is not an executable file. Falling back to PATH lookup.`;
-    if (typeof onNotice === 'function') {
-      onNotice({ level: 'warning', code: 'OPENCODE_BINARY_INVALID', message });
-    } else {
-      console.warn(`Warning: ${message}`);
-    }
-  }
-
-  const resolvedFromPath = searchPathFor('opencode');
-  if (resolvedFromPath) {
-    process.env.OPENCODE_BINARY = resolvedFromPath;
-    return resolvedFromPath;
-  }
-
-  throw new Error(
-    `Unable to locate the opencode CLI on PATH (${process.env.PATH || '<empty>'}). ` +
-    'Ensure the CLI is installed and reachable, or set OPENCODE_BINARY to its full path.'
-  );
 }
 
 async function isPortAvailable(port) {
@@ -2699,7 +2669,6 @@ const commands = {
       }
     }
 
-    const opencodeBinary = await checkOpenCodeCLI(emitNotice);
     const serverPath = path.join(__dirname, '..', 'server', 'index.js');
     const preferredRuntime = getPreferredServerRuntime();
     const runtimeBin = preferredRuntime === 'bun' ? BUN_BIN : process.execPath;
@@ -2737,9 +2706,7 @@ const commands = {
       env: {
         ...process.env,
         OPENAURORA_PORT: String(targetPort),
-        OPENCODE_BINARY: opencodeBinary,
         ...(effectiveUiPassword ? { OPENAURORA_UI_PASSWORD: effectiveUiPassword } : {}),
-        ...(process.env.OPENCODE_SKIP_START ? { OPENAURORA_SKIP_OPENCODE_START: process.env.OPENCODE_SKIP_START } : {}),
       },
     });
 

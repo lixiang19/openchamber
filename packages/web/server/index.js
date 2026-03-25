@@ -53,12 +53,12 @@ import {
 } from './lib/terminal/index.js';
 import webPush from 'web-push';
 import {
-  AGENT_RUNTIME_PI,
-  createPiRuntime,
-  resolveAgentRuntimeMode,
+  buildPromptTextFromParts,
+  normalizePiMessage,
   translateOpenCodeMessagesToSseEvents,
-  translatePiEnvelopeToSseEvents,
+  translatePiMessagesToOpenCodeMessages,
 } from './lib/pi/index.js';
+import { createPiSdkHost } from './lib/pi/sdk-host.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,12 +73,8 @@ const MODELS_METADATA_CACHE_TTL = 5 * 60 * 1000;
 const CLIENT_RELOAD_DELAY_MS = 800;
 const OPEN_CODE_READY_GRACE_MS = 12000;
 const LONG_REQUEST_TIMEOUT_MS = 4 * 60 * 1000;
-const AGENT_RUNTIME_MODE = resolveAgentRuntimeMode(
-  process.env.OPENAURORA_AGENT_RUNTIME || process.env.OPENCHAMBER_AGENT_RUNTIME || ''
-);
-const PI_RUNTIME = createPiRuntime({
-  cliPath: process.env.OPENAURORA_PI_BIN || process.env.PI_CLI_BIN,
-});
+const PI_SDK_HOST = createPiSdkHost();
+const OPENCODE_LEGACY_ENABLED = false;
 const TUNNEL_BOOTSTRAP_TTL_DEFAULT_MS = 30 * 60 * 1000;
 const TUNNEL_BOOTSTRAP_TTL_MIN_MS = 60 * 1000;
 const TUNNEL_BOOTSTRAP_TTL_MAX_MS = 24 * 60 * 60 * 1000;
@@ -6463,357 +6459,6 @@ function setupProxy(app) {
     return rewriteWindowsDirectoryParam(stripApiPrefix(rawUrl));
   };
 
-  const isPiRuntimeEnabled = () => AGENT_RUNTIME_MODE === AGENT_RUNTIME_PI;
-
-  const resolvePiRequestedDirectory = (req) => {
-    const headerDirectory = typeof req.get === 'function' ? req.get('x-opencode-directory') : null;
-    const queryDirectory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
-    return typeof headerDirectory === 'string' && headerDirectory.trim().length > 0
-      ? headerDirectory.trim()
-      : typeof queryDirectory === 'string' && queryDirectory.trim().length > 0
-        ? queryDirectory.trim()
-        : null;
-  };
-
-  const matchesPiSessionDirectory = (sessionDirectory, requestedDirectory) => {
-    if (!requestedDirectory || typeof requestedDirectory !== 'string') {
-      return true;
-    }
-    if (!sessionDirectory || typeof sessionDirectory !== 'string') {
-      return false;
-    }
-    return sessionDirectory === requestedDirectory || sessionDirectory.startsWith(`${requestedDirectory}${path.sep}`);
-  };
-
-  const writePiSseEventsForSession = async (res, session, options = {}) => {
-    const statusBySession = PI_RUNTIME.getSessionStatus();
-    const messages = await PI_RUNTIME.getMessages(session.id);
-    const events = translateOpenCodeMessagesToSseEvents(
-      { session },
-      messages,
-      {
-        status: options.includeStatus === false ? null : statusBySession[session.id] || { type: 'idle' },
-        directory: session.directory,
-      },
-    );
-
-    for (const event of events) {
-      writeSseEvent(res, event);
-    }
-  };
-
-  const writePiQuestionEvents = (res, questions, directory) => {
-    const items = Array.isArray(questions) ? questions : [];
-    for (const question of items) {
-      if (!question || typeof question !== 'object') {
-        continue;
-      }
-      writeSseEvent(res, {
-        type: 'question.asked',
-        properties: {
-          ...question,
-          ...(directory ? { directory } : {}),
-        },
-      });
-    }
-  };
-
-  const handlePiSseStream = async (req, res, options = {}) => {
-    const requestedDirectory = resolvePiRequestedDirectory(req);
-    const includeAllSessions = options.global === true;
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-
-    if (typeof res.flushHeaders === 'function') {
-      res.flushHeaders();
-    }
-
-    const relevantSessions = PI_RUNTIME.listSessions({
-      directory: includeAllSessions ? undefined : requestedDirectory,
-    }).filter((session) => matchesPiSessionDirectory(session.directory, includeAllSessions ? null : requestedDirectory));
-
-    for (const session of relevantSessions) {
-      await writePiSseEventsForSession(res, session, { includeStatus: true });
-    }
-    writePiQuestionEvents(res, PI_RUNTIME.listPendingQuestions({ directory: includeAllSessions ? undefined : requestedDirectory }), requestedDirectory);
-
-    const heartbeat = setInterval(() => {
-      writeSseEvent(res, { type: 'openaurora:heartbeat', timestamp: Date.now() });
-    }, 15000);
-
-    let closed = false;
-    const unsubscribe = PI_RUNTIME.subscribe(async ({ session, envelope }) => {
-      if (closed) {
-        return;
-      }
-      if (!matchesPiSessionDirectory(session?.directory, includeAllSessions ? null : requestedDirectory)) {
-        return;
-      }
-
-      if (envelope?.envelope === 'agent-event' && (envelope.eventType === 'agent_start' || envelope.eventType === 'turn_start')) {
-        const status = PI_RUNTIME.getSessionStatus()[session.id] || { type: 'busy' };
-        writeSseEvent(res, {
-          type: 'session.status',
-          properties: {
-            sessionID: session.id,
-            status,
-            directory: session.directory,
-          },
-        });
-        return;
-      }
-
-      if (envelope?.envelope === 'agent-event' && (envelope.eventType === 'message_start' || envelope.eventType === 'message_update')) {
-        const events = translatePiEnvelopeToSseEvents({ session }, envelope, { directory: session.directory });
-        for (const event of events) {
-          writeSseEvent(res, event);
-        }
-        return;
-      }
-
-      if (envelope?.envelope === 'extension-ui-request' && envelope.request) {
-        const questions = PI_RUNTIME.listPendingQuestions({ directory: session.directory });
-        const match = questions.filter((question) => question?.id === envelope.request.id);
-        if (match.length > 0) {
-          writePiQuestionEvents(res, match, session.directory);
-        }
-        return;
-      }
-
-      if (envelope?.envelope === 'agent-event' && (envelope.eventType === 'message_end' || envelope.eventType === 'tool_execution_end' || envelope.eventType === 'agent_end')) {
-        try {
-          await PI_RUNTIME.refreshMessages(session.id);
-          await writePiSseEventsForSession(res, session, { includeStatus: true });
-        } catch (error) {
-          writeSseEvent(res, {
-            type: 'session.error',
-            properties: {
-              sessionID: session.id,
-              directory: session.directory,
-              error: {
-                name: 'UnknownError',
-                data: {
-                  message: error?.message || 'Failed to translate Pi runtime events',
-                },
-              },
-            },
-          });
-        }
-      }
-    });
-
-    const cleanup = () => {
-      closed = true;
-      clearInterval(heartbeat);
-      unsubscribe();
-    };
-
-    req.on('close', cleanup);
-    req.on('error', cleanup);
-  };
-
-  app.get('/api/global/event', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-    return handlePiSseStream(req, res, { global: true });
-  });
-
-  app.get('/api/event', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-    return handlePiSseStream(req, res, { global: false });
-  });
-
-  app.get('/api/session', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
-      const search = Array.isArray(req.query.search) ? req.query.search[0] : req.query.search;
-      const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
-      const limit = Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : undefined;
-      return res.json(PI_RUNTIME.listSessions({ directory, search, limit }));
-    } catch (error) {
-      return res.status(500).json({ error: error?.message || 'Failed to list Pi sessions' });
-    }
-  });
-
-  app.post('/api/session', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
-      const session = PI_RUNTIME.createSession({
-        directory,
-        title: req.body?.title,
-        parentID: req.body?.parentID,
-      });
-      return res.json(session);
-    } catch (error) {
-      return res.status(400).json({ error: error?.message || 'Failed to create Pi session' });
-    }
-  });
-
-  app.get('/api/session/status', (_req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    return res.json(PI_RUNTIME.getSessionStatus());
-  });
-
-  app.get('/api/session/:sessionId', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      return res.json(PI_RUNTIME.getSession(req.params.sessionId));
-    } catch (error) {
-      return res.status(404).json({ error: error?.message || 'Pi session not found' });
-    }
-  });
-
-  app.get('/api/session/:sessionId/message', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
-      const limit = Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : undefined;
-      return res.json(await PI_RUNTIME.getMessages(req.params.sessionId, limit));
-    } catch (error) {
-      return res.status(404).json({ error: error?.message || 'Failed to load Pi session messages' });
-    }
-  });
-
-  app.get('/api/question', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
-      return res.json(PI_RUNTIME.listPendingQuestions({ directory }));
-    } catch (error) {
-      return res.status(500).json({ error: error?.message || 'Failed to list Pi questions' });
-    }
-  });
-
-  app.post('/api/question/:requestId/reply', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      const answers = Array.isArray(req.body?.answers) ? req.body.answers : [];
-      return res.json(await PI_RUNTIME.replyToQuestion(req.params.requestId, answers));
-    } catch (error) {
-      const status = /Unknown Pi question request/i.test(error?.message || '') ? 404 : 503;
-      return res.status(status).json({ error: error?.message || 'Failed to reply to Pi question' });
-    }
-  });
-
-  app.post('/api/question/:requestId/reject', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      return res.json(await PI_RUNTIME.rejectQuestion(req.params.requestId));
-    } catch (error) {
-      const status = /Unknown Pi question request/i.test(error?.message || '') ? 404 : 503;
-      return res.status(status).json({ error: error?.message || 'Failed to reject Pi question' });
-    }
-  });
-
-  app.get('/api/permission', (_req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-    return res.json([]);
-  });
-
-  app.post('/api/permission/:requestId/reply', (_req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-    return res.json(false);
-  });
-
-  app.post('/api/session/:sessionId/prompt_async', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      await PI_RUNTIME.promptAsync(req.params.sessionId, req.body ?? {});
-      return res.status(204).send();
-    } catch (error) {
-      const message = error?.message || 'Failed to submit Pi prompt';
-      const status = /Unknown Pi session/i.test(message) ? 404 : 503;
-      return res.status(status).json({ error: message });
-    }
-  });
-
-  app.post('/api/session/:sessionId/abort', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      return res.json(await PI_RUNTIME.abort(req.params.sessionId));
-    } catch (error) {
-      const message = error?.message || 'Failed to abort Pi session';
-      const status = /Unknown Pi session/i.test(message) ? 404 : 503;
-      return res.status(status).json({ error: message });
-    }
-  });
-
-  app.use('/api', (req, res, next) => {
-    if (
-      req.path.startsWith('/themes/custom') ||
-      req.path.startsWith('/push') ||
-      req.path.startsWith('/config/agents') ||
-      req.path.startsWith('/config/opencode-resolution') ||
-      req.path.startsWith('/config/settings') ||
-      req.path.startsWith('/config/skills') ||
-      req.path === '/config/reload' ||
-      req.path === '/health'
-    ) {
-      return next();
-    }
-
-    if (isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    const waitElapsed = openCodeNotReadySince === 0 ? 0 : Date.now() - openCodeNotReadySince;
-    const stillWaiting =
-      (!isOpenCodeReady && (openCodeNotReadySince === 0 || waitElapsed < OPEN_CODE_READY_GRACE_MS)) ||
-      isRestartingOpenCode ||
-      !openCodePort;
-
-    if (stillWaiting) {
-      return res.status(503).json({
-        error: 'OpenCode is restarting',
-        restarting: true,
-      });
-    }
-
-    next();
-  });
-
   const isSseApiPath = (path) => path === '/event' || path === '/global/event';
 
   const forwardSseRequest = async (req, res) => {
@@ -7391,41 +7036,731 @@ async function main(options = {}) {
   expressApp = app;
   server = http.createServer(app);
 
+  app.use('/api', express.json({ limit: '10mb' }));
+
+  const PI_COMPAT_PROVIDER_ID = 'pi';
+  const PI_COMPAT_MODEL_ID = 'pi-default';
+  const PI_COMPAT_AGENT_NAME = 'pi';
+  const piCompatSessionState = new Map();
+
+  const matchesPiCompatDirectory = (sessionDirectory, requestedDirectory) => {
+    if (!requestedDirectory || typeof requestedDirectory !== 'string') {
+      return true;
+    }
+    if (!sessionDirectory || typeof sessionDirectory !== 'string') {
+      return false;
+    }
+    return sessionDirectory === requestedDirectory || sessionDirectory.startsWith(`${requestedDirectory}${path.sep}`);
+  };
+
+  const getPiCompatSessionState = (sessionId) => {
+    const existing = piCompatSessionState.get(sessionId);
+    if (existing) {
+      return existing;
+    }
+    const initial = {
+      lastAgent: PI_COMPAT_AGENT_NAME,
+      lastModel: {
+        providerID: PI_COMPAT_PROVIDER_ID,
+        modelID: PI_COMPAT_MODEL_ID,
+      },
+    };
+    piCompatSessionState.set(sessionId, initial);
+    return initial;
+  };
+
+  const updatePiCompatSessionState = (sessionId, patch = {}) => {
+    const current = getPiCompatSessionState(sessionId);
+    const next = {
+      ...current,
+      ...patch,
+    };
+    piCompatSessionState.set(sessionId, next);
+    return next;
+  };
+
+  const toPiCompatStatus = (sessionSnapshot) => {
+    switch (sessionSnapshot?.status) {
+      case 'streaming':
+      case 'compacting':
+        return { type: 'busy' };
+      case 'retrying':
+        return {
+          type: 'retry',
+          attempt: 1,
+          message: typeof sessionSnapshot?.workingMessage === 'string' && sessionSnapshot.workingMessage.trim().length > 0
+            ? sessionSnapshot.workingMessage.trim()
+            : 'Retrying',
+          next: Date.now() + 1000,
+        };
+      default:
+        return { type: 'idle' };
+    }
+  };
+
+  const toPiCompatSession = (sessionSnapshot) => {
+    const runtimeState = getPiCompatSessionState(sessionSnapshot.id);
+    return {
+      id: sessionSnapshot.id,
+      slug: sessionSnapshot.id,
+      projectID: 'pi',
+      directory: sessionSnapshot.cwd,
+      title: sessionSnapshot.title,
+      version: 'pi',
+      time: {
+        created: sessionSnapshot.createdAt,
+        updated: sessionSnapshot.updatedAt,
+      },
+      agent: runtimeState.lastAgent,
+      model: runtimeState.lastModel,
+    };
+  };
+
+  const toPiCompatSessionRecord = (sessionSnapshot) => {
+    const runtimeState = getPiCompatSessionState(sessionSnapshot.id);
+    return {
+      session: toPiCompatSession(sessionSnapshot),
+      lastAgent: runtimeState.lastAgent,
+      lastModel: runtimeState.lastModel,
+      lastUserMessageId: null,
+    };
+  };
+
+  const listPiCompatSessions = ({ directory, search, limit } = {}) => {
+    let sessions = PI_SDK_HOST.listSessions().map((session) => toPiCompatSession(session));
+
+    if (typeof directory === 'string' && directory.trim().length > 0) {
+      const normalizedDirectory = directory.trim();
+      sessions = sessions.filter((session) => matchesPiCompatDirectory(session.directory, normalizedDirectory));
+    }
+
+    if (typeof search === 'string' && search.trim().length > 0) {
+      const needle = search.trim().toLowerCase();
+      sessions = sessions.filter((session) =>
+        session.title.toLowerCase().includes(needle) ||
+        session.directory.toLowerCase().includes(needle)
+      );
+    }
+
+    sessions.sort((a, b) => (b.time?.updated || 0) - (a.time?.updated || 0));
+
+    if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
+      return sessions.slice(0, limit);
+    }
+
+    return sessions;
+  };
+
+  const listPiCompatMessages = (sessionId, limit) => {
+    const sessionSnapshot = PI_SDK_HOST.getSession(sessionId);
+    const normalizedMessages = Array.isArray(sessionSnapshot.messages)
+      ? sessionSnapshot.messages.map((message) => normalizePiMessage(message)).filter(Boolean)
+      : [];
+    const records = translatePiMessagesToOpenCodeMessages(toPiCompatSessionRecord(sessionSnapshot), normalizedMessages);
+    if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
+      return records.slice(-limit);
+    }
+    return records;
+  };
+
+  const toPiCompatQuestionRequest = (request) => {
+    if (!request || request.method === 'confirm') {
+      return null;
+    }
+
+    return {
+      id: request.id,
+      sessionID: request.sessionId,
+      questions: [{
+        header: request.title || 'Input needed',
+        question: request.message || request.placeholder || request.title || 'Provide a response',
+        options: Array.isArray(request.options)
+          ? request.options.map((option) => ({ label: option, description: '' }))
+          : [],
+        multiple: false,
+        custom: request.method !== 'select',
+      }],
+      metadata: {
+        bridgeMethod: request.method,
+      },
+    };
+  };
+
+  const toPiCompatPermissionRequest = (request) => {
+    if (!request || request.method !== 'confirm') {
+      return null;
+    }
+
+    return {
+      id: request.id,
+      sessionID: request.sessionId,
+      permission: request.title || 'Confirmation required',
+      patterns: [request.message || request.title || 'Confirm to continue'].filter(Boolean),
+      metadata: {
+        bridgeMethod: request.method,
+      },
+      always: [],
+    };
+  };
+
+  const listPiCompatQuestions = ({ directory } = {}) => {
+    const sessions = listPiCompatSessions({ directory });
+    return sessions.flatMap((session) => {
+      const snapshot = PI_SDK_HOST.getSession(session.id);
+      return (snapshot.interactiveRequests || [])
+        .map((request) => toPiCompatQuestionRequest(request))
+        .filter(Boolean);
+    });
+  };
+
+  const listPiCompatPermissions = ({ directory } = {}) => {
+    const sessions = listPiCompatSessions({ directory });
+    return sessions.flatMap((session) => {
+      const snapshot = PI_SDK_HOST.getSession(session.id);
+      return (snapshot.interactiveRequests || [])
+        .map((request) => toPiCompatPermissionRequest(request))
+        .filter(Boolean);
+    });
+  };
+
+  const findPiCompatInteractiveRequest = (requestId) => {
+    for (const session of PI_SDK_HOST.listSessions()) {
+      const match = (session.interactiveRequests || []).find((request) => request.id === requestId);
+      if (match) {
+        return match;
+      }
+    }
+    return null;
+  };
+
+  const writePiCompatSessionSnapshotEvents = (res, sessionSnapshot, options = {}) => {
+    const compatSession = toPiCompatSession(sessionSnapshot);
+    const compatRecord = toPiCompatSessionRecord(sessionSnapshot);
+    const messages = listPiCompatMessages(sessionSnapshot.id);
+    const events = translateOpenCodeMessagesToSseEvents(compatRecord, messages, {
+      status: options.includeStatus === false ? null : toPiCompatStatus(sessionSnapshot),
+      directory: compatSession.directory,
+    });
+
+    if (options.includeSessionEvent !== false) {
+      writeSseEvent(res, {
+        type: options.sessionEventType || 'session.updated',
+        properties: {
+          info: compatSession,
+          directory: compatSession.directory,
+        },
+      });
+    }
+
+    for (const event of events) {
+      writeSseEvent(res, event);
+    }
+
+    for (const request of sessionSnapshot.interactiveRequests || []) {
+      const question = toPiCompatQuestionRequest(request);
+      if (question) {
+        writeSseEvent(res, {
+          type: 'question.asked',
+          properties: {
+            ...question,
+            directory: compatSession.directory,
+          },
+        });
+      }
+      const permission = toPiCompatPermissionRequest(request);
+      if (permission) {
+        writeSseEvent(res, {
+          type: 'permission.asked',
+          properties: {
+            ...permission,
+            directory: compatSession.directory,
+          },
+        });
+      }
+    }
+  };
+
   app.get('/health', (req, res) => {
+    const piHealth = PI_SDK_HOST.getHealth();
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
-      openCodePort: openCodePort,
-      openCodeRunning: Boolean(openCodePort && isOpenCodeReady && !isRestartingOpenCode),
-      openCodeSecureConnection: isOpenCodeConnectionSecure(),
-      openCodeAuthSource: openCodeAuthSource || null,
+      runtime: 'pi',
+      piReady: piHealth.ready,
+      piSessionCount: piHealth.sessionCount,
+      openCodePort: null,
+      openCodeRunning: piHealth.ready,
+      openCodeSecureConnection: false,
+      openCodeAuthSource: null,
       openCodeApiPrefix: '',
       openCodeApiPrefixDetected: true,
-      isOpenCodeReady,
-      lastOpenCodeError,
-      opencodeBinaryResolved: resolvedOpencodeBinary || null,
-      opencodeBinarySource: resolvedOpencodeBinarySource || null,
-      opencodeShimInterpreter: resolvedOpencodeBinary ? opencodeShimInterpreter(resolvedOpencodeBinary) : null,
-      opencodeViaWsl: useWslForOpencode,
-      opencodeWslBinary: resolvedWslBinary || null,
-      opencodeWslPath: resolvedWslOpencodePath || null,
-      opencodeWslDistro: resolvedWslDistro || null,
+      isOpenCodeReady: piHealth.ready,
+      lastOpenCodeError: null,
+      opencodeBinaryResolved: resolvedNodeBinary || process.execPath || null,
+      opencodeBinarySource: 'pi-runtime',
+      opencodeShimInterpreter: null,
+      opencodeViaWsl: false,
+      opencodeWslBinary: null,
+      opencodeWslPath: null,
+      opencodeWslDistro: null,
       nodeBinaryResolved: resolvedNodeBinary || null,
       bunBinaryResolved: resolvedBunBinary || null,
     });
   });
 
-  app.post('/api/system/shutdown', (req, res) => {
+  app.post('/api/system/shutdown', async (req, res) => {
     res.json({ ok: true });
+    try {
+      await PI_SDK_HOST.dispose();
+    } catch {
+    }
     gracefulShutdown({ exitProcess: false }).catch((error) => {
       console.error('Shutdown request failed:', error?.message || error);
     });
   });
 
+  app.post('/api/pi/sessions', async (req, res) => {
+    try {
+      const session = await PI_SDK_HOST.createSession({
+        cwd: req.body?.cwd,
+        title: req.body?.title,
+      });
+      res.json(session);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to create Pi session' });
+    }
+  });
+
+  app.get('/api/pi/sessions', (_req, res) => {
+    res.json(PI_SDK_HOST.listSessions());
+  });
+
+  app.get('/api/pi/sessions/:sessionId', (req, res) => {
+    try {
+      res.json(PI_SDK_HOST.getSession(req.params.sessionId));
+    } catch (error) {
+      res.status(404).json({ error: error?.message || 'Session not found' });
+    }
+  });
+
+  app.post('/api/pi/sessions/:sessionId/prompt', async (req, res) => {
+    try {
+      await PI_SDK_HOST.prompt(req.params.sessionId, { text: req.body?.text });
+      res.status(204).end();
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to submit prompt' });
+    }
+  });
+
+  app.post('/api/pi/sessions/:sessionId/abort', async (req, res) => {
+    try {
+      await PI_SDK_HOST.abort(req.params.sessionId);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to abort session' });
+    }
+  });
+
+  app.post('/api/pi/requests/:requestId/respond', async (req, res) => {
+    try {
+      await PI_SDK_HOST.respondToInteractiveRequest(req.params.requestId, req.body?.response);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to respond to interactive request' });
+    }
+  });
+
+  app.post('/api/pi/requests/:requestId/reject', async (req, res) => {
+    try {
+      await PI_SDK_HOST.rejectInteractiveRequest(req.params.requestId);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to reject interactive request' });
+    }
+  });
+
+  app.get('/api/pi/events', (req, res) => {
+    const requestedSessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId.trim() : '';
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders();
+    }
+
+    for (const session of PI_SDK_HOST.listSessions()) {
+      if (requestedSessionId && session.id !== requestedSessionId) {
+        continue;
+      }
+      writeSseEvent(res, { type: 'session_snapshot', session });
+    }
+
+    const heartbeat = setInterval(() => {
+      writeSseEvent(res, { type: 'heartbeat', timestamp: Date.now() });
+    }, 15000);
+
+    const unsubscribe = PI_SDK_HOST.subscribe((payload) => {
+      if (
+        requestedSessionId &&
+        payload?.session?.id !== requestedSessionId &&
+        payload?.sessionId !== requestedSessionId
+      ) {
+        return;
+      }
+      writeSseEvent(res, payload);
+    });
+
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+
+    req.on('close', cleanup);
+    req.on('error', cleanup);
+  });
+
+  app.get('/api/session', (req, res) => {
+    try {
+      const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+      const search = Array.isArray(req.query.search) ? req.query.search[0] : req.query.search;
+      const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+      const limit = Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : undefined;
+      res.json(listPiCompatSessions({ directory, search, limit }));
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to list sessions' });
+    }
+  });
+
+  app.post('/api/session', async (req, res) => {
+    try {
+      const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+      const session = await PI_SDK_HOST.createSession({
+        cwd: typeof directory === 'string' && directory.trim().length > 0 ? directory.trim() : req.body?.cwd,
+        title: req.body?.title,
+      });
+      res.json(toPiCompatSession(session));
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to create session' });
+    }
+  });
+
+  app.get('/api/session/status', (req, res) => {
+    const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+    const result = {};
+    for (const session of listPiCompatSessions({ directory })) {
+      result[session.id] = toPiCompatStatus(PI_SDK_HOST.getSession(session.id));
+    }
+    res.json(result);
+  });
+
+  app.get('/api/session/:sessionId', (req, res) => {
+    try {
+      res.json(toPiCompatSession(PI_SDK_HOST.getSession(req.params.sessionId)));
+    } catch (error) {
+      res.status(404).json({ error: error?.message || 'Session not found' });
+    }
+  });
+
+  app.get('/api/session/:sessionId/message', (req, res) => {
+    try {
+      const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+      const limit = Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : undefined;
+      res.json(listPiCompatMessages(req.params.sessionId, limit));
+    } catch (error) {
+      res.status(404).json({ error: error?.message || 'Failed to load session messages' });
+    }
+  });
+
+  app.post('/api/session/:sessionId/prompt_async', async (req, res) => {
+    try {
+      const model = req.body?.model;
+      const providerID = typeof model?.providerID === 'string' && model.providerID.trim().length > 0
+        ? model.providerID.trim()
+        : PI_COMPAT_PROVIDER_ID;
+      const modelID = typeof model?.modelID === 'string' && model.modelID.trim().length > 0
+        ? model.modelID.trim()
+        : PI_COMPAT_MODEL_ID;
+      const agent = typeof req.body?.agent === 'string' && req.body.agent.trim().length > 0
+        ? req.body.agent.trim()
+        : PI_COMPAT_AGENT_NAME;
+      updatePiCompatSessionState(req.params.sessionId, {
+        lastAgent: agent,
+        lastModel: { providerID, modelID },
+      });
+      const promptText = buildPromptTextFromParts(Array.isArray(req.body?.parts) ? req.body.parts : []);
+      await PI_SDK_HOST.prompt(req.params.sessionId, { text: promptText });
+      res.status(204).end();
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to submit prompt' });
+    }
+  });
+
+  app.post('/api/session/:sessionId/command', async (req, res) => {
+    try {
+      const modelString = typeof req.body?.model === 'string' ? req.body.model.trim() : '';
+      const [providerID = PI_COMPAT_PROVIDER_ID, modelID = PI_COMPAT_MODEL_ID] = modelString.split('/');
+      const agent = typeof req.body?.agent === 'string' && req.body.agent.trim().length > 0
+        ? req.body.agent.trim()
+        : PI_COMPAT_AGENT_NAME;
+      updatePiCompatSessionState(req.params.sessionId, {
+        lastAgent: agent,
+        lastModel: { providerID, modelID },
+      });
+      const commandName = typeof req.body?.command === 'string' ? req.body.command.trim() : '';
+      const commandArgs = typeof req.body?.arguments === 'string' ? req.body.arguments.trim() : '';
+      const promptText = `/${commandName}${commandArgs ? ` ${commandArgs}` : ''}`.trim();
+      await PI_SDK_HOST.prompt(req.params.sessionId, { text: promptText });
+      res.status(204).end();
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to run command' });
+    }
+  });
+
+  app.post('/api/session/:sessionId/abort', async (req, res) => {
+    try {
+      await PI_SDK_HOST.abort(req.params.sessionId);
+      res.json(true);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to abort session' });
+    }
+  });
+
+  app.get('/api/question', (req, res) => {
+    const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+    res.json(listPiCompatQuestions({ directory }));
+  });
+
+  app.post('/api/question/:requestId/reply', async (req, res) => {
+    try {
+      const request = findPiCompatInteractiveRequest(req.params.requestId);
+      if (!request) {
+        return res.status(404).json({ error: 'Question not found' });
+      }
+      const answers = Array.isArray(req.body?.answers) ? req.body.answers : [];
+      let responseValue;
+      if (request.method === 'select') {
+        const first = Array.isArray(answers[0]) ? answers[0][0] : answers[0];
+        responseValue = typeof first === 'string' ? first : request.options?.[0] || '';
+      } else {
+        const first = Array.isArray(answers[0]) ? answers[0][0] : answers[0];
+        responseValue = typeof first === 'string' ? first : '';
+      }
+      await PI_SDK_HOST.respondToInteractiveRequest(req.params.requestId, responseValue);
+      res.json(true);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to reply to question' });
+    }
+  });
+
+  app.post('/api/question/:requestId/reject', async (req, res) => {
+    try {
+      await PI_SDK_HOST.rejectInteractiveRequest(req.params.requestId);
+      res.json(true);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to reject question' });
+    }
+  });
+
+  app.get('/api/permission', (req, res) => {
+    const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+    res.json(listPiCompatPermissions({ directory }));
+  });
+
+  app.post('/api/permission/:requestId/reply', async (req, res) => {
+    try {
+      const reply = typeof req.body?.reply === 'string'
+        ? req.body.reply
+        : typeof req.body?.response === 'string'
+          ? req.body.response
+          : 'reject';
+      if (reply === 'reject') {
+        await PI_SDK_HOST.rejectInteractiveRequest(req.params.requestId);
+      } else {
+        await PI_SDK_HOST.respondToInteractiveRequest(req.params.requestId, true);
+      }
+      res.json(true);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to reply to permission' });
+    }
+  });
+
+  app.get('/api/config/providers', (req, res) => {
+    const provider = {
+      id: PI_COMPAT_PROVIDER_ID,
+      name: 'Pi',
+      source: 'api',
+      env: [],
+      options: {},
+      models: {
+        [PI_COMPAT_MODEL_ID]: {
+          id: PI_COMPAT_MODEL_ID,
+          providerID: PI_COMPAT_PROVIDER_ID,
+          api: {
+            id: 'pi-sdk',
+            url: 'local',
+            npm: '@mariozechner/pi-coding-agent',
+          },
+          name: 'Pi Default',
+          family: 'pi',
+          capabilities: {
+            temperature: false,
+            reasoning: true,
+            attachment: true,
+            toolcall: true,
+            input: { text: true, audio: false, image: true, video: false, pdf: true },
+            output: { text: true, audio: false, image: false, video: false, pdf: false },
+            interleaved: false,
+          },
+          cost: {
+            input: 0,
+            output: 0,
+            cache: { read: 0, write: 0 },
+          },
+          limit: {
+            context: 200000,
+            output: 8192,
+          },
+          status: 'active',
+          options: {},
+          headers: {},
+          release_date: '2026-01-01',
+        },
+      },
+    };
+
+    res.json({
+      providers: [provider],
+      default: {
+        [PI_COMPAT_PROVIDER_ID]: PI_COMPAT_MODEL_ID,
+      },
+    });
+  });
+
+  app.get('/api/agent', (req, res) => {
+    res.json([
+      {
+        name: PI_COMPAT_AGENT_NAME,
+        description: 'Pi agent runtime',
+        mode: 'all',
+        native: true,
+        hidden: false,
+        permission: [],
+        model: {
+          providerID: PI_COMPAT_PROVIDER_ID,
+          modelID: PI_COMPAT_MODEL_ID,
+        },
+        options: {},
+      },
+    ]);
+  });
+
+  app.get('/api/event', (req, res) => {
+    const requestedDirectory = typeof req.query.directory === 'string' ? req.query.directory.trim() : '';
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders();
+    }
+
+    writeSseEvent(res, { type: 'server.connected', properties: {} });
+    for (const session of PI_SDK_HOST.listSessions()) {
+      if (requestedDirectory && !matchesPiCompatDirectory(session.cwd, requestedDirectory)) {
+        continue;
+      }
+      writePiCompatSessionSnapshotEvents(res, session);
+    }
+
+    const heartbeat = setInterval(() => {
+      writeSseEvent(res, { type: 'openaurora:heartbeat', timestamp: Date.now() });
+    }, 15000);
+
+    const unsubscribe = PI_SDK_HOST.subscribe((payload) => {
+      if (payload?.type === 'notification') {
+        writeSseEvent(res, {
+          type: 'openaurora:notification',
+          properties: {
+            title: payload.level === 'error' ? 'Agent error' : 'Agent update',
+            body: payload.message || '',
+            tag: payload.sessionId || 'pi',
+          },
+        });
+        return;
+      }
+      if (payload?.type !== 'session_snapshot' || !payload.session) {
+        return;
+      }
+      if (requestedDirectory && !matchesPiCompatDirectory(payload.session.cwd, requestedDirectory)) {
+        return;
+      }
+      writePiCompatSessionSnapshotEvents(res, payload.session);
+    });
+
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+
+    req.on('close', cleanup);
+    req.on('error', cleanup);
+  });
+
+  app.get('/api/global/event', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders();
+    }
+
+    writeSseEvent(res, { type: 'server.connected', properties: {} });
+    for (const session of PI_SDK_HOST.listSessions()) {
+      writePiCompatSessionSnapshotEvents(res, session);
+    }
+
+    const heartbeat = setInterval(() => {
+      writeSseEvent(res, { type: 'openaurora:heartbeat', timestamp: Date.now() });
+    }, 15000);
+
+    const unsubscribe = PI_SDK_HOST.subscribe((payload) => {
+      if (payload?.type === 'notification') {
+        writeSseEvent(res, {
+          type: 'openaurora:notification',
+          properties: {
+            title: payload.level === 'error' ? 'Agent error' : 'Agent update',
+            body: payload.message || '',
+            tag: payload.sessionId || 'pi',
+          },
+        });
+        return;
+      }
+      if (payload?.type !== 'session_snapshot' || !payload.session) {
+        return;
+      }
+      writePiCompatSessionSnapshotEvents(res, payload.session);
+    });
+
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+
+    req.on('close', cleanup);
+    req.on('error', cleanup);
+  });
+
   app.get('/api/system/info', (req, res) => {
     res.json({
       openauroraVersion: OPENAURORA_VERSION,
-      runtime: process.env.OPENAURORA_RUNTIME || 'web',
+      runtime: 'pi',
       pid: process.pid,
       startedAt: serverStartedAt,
     });
@@ -8880,287 +9215,6 @@ async function main(options = {}) {
   });
 
   // ── End Tunnel API ────────────────────────────────────────────────
-
-  app.get('/api/global/event', async (req, res) => {
-    let targetUrl;
-    try {
-      targetUrl = new URL(buildOpenCodeUrl('/global/event', ''));
-    } catch {
-      return res.status(503).json({ error: 'OpenCode service unavailable' });
-    }
-
-    const headers = {
-      Accept: 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-      ...getOpenCodeAuthHeaders(),
-    };
-
-    const lastEventId = req.header('Last-Event-ID');
-    if (typeof lastEventId === 'string' && lastEventId.length > 0) {
-      headers['Last-Event-ID'] = lastEventId;
-    }
-
-    const controller = new AbortController();
-    const cleanup = () => {
-      if (!controller.signal.aborted) {
-        controller.abort();
-      }
-    };
-
-    req.on('close', cleanup);
-    req.on('error', cleanup);
-
-    let upstream;
-    try {
-      upstream = await fetch(targetUrl.toString(), {
-        headers,
-        signal: controller.signal,
-      });
-    } catch (error) {
-      return res.status(502).json({ error: 'Failed to connect to OpenCode event stream' });
-    }
-
-    if (!upstream.ok || !upstream.body) {
-      return res.status(502).json({ error: `OpenCode event stream unavailable (${upstream.status})` });
-    }
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-
-    if (typeof res.flushHeaders === 'function') {
-      res.flushHeaders();
-    }
-
-    uiNotificationClients.add(res);
-    const cleanupClient = () => {
-      uiNotificationClients.delete(res);
-    };
-    req.on('close', cleanupClient);
-    req.on('error', cleanupClient);
-
-    const heartbeatInterval = setInterval(() => {
-      writeSseEvent(res, { type: 'openaurora:heartbeat', timestamp: Date.now() });
-    }, 15000);
-
-    const decoder = new TextDecoder();
-    const reader = upstream.body.getReader();
-    let buffer = '';
-
-    const forwardBlock = (block) => {
-      if (!block) return;
-      const payload = parseSseDataPayload(block);
-
-      res.write(`${block}
-
-`);
-      // Cache session titles from session.updated/session.created events (global stream)
-      maybeCacheSessionInfoFromEvent(payload);
-
-      // Keep server-authoritative session state fresh even if the
-      // background watcher is disconnected.
-      if (payload && payload.type === 'session.status') {
-        const update = extractSessionStatusUpdate(payload);
-        if (update) {
-          updateSessionState(update.sessionId, update.type, update.eventId || `proxy-${Date.now()}`, {
-            attempt: update.attempt,
-            message: update.message,
-            next: update.next,
-          });
-        }
-      }
-
-      const transitions = deriveSessionActivityTransitions(payload);
-      if (transitions && transitions.length > 0) {
-        for (const activity of transitions) {
-          if (setSessionActivityPhase(activity.sessionId, activity.phase)) {
-            writeSseEvent(res, {
-              type: 'openaurora:session-activity',
-              properties: {
-                sessionId: activity.sessionId,
-                phase: activity.phase,
-              }
-            });
-          }
-        }
-      }
-    };
-
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
-
-        let separatorIndex = buffer.indexOf('\n\n');
-        while (separatorIndex !== -1) {
-          const block = buffer.slice(0, separatorIndex);
-          buffer = buffer.slice(separatorIndex + 2);
-          forwardBlock(block);
-          separatorIndex = buffer.indexOf('\n\n');
-        }
-      }
-
-      if (buffer.trim().length > 0) {
-        forwardBlock(buffer.trim());
-      }
-    } catch (error) {
-      if (!controller.signal.aborted) {
-        console.warn('SSE proxy stream error:', error);
-      }
-    } finally {
-      clearInterval(heartbeatInterval);
-      cleanupClient();
-      cleanup();
-      try {
-        res.end();
-      } catch {
-        // ignore
-      }
-    }
-  });
-
-  app.get('/api/event', async (req, res) => {
-    let targetUrl;
-    try {
-      targetUrl = new URL(buildOpenCodeUrl('/event', ''));
-    } catch {
-      return res.status(503).json({ error: 'OpenCode service unavailable' });
-    }
-
-    const headerDirectory = typeof req.get === 'function' ? req.get('x-opencode-directory') : null;
-    const directoryParam = Array.isArray(req.query.directory)
-      ? req.query.directory[0]
-      : req.query.directory;
-    const resolvedDirectory = headerDirectory || directoryParam || null;
-    if (typeof resolvedDirectory === 'string' && resolvedDirectory.trim().length > 0) {
-      targetUrl.searchParams.set('directory', resolvedDirectory.trim());
-    }
-
-    const headers = {
-      Accept: 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-      ...getOpenCodeAuthHeaders(),
-    };
-
-    const lastEventId = req.header('Last-Event-ID');
-    if (typeof lastEventId === 'string' && lastEventId.length > 0) {
-      headers['Last-Event-ID'] = lastEventId;
-    }
-
-    const controller = new AbortController();
-    const cleanup = () => {
-      if (!controller.signal.aborted) {
-        controller.abort();
-      }
-    };
-
-    req.on('close', cleanup);
-    req.on('error', cleanup);
-
-    let upstream;
-    try {
-      upstream = await fetch(targetUrl.toString(), {
-        headers,
-        signal: controller.signal,
-      });
-    } catch (error) {
-      return res.status(502).json({ error: 'Failed to connect to OpenCode event stream' });
-    }
-
-    if (!upstream.ok || !upstream.body) {
-      return res.status(502).json({ error: `OpenCode event stream unavailable (${upstream.status})` });
-    }
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-
-    if (typeof res.flushHeaders === 'function') {
-      res.flushHeaders();
-    }
-
-    const heartbeatInterval = setInterval(() => {
-      writeSseEvent(res, { type: 'openaurora:heartbeat', timestamp: Date.now() });
-    }, 15000);
-
-    const decoder = new TextDecoder();
-    const reader = upstream.body.getReader();
-    let buffer = '';
-
-    const forwardBlock = (block) => {
-      if (!block) return;
-      const payload = parseSseDataPayload(block);
-
-      res.write(`${block}
-
-`);
-      // Cache session titles from session.updated/session.created events (per-session stream)
-      maybeCacheSessionInfoFromEvent(payload);
-
-      if (payload && payload.type === 'session.status') {
-        const update = extractSessionStatusUpdate(payload);
-        if (update) {
-          updateSessionState(update.sessionId, update.type, update.eventId || `proxy-${Date.now()}`, {
-            attempt: update.attempt,
-            message: update.message,
-            next: update.next,
-          });
-        }
-      }
-
-      const transitions = deriveSessionActivityTransitions(payload);
-      if (transitions && transitions.length > 0) {
-        for (const activity of transitions) {
-          if (setSessionActivityPhase(activity.sessionId, activity.phase)) {
-            writeSseEvent(res, {
-              type: 'openaurora:session-activity',
-              properties: {
-                sessionId: activity.sessionId,
-                phase: activity.phase,
-              }
-            });
-          }
-        }
-      }
-    };
-
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
-
-        let separatorIndex = buffer.indexOf('\n\n');
-        while (separatorIndex !== -1) {
-          const block = buffer.slice(0, separatorIndex);
-          buffer = buffer.slice(separatorIndex + 2);
-          forwardBlock(block);
-          separatorIndex = buffer.indexOf('\n\n');
-        }
-      }
-
-      if (buffer.trim().length > 0) {
-        forwardBlock(buffer.trim());
-      }
-    } catch (error) {
-      if (!controller.signal.aborted) {
-        console.warn('SSE proxy stream error:', error);
-      }
-    } finally {
-      clearInterval(heartbeatInterval);
-      cleanup();
-      try {
-        res.end();
-      } catch {
-        // ignore
-      }
-    }
-  });
 
   app.get('/api/config/settings', async (_req, res) => {
     try {
@@ -14236,9 +14290,11 @@ async function main(options = {}) {
     res.json({ success: true, killedCount });
   });
 
-  setupProxy(app);
-  scheduleOpenCodeApiDetection();
-  void bootstrapOpenCodeAtStartup();
+  if (OPENCODE_LEGACY_ENABLED) {
+    setupProxy(app);
+    scheduleOpenCodeApiDetection();
+    void bootstrapOpenCodeAtStartup();
+  }
 
   const distPath = (() => {
     const env = typeof process.env.OPENAURORA_DIST_DIR === 'string' ? process.env.OPENAURORA_DIST_DIR.trim() : '';
