@@ -13,8 +13,8 @@ import { useOptionalThemeSystem } from '@/contexts/useThemeSystem';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useUIStore } from '@/stores/useUIStore';
-import { useSessionActivity } from '@/hooks/useSessionActivity';
-import { opencodeClient } from '@/lib/opencode/client';
+import { piClient } from '@/lib/pi/client';
+import { toUiMessageEntries } from '@/lib/pi/ui-mappers';
 import { ScrollShadow } from '@/components/ui/ScrollShadow';
 import { Text } from '@/components/ui/text';
 import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
@@ -1911,20 +1911,12 @@ const ToolPart: React.FC<ToolPartProps> = ({
 
         const fetchSessionMessages = async (isInitialFetch: boolean) => {
             try {
-                const messages = await opencodeClient.getSessionMessages(taskSessionId, resolveFetchLimit(isInitialFetch));
+                const session = await piClient.getSession(taskSessionId);
+                const messages = toUiMessageEntries(session).slice(-500);
                 if (cancelled || !Array.isArray(messages) || messages.length === 0) {
                     return;
                 }
-
-                const nextSignature = buildTaskSessionMessagesSignature(messages as SessionMessageWithParts[]);
-                if (nextSignature === taskPollLastSignatureRef.current) {
-                    taskPollNoChangeCountRef.current += 1;
-                    return;
-                }
-
-                taskPollLastSignatureRef.current = nextSignature;
-                taskPollNoChangeCountRef.current = 0;
-                useSessionStore.getState().syncMessages(taskSessionId, messages);
+                useSessionStore.getState().syncMessages(taskSessionId, messages, { replace: true });
             } catch {
                 // Ignore transient subagent fetch errors.
             } finally {

@@ -1,5 +1,6 @@
 import React from 'react';
-import { opencodeClient } from '@/lib/opencode/client';
+import { piClient } from '@/lib/pi/client';
+import { piSessionStatusToUiStatus } from '@/lib/pi/ui-mappers';
 import { useSessionStore } from '@/stores/useSessionStore';
 
 type SessionStatusPayload = {
@@ -20,16 +21,12 @@ export const useSessionStatusBootstrap = (options?: { enabled?: boolean }) => {
 
     const bootstrap = async () => {
       try {
-        // Use global status to detect busy sessions across all directories,
-        // including sessions started externally (e.g., via CLI) before UI opened
-        const statusMap = await opencodeClient.getGlobalSessionStatus();
-        if (cancelled || !statusMap) return;
+        const sessions = await piClient.listSessions();
+        if (cancelled || !sessions) return;
 
         const nextStatus = new Map<string, SessionStatusPayload>();
-        Object.entries(statusMap).forEach(([sessionId, raw]) => {
-          if (!sessionId || !raw) return;
-          const status = raw as SessionStatusPayload;
-          nextStatus.set(sessionId, status);
+        sessions.forEach((session) => {
+          nextStatus.set(session.id, piSessionStatusToUiStatus(session.status));
         });
 
         if (nextStatus.size > 0) {

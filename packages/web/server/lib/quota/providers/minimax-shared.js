@@ -1,4 +1,4 @@
-import { readAuthFile } from '../../opencode/auth.js';
+import { readAuthFile } from '../../provider-auth.js';
 import {
   getAuthEntry,
   normalizeAuthEntry,

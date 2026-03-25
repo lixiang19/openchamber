@@ -1,4 +1,4 @@
-import { createOpencodeClient, OpencodeClient } from "@opencode-ai/sdk/v2";
+import { createOpencodeClient, OpencodeClient } from "@opencode-ai/sdk/v2/client";
 import type { FilesAPI, RuntimeAPIs } from "../api/types";
 import { getDesktopHomeDirectory } from "../desktop";
 import type {
@@ -9,19 +9,21 @@ import type {
   Config,
   Model,
   Agent,
-  TextPartInput,
   FilePartInput,
   Event,
-} from "@opencode-ai/sdk/v2";
+} from "@opencode-ai/sdk/v2/client";
 import type { PermissionRequest } from "@/types/permission";
 import type { QuestionRequest } from "@/types/question";
-type StreamEvent<TData> = {
-  data: TData;
-  event?: string;
-  id?: string;
-  retry?: number;
-};
-
+import type { PiInteractiveRequestViewState, PiServerEvent, PiSessionViewState } from "@/lib/pi/types";
+import {
+  extractPiQuestionResponseValue,
+  getPiUiAgents,
+  getPiUiProviders,
+  piSessionStatusToUiStatus,
+  toUiMessageEntries,
+  toUiQuestionRequest,
+  toUiSession,
+} from "@/lib/pi/ui-mappers";
 export type RoutedOpencodeEvent = {
   directory: string;
   payload: Event;
@@ -101,16 +103,6 @@ export type ProjectFileSearchHit = {
   extension?: string;
 };
 
-type AgentPartInputLite = {
-  type: 'agent';
-  name: string;
-  source?: {
-    value: string;
-    start: number;
-    end: number;
-  };
-};
-
 type FileInputLite = {
   id?: string;
   type: 'file';
@@ -162,8 +154,7 @@ class OpencodeService {
   private globalSseStaleDeltas: Set<string> = new Set();
   private globalSseFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private globalSseLastFlushAt = 0;
-  private listDirectoryInFlight: Map<string, Promise<FilesystemEntry[]>> = new Map();
-  private listDirectoryCache: Map<string, { entries: FilesystemEntry[]; expiresAt: number }> = new Map();
+  private globalPiSource: EventSource | null = null;
 
   constructor(baseUrl: string = DEFAULT_BASE_URL) {
     const desktopBase = resolveDesktopBaseUrl();
@@ -177,17 +168,17 @@ class OpencodeService {
   }
 
   /**
-   * Returns an SDK client scoped to a project directory.
-   * Needed for worktree APIs where backend ignores per-call directory.
+   * Returns a client-like object scoped to a project directory.
+   * This keeps the rest of the UI talking to one runtime service while Pi owns the data model.
    */
   getScopedApiClient(directory: string): OpencodeClient {
     const normalized = this.normalizeCandidatePath(directory) ?? directory;
-    const key = normalized || '';
+    const key = `runtime:${normalized || ''}`;
     const existing = this.scopedClients.get(key);
     if (existing) {
       return existing;
     }
-    const scoped = createOpencodeClient({ baseUrl: this.baseUrl, directory: normalized });
+    const scoped = this.createRuntimeApiClient(normalized);
     this.scopedClients.set(key, scoped);
     return scoped;
   }
@@ -289,9 +280,179 @@ class OpencodeService {
     return queuedRun;
   }
 
-  // Get the raw API client for direct access
+  private getPiApiBase(): string {
+    return `${this.baseUrl.replace(/\/+$/, '')}/pi`;
+  }
+
+  private async fetchPi<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(`${this.getPiApiBase()}${path}`, {
+      headers: {
+        Accept: 'application/json',
+        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(init?.headers || {}),
+      },
+      ...init,
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(detail || `Pi request failed (${response.status})`);
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    return response.json() as Promise<T>;
+  }
+
+  private async listPiSessions(): Promise<PiSessionViewState[]> {
+    return this.fetchPi<PiSessionViewState[]>('/sessions');
+  }
+
+  private async getPiSession(sessionId: string): Promise<PiSessionViewState> {
+    return this.fetchPi<PiSessionViewState>(`/sessions/${encodeURIComponent(sessionId)}`);
+  }
+
+  private async findPiInteractiveRequest(requestId: string): Promise<PiInteractiveRequestViewState | null> {
+    const sessions = await this.listPiSessions().catch(() => []);
+    for (const session of sessions) {
+      const request = session.interactiveRequests.find((entry) => entry.id === requestId);
+      if (request) {
+        return request;
+      }
+    }
+    return null;
+  }
+
+  private buildPromptText(params: {
+    text: string;
+    prefaceText?: string;
+    files?: Array<{ filename?: string; url: string }>;
+    additionalParts?: Array<{ text: string; synthetic?: boolean; files?: Array<{ filename?: string; url: string }> }>;
+    agentMentions?: Array<{ name: string }>;
+  }): string {
+    const sections: string[] = [];
+
+    if (params.prefaceText && params.prefaceText.trim()) {
+      sections.push(params.prefaceText.trim());
+    }
+
+    if (params.text && params.text.trim()) {
+      sections.push(params.text.trim());
+    }
+
+    for (const part of params.additionalParts || []) {
+      if (part.text && part.text.trim()) {
+        sections.push(part.text.trim());
+      }
+      const fileLabels = (part.files || []).map((file) => file.filename || file.url).filter(Boolean);
+      if (fileLabels.length > 0) {
+        sections.push(`Attachments: ${fileLabels.join(', ')}`);
+      }
+    }
+
+    const fileLabels = (params.files || []).map((file) => file.filename || file.url).filter(Boolean);
+    if (fileLabels.length > 0) {
+      sections.push(`Attachments: ${fileLabels.join(', ')}`);
+    }
+
+    const agentLabels = (params.agentMentions || []).map((entry) => entry.name).filter(Boolean);
+    if (agentLabels.length > 0) {
+      sections.push(`Mentions: ${agentLabels.map((name) => `@${name}`).join(' ')}`);
+    }
+
+    return sections.filter(Boolean).join('\n\n');
+  }
+
+  private createRuntimeApiClient(directory?: string | null): OpencodeClient {
+    const scopeDirectory = this.normalizeCandidatePath(directory ?? null);
+    const baseClient = scopeDirectory
+      ? createOpencodeClient({ baseUrl: this.baseUrl, directory: scopeDirectory })
+      : this.client;
+
+    const withScope = async <T>(operation: () => Promise<T>): Promise<T> => {
+      if (!scopeDirectory) {
+        return operation();
+      }
+      return this.withDirectory(scopeDirectory, operation);
+    };
+
+    const runtimeSession = {
+      ...((baseClient as unknown as { session?: Record<string, unknown> }).session || {}),
+      list: async () => ({ data: await withScope(() => this.listSessions()) }),
+      update: async ({ sessionID, title }: { sessionID: string; title?: string }) => ({
+        data: await withScope(() => this.updateSession(sessionID, title)),
+      }),
+      delete: async ({ sessionID }: { sessionID: string }) => ({
+        data: await withScope(() => this.deleteSession(sessionID)),
+      }),
+      share: async () => ({ data: null }),
+      unshare: async () => ({ data: null }),
+      prompt: async ({ sessionID, parts }: { sessionID: string; parts?: Array<Record<string, unknown>> }) => {
+        const text = Array.isArray(parts)
+          ? parts.map((part) => {
+              if (typeof part?.text === 'string') return part.text;
+              if (typeof part?.content === 'string') return part.content;
+              return '';
+            }).filter(Boolean).join('\n\n')
+          : '';
+        await withScope(() => this.sendMessage({
+          id: sessionID,
+          providerID: 'opencode',
+          modelID: 'big-pickle',
+          text,
+        }));
+        return { data: true };
+      },
+      shell: async ({ sessionID, command }: { sessionID: string; command: string }) => {
+        await withScope(() => this.sendMessage({
+          id: sessionID,
+          providerID: 'opencode',
+          modelID: 'big-pickle',
+          text: command,
+        }));
+        return { data: true };
+      },
+      summarize: async ({ sessionID }: { sessionID: string }) => {
+        await withScope(() => this.sendMessage({
+          id: sessionID,
+          providerID: 'opencode',
+          modelID: 'big-pickle',
+          text: '/compact',
+        }));
+        return { data: true };
+      },
+    };
+
+    const runtimeExperimental = {
+      ...((baseClient as unknown as { experimental?: Record<string, unknown> }).experimental || {}),
+      session: {
+        ...(((baseClient as unknown as { experimental?: { session?: Record<string, unknown> } }).experimental?.session) || {}),
+        list: async ({ archived }: { archived?: boolean } = {}) => ({
+          data: archived ? [] : await withScope(() => this.listSessions()),
+          nextCursor: null,
+        }),
+      },
+    };
+
+    return new Proxy(baseClient as unknown as object, {
+      get(target, prop, receiver) {
+        if (prop === 'session') {
+          return runtimeSession;
+        }
+        if (prop === 'experimental') {
+          return runtimeExperimental;
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as unknown as OpencodeClient;
+  }
+
+  // Get the raw API client for direct access.
+  // Keep this unscoped so global session loaders can still see every Pi session.
   getApiClient(): OpencodeClient {
-    return this.client;
+    return this.createRuntimeApiClient(null);
   }
 
   // Get system information including home directory
@@ -382,56 +543,58 @@ class OpencodeService {
 
   // Session Management
   async listSessions(): Promise<Session[]> {
-    const response = await this.client.session.list(
-      this.currentDirectory ? { directory: this.currentDirectory } : undefined
-    );
-    return Array.isArray(response.data) ? response.data : [];
+    const sessions = (await this.listPiSessions()).map((session) => toUiSession(session));
+
+    if (!this.currentDirectory) {
+      return sessions;
+    }
+
+    const normalizedCurrent = this.normalizeCandidatePath(this.currentDirectory);
+    if (!normalizedCurrent) {
+      return sessions;
+    }
+
+    return sessions.filter((session) => {
+      const directory = this.normalizeCandidatePath((session as { directory?: string | null }).directory ?? null);
+      return !directory || directory === normalizedCurrent || directory.startsWith(`${normalizedCurrent}/`);
+    });
   }
 
   async createSession(params?: { parentID?: string; title?: string }): Promise<Session> {
-    const response = await this.client.session.create({
-      ...(this.currentDirectory ? { directory: this.currentDirectory } : {}),
-      parentID: params?.parentID,
-      title: params?.title
+    const snapshot = await this.fetchPi<PiSessionViewState>('/sessions', {
+      method: 'POST',
+      body: JSON.stringify({
+        cwd: this.currentDirectory,
+        title: params?.title,
+      }),
     });
-    if (!response.data) throw new Error('Failed to create session');
-    return response.data;
+    return toUiSession(snapshot);
   }
 
   async getSession(id: string): Promise<Session> {
-    const response = await this.client.session.get({
-      sessionID: id,
-      ...(this.currentDirectory ? { directory: this.currentDirectory } : {})
-    });
-    if (!response.data) throw new Error('Session not found');
-    return response.data;
+    return toUiSession(await this.getPiSession(id));
   }
 
-  async deleteSession(id: string): Promise<boolean> {
-    const response = await this.client.session.delete({
-      sessionID: id,
-      ...(this.currentDirectory ? { directory: this.currentDirectory } : {})
-    });
-    return response.data || false;
+  async deleteSession(_id: string): Promise<boolean> {
+    void _id;
+    throw new Error('Pi session deletion is not supported yet.');
   }
 
   async updateSession(id: string, title?: string): Promise<Session> {
-    const response = await this.client.session.update({
-      sessionID: id,
-      ...(this.currentDirectory ? { directory: this.currentDirectory } : {}),
-      title
+    const snapshot = await this.fetchPi<PiSessionViewState>(`/sessions/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ title }),
     });
-    if (!response.data) throw new Error('Failed to update session');
-    return response.data;
+    return toUiSession(snapshot);
   }
 
   async getSessionMessages(id: string, limit?: number): Promise<{ info: Message; parts: Part[] }[]> {
-    const response = await this.client.session.messages({
-      sessionID: id,
-      ...(this.currentDirectory ? { directory: this.currentDirectory } : {}),
-      ...(typeof limit === 'number' ? { limit } : {}),
-    });
-    return response.data || [];
+    const snapshot = await this.getPiSession(id);
+    const entries = toUiMessageEntries(snapshot);
+    if (typeof limit === 'number' && Number.isFinite(limit)) {
+      return entries.slice(-limit);
+    }
+    return entries;
   }
 
   async getSessionTodos(sessionId: string): Promise<Array<{ id: string; content: string; status: string; priority: string }>> {
@@ -633,153 +796,26 @@ class OpencodeService {
       retryCount?: number;
     };
   }): Promise<string> {
-    // Generate a temporary client-side ID for optimistic UI
-    // This ID won't be sent to the server - server will generate its own
     const baseTimestamp = Date.now();
     const tempMessageId = params.messageId ?? `temp_${baseTimestamp}_${Math.random().toString(36).substring(2, 9)}`;
 
-    // Build parts array using SDK types (TextPartInput | FilePartInput) plus lightweight agent parts
-    const parts: Array<TextPartInput | FilePartInput | AgentPartInputLite> = [];
+    const promptText = this.buildPromptText({
+      text: params.text,
+      prefaceText: params.prefaceText,
+      files: params.files,
+      additionalParts: params.additionalParts,
+      agentMentions: params.agentMentions,
+    });
 
-    if (params.prefaceText && params.prefaceText.trim()) {
-      parts.push({
-        type: 'text',
-        text: params.prefaceText,
-        synthetic: params.prefaceTextSynthetic !== false,
-      });
-    }
-
-    // Add text part if there's content
-    if (params.text && params.text.trim()) {
-      const textPart: TextPartInput = {
-        type: 'text',
-        text: params.text
-      };
-      parts.push(textPart);
-    }
-
-    // Add file parts if provided (normalizing MIME types for compatibility)
-    if (params.files && params.files.length > 0) {
-      for (const file of params.files) {
-        const filePart = await this.toNormalizedFilePartInput(file);
-        parts.push(filePart);
-      }
-    }
-
-    // Add additional parts (for batch/queued messages)
-    if (params.additionalParts && params.additionalParts.length > 0) {
-      for (const additional of params.additionalParts) {
-        if (additional.text && additional.text.trim()) {
-          parts.push({
-            type: 'text',
-            text: additional.text,
-            ...(additional.synthetic ? { synthetic: true } : {}),
-          });
-        }
-        if (additional.files && additional.files.length > 0) {
-          for (const file of additional.files) {
-            const filePart = await this.toNormalizedFilePartInput(file);
-            parts.push(filePart);
-          }
-        }
-      }
-    }
-
-    if (params.agentMentions && params.agentMentions.length > 0) {
-      for (const mention of params.agentMentions) {
-        if (!mention?.name) continue;
-        parts.push({
-          type: 'agent',
-          name: mention.name,
-          ...(mention.source ? { source: mention.source } : {}),
-        });
-      }
-    }
-
-    // Ensure we have at least one part
-    if (parts.length === 0) {
+    if (!promptText.trim()) {
       throw new Error('Message must have at least one part (text or file)');
     }
 
-    // Use async prompt endpoint so the client doesn't block waiting
-    // for model work (SSE will deliver output/status).
-    // This avoids 504s from proxy timeouts on long-running turns.
-    const base = this.baseUrl.replace(/\/+$/, '');
-    let url: URL;
-    try {
-      url = new URL(`${base}/session/${encodeURIComponent(params.id)}/prompt_async`);
-      if (this.currentDirectory) {
-        url.searchParams.set('directory', this.currentDirectory);
-      }
-    } catch (error) {
-      console.error('[git-generation][browser] failed to build prompt_async URL', {
-        baseUrl: this.baseUrl,
-        normalizedBase: base,
-        sessionId: params.id,
-        directory: this.currentDirectory,
-        message: error instanceof Error ? error.message : String(error),
-        error,
-      });
-      throw error;
-    }
+    await this.fetchPi<void>(`/sessions/${encodeURIComponent(params.id)}/prompt`, {
+      method: 'POST',
+      body: JSON.stringify({ text: promptText }),
+    });
 
-    if (params.format) {
-      console.info('[git-generation][browser] send structured message', {
-        sessionId: params.id,
-        providerID: params.providerID,
-        modelID: params.modelID,
-        agent: params.agent,
-        variant: params.variant,
-        directory: this.currentDirectory,
-        baseUrl: this.baseUrl,
-        formatType: params.format.type,
-      });
-    }
-
-    let response: Response;
-    try {
-      response = await fetch(url.toString(), {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          accept: 'application/json',
-        },
-        body: JSON.stringify({
-          model: {
-            providerID: params.providerID,
-            modelID: params.modelID,
-          },
-          agent: params.agent,
-          variant: params.variant,
-          ...(params.format ? { format: params.format } : {}),
-          parts,
-        }),
-      });
-    } catch (error) {
-      console.error('[git-generation][browser] prompt_async request failed before response', {
-        sessionId: params.id,
-        url: url.toString(),
-        directory: this.currentDirectory,
-        hasFormat: Boolean(params.format),
-        message: error instanceof Error ? error.message : String(error),
-        error,
-      });
-      throw error;
-    }
-
-    if (!response.ok) {
-      let detail = '';
-      try {
-        detail = await response.text();
-      } catch {
-        // ignore
-      }
-      const suffix = detail && detail.trim().length > 0 ? `: ${detail.trim()}` : '';
-      throw new Error(`Failed to send message (${response.status})${suffix}`);
-    }
-
-    // Return temporary ID for optimistic UI
-    // Real messageID will come from server via SSE events
     return tempMessageId;
   }
 
@@ -794,98 +830,42 @@ class OpencodeService {
     files?: Array<FileInputLite>;
     messageId?: string;
   }): Promise<string> {
-    const baseTimestamp = Date.now();
-    const tempMessageId = params.messageId ?? `temp_${baseTimestamp}_${Math.random().toString(36).substring(2, 9)}`;
-
-    const parts: FilePartInput[] = [];
-    if (params.files && params.files.length > 0) {
-      for (const file of params.files) {
-        parts.push(await this.toNormalizedFilePartInput(file));
-      }
-    }
-
-    const base = this.baseUrl.replace(/\/+$/, '');
-    const url = new URL(`${base}/session/${encodeURIComponent(params.id)}/command`);
-    if (this.currentDirectory) {
-      url.searchParams.set('directory', this.currentDirectory);
-    }
-
-    const payload: Record<string, unknown> = {
-      command: params.command,
-      arguments: params.arguments ?? '',
-      model: `${params.providerID}/${params.modelID}`,
-      ...(params.agent ? { agent: params.agent } : {}),
-      ...(params.variant ? { variant: params.variant } : {}),
-      ...(parts.length > 0 ? { parts } : {}),
-      ...(params.messageId ? { messageID: params.messageId } : {}),
-    };
-
-    const response = await fetch(url.toString(), {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        accept: 'application/json',
-      },
-      body: JSON.stringify(payload),
+    const commandText = [`/${params.command}`, params.arguments || ''].filter(Boolean).join(' ').trim();
+    return this.sendMessage({
+      id: params.id,
+      providerID: params.providerID,
+      modelID: params.modelID,
+      text: commandText,
+      agent: params.agent,
+      variant: params.variant,
+      files: params.files,
+      messageId: params.messageId,
     });
-
-    if (!response.ok) {
-      let detail = '';
-      try {
-        detail = await response.text();
-      } catch {
-        // ignore
-      }
-      const suffix = detail && detail.trim().length > 0 ? `: ${detail.trim()}` : '';
-      throw new Error(`Failed to run command (${response.status})${suffix}`);
-    }
-
-    return tempMessageId;
   }
 
   async abortSession(id: string): Promise<boolean> {
-    const response = await this.client.session.abort(
-      {
-        sessionID: id,
-        ...(this.currentDirectory ? { directory: this.currentDirectory } : {})
-      },
-      { throwOnError: true }
-    );
-    return Boolean(response.data);
+    await this.fetchPi<void>(`/sessions/${encodeURIComponent(id)}/abort`, {
+      method: 'POST',
+    });
+    return true;
   }
 
-  async revertSession(sessionId: string, messageId: string, partId?: string): Promise<Session> {
-    const response = await this.client.session.revert({
-      sessionID: sessionId,
-      ...(this.currentDirectory ? { directory: this.currentDirectory } : {}),
-      messageID: messageId,
-      partID: partId
-    });
-    if (!response.data) throw new Error('Failed to revert session');
-    return response.data;
+  async revertSession(_sessionId: string, _messageId: string, _partId?: string): Promise<Session> {
+    void _sessionId;
+    void _messageId;
+    void _partId;
+    throw new Error('Pi runtime does not support revert yet.');
   }
 
-  async unrevertSession(sessionId: string): Promise<Session> {
-    const response = await this.client.session.unrevert({
-      sessionID: sessionId,
-      ...(this.currentDirectory ? { directory: this.currentDirectory } : {})
-    });
-    if (!response.data) throw new Error('Failed to unrevert session');
-    return response.data;
+  async unrevertSession(_sessionId: string): Promise<Session> {
+    void _sessionId;
+    throw new Error('Pi runtime does not support redo yet.');
   }
 
-  async forkSession(sessionId: string, messageId?: string): Promise<Session> {
-    const response = await this.client.session.fork({
-      sessionID: sessionId,
-      ...(this.currentDirectory ? { directory: this.currentDirectory } : {}),
-      messageID: messageId
-    });
-
-    if (!response.data) {
-      throw new Error('Failed to fork session');
-    }
-
-    return response.data;
+  async forkSession(_sessionId: string, _messageId?: string): Promise<Session> {
+    void _sessionId;
+    void _messageId;
+    throw new Error('Pi runtime does not support forking sessions yet.');
   }
 
   async getSessionStatus(): Promise<
@@ -898,34 +878,19 @@ class OpencodeService {
     directory: string | null | undefined
   ): Promise<Record<string, { type: "idle" | "busy" | "retry"; attempt?: number; message?: string; next?: number }>> {
     try {
-      const base = this.baseUrl.replace(/\/$/, "");
-      const url = new URL(`${base}/session/status`);
+      const normalizedDirectory = this.normalizeCandidatePath(directory ?? null);
+      const sessions = await this.listPiSessions();
+      const statusMap: Record<string, { type: "idle" | "busy" | "retry"; attempt?: number; message?: string; next?: number }> = {};
 
-      const trimmedDirectory = typeof directory === "string" ? directory.trim() : "";
-      if (trimmedDirectory.length > 0) {
-        url.searchParams.set("directory", trimmedDirectory);
+      for (const session of sessions) {
+        const sessionDirectory = this.normalizeCandidatePath(session.cwd);
+        if (normalizedDirectory && sessionDirectory && sessionDirectory !== normalizedDirectory) {
+          continue;
+        }
+        statusMap[session.id] = piSessionStatusToUiStatus(session.status);
       }
 
-      const response = await fetch(url.toString(), {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        return {};
-      }
-
-      const data = await response.json().catch(() => null);
-      if (!data || typeof data !== "object") {
-        return {};
-      }
-
-      return data as Record<
-        string,
-        { type: "idle" | "busy" | "retry"; attempt?: number; message?: string; next?: number }
-      >;
+      return statusMap;
     } catch {
       return {};
     }
@@ -946,24 +911,11 @@ class OpencodeService {
     Record<string, { type: string }> | null
   > {
     try {
-      // Web server endpoint - use relative path that works with both dev and prod
-      const response = await fetch('/api/session-activity', {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        return null;
-      }
-
-      const data = await response.json().catch(() => null);
-      if (!data || typeof data !== 'object') {
-        return null;
-      }
-
-      return data as Record<string, { type: string }>;
+      const sessions = await this.listPiSessions();
+      return sessions.reduce<Record<string, { type: string }>>((accumulator, session) => {
+        accumulator[session.id] = { type: session.status === 'streaming' || session.status === 'compacting' ? 'busy' : session.status };
+        return accumulator;
+      }, {});
     } catch {
       return null;
     }
@@ -1047,76 +999,48 @@ class OpencodeService {
 
   // Questions ("ask" tool)
   async replyToQuestion(requestId: string, answers: string[] | string[][]): Promise<boolean> {
-    const normalizedAnswers: string[][] = (() => {
-      if (!Array.isArray(answers) || answers.length === 0) {
-        return [];
-      }
-      if (Array.isArray(answers[0])) {
-        return answers as string[][];
-      }
-      return [answers as string[]];
-    })();
+    const request = await this.findPiInteractiveRequest(requestId);
+    if (!request) {
+      return false;
+    }
 
-    const result = await this.client.question.reply({
-      requestID: requestId,
-      ...(this.currentDirectory ? { directory: this.currentDirectory } : {}),
-      answers: normalizedAnswers,
+    const responseValue = extractPiQuestionResponseValue(request, answers);
+    await this.fetchPi<void>(`/requests/${encodeURIComponent(requestId)}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ response: responseValue }),
     });
-    return result.data || false;
+    return true;
   }
 
   async rejectQuestion(requestId: string): Promise<boolean> {
-    const result = await this.client.question.reject({
-      requestID: requestId,
-      ...(this.currentDirectory ? { directory: this.currentDirectory } : {}),
+    await this.fetchPi<void>(`/requests/${encodeURIComponent(requestId)}/reject`, {
+      method: 'POST',
     });
-    return result.data || false;
+    return true;
   }
 
   async listPendingQuestions(options?: { directories?: Array<string | null | undefined> }): Promise<QuestionRequest[]> {
-    const fetches: Array<Promise<QuestionRequest[]>> = [];
+    const normalizedDirectories = new Set(
+      (options?.directories ?? [])
+        .map((entry) => this.normalizeCandidatePath(entry ?? null))
+        .filter((entry): entry is string => Boolean(entry))
+    );
 
-    const fetchForDirectory = async (directory?: string | null): Promise<QuestionRequest[]> => {
-      try {
-        const trimmed = typeof directory === 'string' ? directory.trim() : '';
-        const result = await this.client.question.list(trimmed ? { directory: trimmed } : undefined);
-        return (result.data || []) as unknown as QuestionRequest[];
-      } catch {
-        return [];
+    const sessions = await this.listPiSessions().catch(() => []);
+    const requests: QuestionRequest[] = [];
+
+    for (const session of sessions) {
+      const directory = this.normalizeCandidatePath(session.cwd);
+      if (normalizedDirectories.size > 0 && directory && !normalizedDirectories.has(directory)) {
+        continue;
       }
-    };
 
-    // Try unscoped first (server may return global pending items).
-    fetches.push(fetchForDirectory(null));
-
-    const uniqueDirectories = new Set<string>();
-    for (const entry of options?.directories ?? []) {
-      const normalized = this.normalizeCandidatePath(entry ?? null);
-      if (normalized) {
-        uniqueDirectories.add(normalized);
+      for (const request of session.interactiveRequests) {
+        requests.push(toUiQuestionRequest(request));
       }
     }
 
-    for (const directory of uniqueDirectories) {
-      fetches.push(fetchForDirectory(directory));
-    }
-
-    const results = await Promise.all(fetches);
-    const merged: QuestionRequest[] = [];
-    const seenIds = new Set<string>();
-
-    for (const list of results) {
-      for (const item of list) {
-        if (!item || typeof item !== 'object') continue;
-        const id = (item as { id?: unknown }).id;
-        if (typeof id !== 'string' || id.length === 0) continue;
-        if (seenIds.has(id)) continue;
-        seenIds.add(id);
-        merged.push(item);
-      }
-    }
-
-    return merged;
+    return requests;
   }
 
   // Configuration
@@ -1170,11 +1094,7 @@ class OpencodeService {
     providers: Provider[];
     default: { [key: string]: string };
   }> {
-    const response = await this.client.config.providers(
-      this.currentDirectory ? { directory: this.currentDirectory } : undefined
-    );
-    if (!response.data) throw new Error('Failed to get providers');
-    return response.data;
+    return getPiUiProviders();
   }
 
   // App Management - using config endpoint since /app doesn't exist in this version
@@ -1188,667 +1108,107 @@ class OpencodeService {
   }
 
   async initApp(): Promise<boolean> {
-    try {
-      // Just check if we can connect since there's no init endpoint
-      return await this.checkHealth();
-    } catch {
-      return false;
-    }
+    return this.checkHealth();
   }
 
   // Agent Management
   async listAgents(): Promise<Agent[]> {
-    try {
-      const response = await this.client.app.agents(
-        this.currentDirectory ? { directory: this.currentDirectory } : undefined
-      );
-      return response.data || [];
-    } catch {
-      return [];
-    }
+    return getPiUiAgents();
   }
 
-  private normalizeRoutedSsePayload(raw: unknown): RoutedOpencodeEvent | null {
-    if (!raw || typeof raw !== 'object') {
+  private mapPiEventToRoutedEvent(raw: PiServerEvent): RoutedOpencodeEvent | null {
+    if (raw.type === 'heartbeat') {
       return null;
     }
 
-    const record = raw as Record<string, unknown>;
-
-    const directoryCandidate =
-      typeof record.directory === 'string'
-        ? record.directory
-        : typeof record.properties === 'object' && record.properties !== null
-          ? ((record.properties as Record<string, unknown>).directory as unknown)
-          : null;
-
-    const normalizedDirectory =
-      typeof directoryCandidate === 'string'
-        ? this.normalizeCandidatePath(directoryCandidate) ?? directoryCandidate.trim()
-        : null;
-
-    if (typeof record.type === 'string') {
+    if (raw.type === 'notification') {
       return {
-        directory: normalizedDirectory && normalizedDirectory.length > 0 ? normalizedDirectory : 'global',
-        payload: record as Event,
+        directory: 'global',
+        payload: {
+          type: 'openaurora:notification',
+          properties: {
+            title: raw.level === 'error' ? 'Pi error' : 'Pi notification',
+            body: raw.message,
+            tag: `pi:${raw.sessionId}:${raw.level}`,
+          },
+        } as unknown as Event,
       };
     }
 
-    const nestedPayload = record.payload;
-    if (nestedPayload && typeof nestedPayload === 'object') {
-      const nestedRecord = nestedPayload as Record<string, unknown>;
-      if (typeof nestedRecord.type === 'string') {
-        return {
-          directory: normalizedDirectory && normalizedDirectory.length > 0 ? normalizedDirectory : 'global',
-          payload: nestedRecord as Event,
-        };
-      }
-    }
-
-    return null;
-  }
-
-  private emitGlobalSseEvent(event: RoutedOpencodeEvent) {
-    this.enqueueGlobalSseEvent(event);
-  }
-
-  private notifyGlobalSseOpen() {
-    for (const handler of this.globalSseOpenListeners) {
-      try {
-        handler();
-      } catch (error) {
-        console.warn('[OpencodeClient] Global SSE open handler error:', error);
-      }
-    }
-  }
-
-  private notifyGlobalSseError(error: unknown) {
-    for (const handler of this.globalSseErrorListeners) {
-      try {
-        handler(error);
-      } catch (listenerError) {
-        console.warn('[OpencodeClient] Global SSE error handler failed:', listenerError);
-      }
-    }
-  }
-
-  private ensureGlobalSseStarted() {
-    if (this.globalSseTask) {
-      return;
-    }
-
-    const abortController = new AbortController();
-    this.globalSseAbortController = abortController;
-
-    this.globalSseTask = this.runGlobalSseLoop(abortController)
-      .catch((error) => {
-        if ((error as Error)?.name === 'AbortError' || abortController.signal.aborted) {
-          return;
-        }
-        console.error('[OpencodeClient] Global SSE task failed:', error);
-      })
-      .finally(() => {
-        if (this.globalSseAbortController === abortController) {
-          this.globalSseAbortController = null;
-        }
-        this.globalSseTask = null;
-        this.globalSseIsConnected = false;
-      });
-  }
-
-  private maybeStopGlobalSse() {
-    if (this.globalSseListeners.size > 0) {
-      return;
-    }
-
-    if (this.globalSseAbortController && !this.globalSseAbortController.signal.aborted) {
-      this.globalSseAbortController.abort();
-    }
-    this.globalSseAbortController = null;
-    this.clearGlobalSseQueue();
-  }
-
-  private clearGlobalSseQueue() {
-    if (this.globalSseFlushTimer) {
-      clearTimeout(this.globalSseFlushTimer);
-      this.globalSseFlushTimer = null;
-    }
-    this.globalSseQueue.length = 0;
-    this.globalSseBuffer.length = 0;
-    this.globalSseCoalesced.clear();
-    this.globalSseStaleDeltas.clear();
-  }
-
-  private getGlobalSseDeltaKey(event: RoutedOpencodeEvent): string | null {
-    const payload = event.payload as unknown as Record<string, unknown>;
-    const eventType = typeof payload.type === 'string' ? payload.type : null;
-    if (eventType !== 'message.part.delta') {
-      return null;
-    }
-
-    const properties =
-      typeof payload.properties === 'object' && payload.properties !== null
-        ? (payload.properties as Record<string, unknown>)
-        : null;
-    const messageId = typeof properties?.messageID === 'string'
-      ? properties.messageID
-      : typeof properties?.messageId === 'string'
-        ? properties.messageId
-        : null;
-    const partId = typeof properties?.partID === 'string'
-      ? properties.partID
-      : typeof properties?.partId === 'string'
-        ? properties.partId
-        : null;
-
-    if (!messageId || !partId) {
-      return null;
-    }
-
-    return `${event.directory}:${messageId}:${partId}`;
-  }
-
-  private getGlobalSseUpdatedPartKey(event: RoutedOpencodeEvent): string | null {
-    const payload = event.payload as unknown as Record<string, unknown>;
-    const eventType = typeof payload.type === 'string' ? payload.type : null;
-    if (eventType !== 'message.part.updated') {
-      return null;
-    }
-
-    const properties =
-      typeof payload.properties === 'object' && payload.properties !== null
-        ? (payload.properties as Record<string, unknown>)
-        : null;
-    const part =
-      properties?.part && typeof properties.part === 'object'
-        ? (properties.part as Record<string, unknown>)
-        : null;
-    const messageId = typeof part?.messageID === 'string'
-      ? part.messageID
-      : typeof part?.messageId === 'string'
-        ? part.messageId
-        : null;
-    const partId = typeof part?.id === 'string'
-      ? part.id
-      : typeof part?.partID === 'string'
-        ? part.partID
-        : typeof part?.partId === 'string'
-          ? part.partId
-          : null;
-
-    if (!messageId || !partId) {
-      return null;
-    }
-
-    return `${event.directory}:${messageId}:${partId}`;
-  }
-
-  private getGlobalSseCoalesceKey(event: RoutedOpencodeEvent): string | null {
-    const payload = event.payload as unknown as Record<string, unknown>;
-    const eventType = typeof payload.type === 'string' ? payload.type : null;
-    if (!eventType) {
-      return null;
-    }
-
-    const properties =
-      typeof payload.properties === 'object' && payload.properties !== null
-        ? (payload.properties as Record<string, unknown>)
-        : null;
-
-    if (eventType === 'session.status') {
-      const sessionId = typeof properties?.sessionID === 'string'
-        ? properties.sessionID
-        : typeof properties?.sessionId === 'string'
-          ? properties.sessionId
-          : null;
-      if (!sessionId) {
-        return null;
-      }
-      return `session.status:${event.directory}:${sessionId}`;
-    }
-
-    if (eventType === 'openchamber:session-status') {
-      const sessionId = typeof properties?.sessionId === 'string'
-        ? properties.sessionId
-        : typeof properties?.sessionID === 'string'
-          ? properties.sessionID
-          : null;
-      if (!sessionId) {
-        return null;
-      }
-      return `openchamber:session-status:${sessionId}`;
-    }
-
-    if (eventType === 'message.part.updated') {
-      const partKey = this.getGlobalSseUpdatedPartKey(event);
-      if (!partKey) {
-        return null;
-      }
-      return `message.part.updated:${partKey}`;
-    }
-
-    return null;
-  }
-
-  private flushGlobalSseQueue = () => {
-    if (this.globalSseFlushTimer) {
-      clearTimeout(this.globalSseFlushTimer);
-      this.globalSseFlushTimer = null;
-    }
-
-    if (this.globalSseQueue.length === 0) {
-      return;
-    }
-
-    const events = this.globalSseQueue;
-    const skip = this.globalSseStaleDeltas.size > 0 ? new Set(this.globalSseStaleDeltas) : undefined;
-    this.globalSseQueue = this.globalSseBuffer;
-    this.globalSseBuffer = events;
-    this.globalSseQueue.length = 0;
-    this.globalSseCoalesced.clear();
-    this.globalSseStaleDeltas.clear();
-    this.globalSseLastFlushAt = Date.now();
-
-    for (const event of events) {
-      if (!event) continue;
-      if (skip) {
-        const deltaKey = this.getGlobalSseDeltaKey(event);
-        if (deltaKey && skip.has(deltaKey)) {
-          continue;
-        }
-      }
-      for (const listener of this.globalSseListeners) {
-        try {
-          listener(event);
-        } catch (error) {
-          console.warn('[OpencodeClient] Global SSE listener error:', error);
-        }
-      }
-    }
-
-    this.globalSseBuffer.length = 0;
-  };
-
-  private scheduleGlobalSseFlush() {
-    if (this.globalSseFlushTimer) {
-      return;
-    }
-    const elapsed = Date.now() - this.globalSseLastFlushAt;
-    const delay = Math.max(0, 16 - elapsed);
-    this.globalSseFlushTimer = setTimeout(this.flushGlobalSseQueue, delay);
-  }
-
-  private enqueueGlobalSseEvent(event: RoutedOpencodeEvent) {
-    const key = this.getGlobalSseCoalesceKey(event);
-    if (key) {
-      const existingIndex = this.globalSseCoalesced.get(key);
-      if (existingIndex !== undefined) {
-        this.globalSseQueue[existingIndex] = undefined;
-        const updatedPartKey = this.getGlobalSseUpdatedPartKey(event);
-        if (updatedPartKey) {
-          this.globalSseStaleDeltas.add(updatedPartKey);
-        }
-      }
-      this.globalSseCoalesced.set(key, this.globalSseQueue.length);
-    }
-
-    this.globalSseQueue.push(event);
-    this.scheduleGlobalSseFlush();
-  }
-
-  private async runGlobalSseLoop(abortController: AbortController): Promise<void> {
-    let attempt = 0;
-    const RECONNECT_DELAY_MS = 250;
-    const STREAM_YIELD_MS = 8;
-    const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-    while (!abortController.signal.aborted) {
-      try {
-        const result = await this.client.global.event({
-          signal: abortController.signal,
-          onSseError: (error: unknown) => {
-            if ((error as Error)?.name === 'AbortError' || abortController.signal.aborted) {
-              return;
-            }
-            this.notifyGlobalSseError(error);
+    if (raw.type === 'pi_system' && raw.payload.kind === 'status') {
+      return {
+        directory: 'global',
+        payload: {
+          type: 'session.status',
+          properties: {
+            sessionID: raw.sessionId,
+            status: piSessionStatusToUiStatus(raw.payload.status),
           },
-        });
-
-        attempt = 0;
-        this.globalSseIsConnected = true;
-        if (!abortController.signal.aborted) {
-          this.notifyGlobalSseOpen();
-        }
-
-        let yielded = Date.now();
-
-        for await (const event of result.stream) {
-          if (abortController.signal.aborted) {
-            break;
-          }
-
-          const directory = typeof event.directory === 'string' && event.directory.length > 0
-            ? event.directory
-            : 'global';
-          const routed = this.normalizeRoutedSsePayload({
-            directory,
-            payload: event.payload,
-          });
-          if (!routed) {
-            continue;
-          }
-
-          this.emitGlobalSseEvent(routed);
-          if (Date.now() - yielded >= STREAM_YIELD_MS) {
-            yielded = Date.now();
-            await wait(0);
-          }
-        }
-
-        this.globalSseIsConnected = false;
-      } catch (error: unknown) {
-        this.globalSseIsConnected = false;
-        if ((error as Error)?.name === 'AbortError' || abortController.signal.aborted) {
-          return;
-        }
-        console.error('[OpencodeClient] Global SSE stream error (will retry):', error);
-        this.notifyGlobalSseError(error);
-      }
-
-      if (abortController.signal.aborted) {
-        break;
-      }
-
-      attempt += 1;
-      await wait(Math.min(RECONNECT_DELAY_MS * Math.max(attempt, 1), 2000));
+        } as unknown as Event,
+      };
     }
 
-    this.flushGlobalSseQueue();
+    return null;
   }
 
   subscribeToGlobalEvents(
     onEvent: (event: RoutedOpencodeEvent) => void,
     onError?: (error: unknown) => void,
     onOpen?: () => void,
-    options?: { directory?: string | null }
+    _options?: { directory?: string | null }
   ): () => void {
-    const directoryFilter = this.normalizeCandidatePath(options?.directory ?? null);
-    const listener = (event: RoutedOpencodeEvent) => {
-      if (directoryFilter && event.directory !== directoryFilter) {
-        return;
+    void _options;
+    const source = new EventSource(`${this.getPiApiBase()}/events`);
+
+    source.onopen = () => {
+      try {
+        onOpen?.();
+      } catch (error) {
+        console.warn('[OpencodeClient] Global SSE open handler error:', error);
       }
-      onEvent(event);
     };
 
-    this.globalSseListeners.add(listener);
-
-    if (onOpen) {
-      this.globalSseOpenListeners.add(onOpen);
-      if (this.globalSseIsConnected) {
-        setTimeout(() => {
-          if (this.globalSseOpenListeners.has(onOpen)) {
-            try {
-              onOpen();
-            } catch (error) {
-              console.warn('[OpencodeClient] Global SSE open handler error:', error);
-            }
-          }
-        }, 0);
+    source.onmessage = (message) => {
+      if (!message.data) {
+        return;
       }
-    }
+      try {
+        const parsed = JSON.parse(message.data) as PiServerEvent;
+        const routed = this.mapPiEventToRoutedEvent(parsed);
+        if (routed) {
+          onEvent(routed);
+        }
+      } catch (error) {
+        onError?.(error);
+      }
+    };
 
-    if (onError) {
-      this.globalSseErrorListeners.add(onError);
-    }
-
-    this.ensureGlobalSseStarted();
+    source.onerror = (error) => {
+      onError?.(error);
+    };
 
     return () => {
-      this.globalSseListeners.delete(listener);
-      if (onOpen) {
-        this.globalSseOpenListeners.delete(onOpen);
-      }
-      if (onError) {
-        this.globalSseErrorListeners.delete(onError);
-      }
-      this.maybeStopGlobalSse();
+      source.close();
     };
   }
 
-  // Event Streaming using SDK SSE (Server-Sent Events) with AsyncGenerator
   subscribeToEvents(
     onMessage: (event: { type: string; properties?: Record<string, unknown> }) => void,
     onError?: (error: unknown) => void,
     onOpen?: () => void,
-    directoryOverride?: string | null,
-    options?: { scope?: 'global' | 'directory'; key?: string }
+    _directoryOverride?: string | null,
+    _options?: { scope?: 'global' | 'directory'; key?: string }
   ): () => void {
-    const subscriptionKey = options?.key ?? 'default';
-    const scope = options?.scope ?? 'directory';
-    const existingController = this.sseAbortControllers.get(subscriptionKey);
-    if (existingController) {
-      existingController.abort();
-    }
-
-    // Create new AbortController for this subscription
-    const abortController = new AbortController();
-    this.sseAbortControllers.set(subscriptionKey, abortController);
-
-    let lastEventId: string | undefined;
-
-    if (scope === 'global') {
-      let globalUnsub: (() => void) | null = null;
-
-      const attachDirectory = (event: RoutedOpencodeEvent): Event => {
-        if (event.directory === 'global') {
-          return event.payload;
-        }
-
-        const payloadRecord = event.payload as unknown as Record<string, unknown>;
-        const existingProperties =
-          typeof payloadRecord.properties === 'object' && payloadRecord.properties !== null
-            ? (payloadRecord.properties as Record<string, unknown>)
-            : {};
-
-        if (existingProperties.directory === event.directory) {
-          return event.payload;
-        }
-
-        return {
-          ...payloadRecord,
-          properties: {
-            ...existingProperties,
-            directory: event.directory,
-          },
-        } as Event;
-      };
-
-      const cleanup = () => {
-        if (globalUnsub) {
-          try {
-            globalUnsub();
-          } catch {
-            // ignore
-          }
-          globalUnsub = null;
-        }
-
-        if (this.sseAbortControllers.get(subscriptionKey) === abortController) {
-          this.sseAbortControllers.delete(subscriptionKey);
-        }
-      };
-
-      abortController.signal.addEventListener('abort', cleanup, { once: true });
-
-      globalUnsub = this.subscribeToGlobalEvents(
-        (event) => {
-          if (abortController.signal.aborted) {
-            return;
-          }
-          onMessage(attachDirectory(event));
-        },
-        onError
-          ? (error) => {
-              if (!abortController.signal.aborted) {
-                onError(error);
-              }
-            }
-          : undefined,
-        onOpen
-          ? () => {
-              if (!abortController.signal.aborted) {
-                onOpen();
-              }
-            }
-          : undefined,
-      );
-
-      return () => {
-        cleanup();
-        abortController.abort();
-      };
-    }
-
-    const normalizeEventPayload = (payload: unknown): Event | null => {
-      if (!payload || typeof payload !== 'object') {
-        return null;
-      }
-
-      const record = payload as Record<string, unknown>;
-      if (typeof record.type === 'string') {
-        return record as Event;
-      }
-
-      const nestedPayload = record.payload;
-      if (nestedPayload && typeof nestedPayload === 'object') {
-        const nestedRecord = nestedPayload as Record<string, unknown>;
-        if (typeof nestedRecord.type === 'string') {
-          if (typeof record.directory === 'string' && record.directory.length > 0) {
-            const existingProperties =
-              typeof nestedRecord.properties === 'object' && nestedRecord.properties !== null
-                ? (nestedRecord.properties as Record<string, unknown>)
-                : null;
-            const properties = {
-              ...(existingProperties ?? {}),
-              directory: record.directory,
-            };
-            return { ...nestedRecord, properties } as Event;
-          }
-          return nestedRecord as Event;
-        }
-      }
-
-      return null;
-    };
-
-
-    console.log('[OpencodeClient] Starting SSE subscription...');
-
-    // Start async generator in background with reconnect on failure
-    (async () => {
-      const resolvedDirectory =
-        typeof directoryOverride === 'string' && directoryOverride.trim().length > 0
-          ? directoryOverride.trim()
-          : this.currentDirectory;
-
-      console.log('[OpencodeClient] Connecting to SSE with directory:', resolvedDirectory ?? 'default');
-
-      const connect = async (attempt: number): Promise<void> => {
-        try {
-          const subscribeParameters = resolvedDirectory ? { directory: resolvedDirectory } : undefined;
-          const subscribeOptions: {
-            signal: AbortSignal;
-            sseDefaultRetryDelay: number;
-            sseMaxRetryDelay: number;
-            onSseError?: (error: unknown) => void;
-            onSseEvent: (event: StreamEvent<unknown>) => void;
-            headers?: Record<string, string>;
-          } = {
-            signal: abortController.signal,
-            sseDefaultRetryDelay: 3000,
-            sseMaxRetryDelay: 30000,
-            onSseError: (error: unknown) => {
-              if (error instanceof Error && error.name === 'AbortError') {
-                return;
-              }
-              console.error('[OpencodeClient] SSE error:', error);
-              if (onError && !abortController.signal.aborted) {
-                onError(error);
-              }
-            },
-            onSseEvent: (event: StreamEvent<unknown>) => {
-              if (abortController.signal.aborted) return;
-              if (event.id && typeof event.id === 'string') {
-                lastEventId = event.id;
-              }
-              const payload = event.data;
-              const normalized = normalizeEventPayload(payload);
-              if (normalized) {
-                onMessage(normalized);
-              }
-            },
-          };
-
-          if (lastEventId) {
-            subscribeOptions.headers = { ...(subscribeOptions.headers || {}), 'Last-Event-ID': lastEventId };
-          }
-
-          const result = await this.client.event.subscribe(subscribeParameters, subscribeOptions);
-
-          if (onOpen && !abortController.signal.aborted) {
-            console.log('[OpencodeClient] SSE connection opened');
-            onOpen();
-          }
-
-          for await (const _ of result.stream) {
-            void _;
-            if (abortController.signal.aborted) {
-              console.log('[OpencodeClient] SSE stream aborted');
-              break;
-            }
-          }
-        } catch (error: unknown) {
-          if ((error as Error)?.name === 'AbortError' || abortController.signal.aborted) {
-            console.log('[OpencodeClient] SSE stream aborted normally');
-            return;
-          }
-          console.error('[OpencodeClient] SSE stream error (will retry):', error);
-          if (onError) {
-            onError(error);
-          }
-          const delay = Math.min(3000 * Math.pow(2, attempt), 30000);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          if (!abortController.signal.aborted) {
-            await connect(attempt + 1);
-          }
-          return;
-        }
-
-        if (!abortController.signal.aborted) {
-          const delay = Math.min(3000 * Math.pow(2, attempt), 30000);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          await connect(attempt + 1);
-        }
-      };
-
-      try {
-        await connect(0);
-      } finally {
-        console.log('[OpencodeClient] SSE subscription cleanup');
-        if (this.sseAbortControllers.get(subscriptionKey) === abortController) {
-          this.sseAbortControllers.delete(subscriptionKey);
-        }
-      }
-    })();
-
-    // Return cleanup function
-    return () => {
-      if (this.sseAbortControllers.get(subscriptionKey) === abortController) {
-        this.sseAbortControllers.delete(subscriptionKey);
-      }
-      abortController.abort();
-    };
-
+    void _directoryOverride;
+    void _options;
+    return this.subscribeToGlobalEvents(
+      (event) => {
+        const payload = event.payload as unknown as Record<string, unknown>;
+        onMessage(payload as { type: string; properties?: Record<string, unknown> });
+      },
+      onError,
+      onOpen,
+    );
   }
 
   // File Operations
@@ -1963,33 +1323,13 @@ class OpencodeService {
     }
   }
 
-  // Health Check - using /health endpoint for detailed status
+  // Health Check - Pi runtime is exposed through the system info endpoint.
   async checkHealth(): Promise<boolean> {
     try {
-      // Health endpoint is at root, not under /api
-      let healthUrl: string;
-      const normalizedBase = this.baseUrl.endsWith('/') ? this.baseUrl.replace(/\/+$/, '') : this.baseUrl;
-      if (normalizedBase === '/api') {
-        healthUrl = '/health';
-      } else if (normalizedBase.endsWith('/api')) {
-        // Desktop: http://127.0.0.1:PORT/api -> http://127.0.0.1:PORT/health
-        healthUrl = `${normalizedBase.slice(0, -4)}/health`;
-      } else {
-        healthUrl = `${normalizedBase}/health`;
-      }
-      const response = await fetch(healthUrl);
-      if (!response.ok) {
-        return false;
-      }
-
-      const healthData = await response.json();
-
-      // Check if the upstream API is ready (not just OpenChamber server)
-      if (healthData.isOpenCodeReady === false) {
-        return false;
-      }
-
-      return true;
+      const response = await fetch(`${this.baseUrl.replace(/\/+$/, '')}/system/info`, {
+        headers: { Accept: 'application/json' },
+      });
+      return response.ok;
     } catch {
       return false;
     }

@@ -23,8 +23,6 @@ import { useGitHubPrBackgroundTracking } from '@/hooks/useGitHubPrBackgroundTrac
 import { GitPollingProvider } from '@/hooks/useGitPolling';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { hasModifier } from '@/lib/utils';
-import { isDesktopLocalOriginActive, isDesktopShell } from '@/lib/desktop';
-import { OnboardingScreen } from '@/components/onboarding/OnboardingScreen';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { opencodeClient } from '@/lib/opencode/client';
@@ -39,10 +37,6 @@ import { useUIStore } from '@/stores/useUIStore';
 import { useGitHubAuthStore } from '@/stores/useGitHubAuthStore';
 import type { RuntimeAPIs } from '@/lib/api/types';
 import { TooltipProvider } from '@/components/ui/tooltip';
-
-const CLI_MISSING_ERROR_REGEX =
-  /ENOENT|spawn\s+opencode|Unable\s+to\s+locate\s+the\s+opencode\s+CLI|OpenCode\s+CLI\s+not\s+found|opencode(\.exe)?\s+not\s+found|opencode(\.exe)?:\s*command\s+not\s+found|not\s+recognized\s+as\s+an\s+internal\s+or\s+external\s+command|env:\s*['"]?(node|bun)['"]?:\s*No\s+such\s+file\s+or\s+directory|(node|bun):\s*No\s+such\s+file\s+or\s+directory/i;
-const CLI_ONBOARDING_HEALTH_POLL_MS = 1500;
 
 const AboutDialogWrapper: React.FC = () => {
   const { isAboutDialogOpen, setAboutDialogOpen } = useUIStore();
@@ -111,7 +105,6 @@ function App({ apis }: AppProps) {
   const { uiFont, monoFont } = useFontPreferences();
   const refreshGitHubAuthStatus = useGitHubAuthStore((state) => state.refreshStatus);
   const [isVSCodeRuntime, setIsVSCodeRuntime] = React.useState<boolean>(() => apis.runtime.isVSCode);
-  const [showCliOnboarding, setShowCliOnboarding] = React.useState(false);
   const [isEmbeddedVisible, setIsEmbeddedVisible] = React.useState(true);
   const isDesktopRuntime = React.useMemo(() => isDesktopShell(), []);
   const appReadyDispatchedRef = React.useRef(false);
@@ -417,63 +410,6 @@ function App({ apis }: AppProps) {
       setTimeout(() => clearError(), 5000);
     }
   }, [clearError, embeddedSessionChat, error]);
-
-  React.useEffect(() => {
-    if (embeddedSessionChat) {
-      return;
-    }
-
-    if (!isDesktopShell() || !isDesktopLocalOriginActive()) {
-      return;
-    }
-
-    let cancelled = false;
-    const run = async () => {
-      const res = await fetch('/health', { method: 'GET' }).catch(() => null);
-      if (!res || !res.ok || cancelled) return;
-      const data = (await res.json().catch(() => null)) as null | {
-        openCodeRunning?: unknown;
-        isOpenCodeReady?: unknown;
-        opencodeBinaryResolved?: unknown;
-        lastOpenCodeError?: unknown;
-      };
-      if (!data || cancelled) return;
-      const openCodeRunning = data.openCodeRunning === true;
-      const isOpenCodeReady = data.isOpenCodeReady === true;
-      const resolvedBinary = typeof data.opencodeBinaryResolved === 'string' ? data.opencodeBinaryResolved.trim() : '';
-      const hasResolvedBinary = resolvedBinary.length > 0;
-      const err = typeof data.lastOpenCodeError === 'string' ? data.lastOpenCodeError : '';
-      const cliMissing =
-        !openCodeRunning &&
-        (CLI_MISSING_ERROR_REGEX.test(err) || (!hasResolvedBinary && !isOpenCodeReady));
-      setShowCliOnboarding(cliMissing);
-    };
-
-    void run();
-    const interval = window.setInterval(() => {
-      void run();
-    }, CLI_ONBOARDING_HEALTH_POLL_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [embeddedSessionChat]);
-
-  const handleCliAvailable = React.useCallback(() => {
-    setShowCliOnboarding(false);
-    window.location.reload();
-  }, []);
-
-  if (showCliOnboarding) {
-    return (
-      <ErrorBoundary>
-        <div className="h-full text-foreground bg-transparent">
-          <OnboardingScreen onCliAvailable={handleCliAvailable} />
-        </div>
-      </ErrorBoundary>
-    );
-  }
 
   if (embeddedSessionChat) {
     return (

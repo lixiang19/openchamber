@@ -3,6 +3,8 @@ import { create } from "zustand";
 import { devtools, persist, createJSONStorage } from "zustand/middleware";
 import type { Message, Part } from "@opencode-ai/sdk/v2";
 import { opencodeClient } from "@/lib/opencode/client";
+import { piClient } from '@/lib/pi/client';
+import { toUiMessageEntries } from '@/lib/pi/ui-mappers';
 import { isExecutionForkMetaText } from "@/lib/messages/executionMeta";
 import { isLikelyProviderAuthFailure, PROVIDER_AUTH_FAILURE_MESSAGE } from "@/lib/messages/providerAuthError";
 import type { SessionMemoryState, SessionHistoryMeta, MessageStreamLifecycle, AttachedFile } from "./types/sessionTypes";
@@ -777,33 +779,91 @@ export const useMessageStore = create<MessageStore>()(
                 pendingUserMessageMetaBySession: new Map(),
 
                 loadMessages: async (sessionId: string, limit?: number) => {
-                        const existingRequest = loadMessagesInFlightBySession.get(sessionId);
-                        if (existingRequest) {
-                            return existingRequest;
+                        const previousMemoryState = get().sessionMemoryState.get(sessionId);
+                        const previousHistoryMeta = get().sessionHistoryMeta.get(sessionId);
+                        if (previousHistoryMeta?.loading) {
+                            return;
                         }
 
-                        const requestSeq = (loadMessagesRequestSeqBySession.get(sessionId) ?? 0) + 1;
-                        loadMessagesRequestSeqBySession.set(sessionId, requestSeq);
-                        const isLatestRequest = () => loadMessagesRequestSeqBySession.get(sessionId) === requestSeq;
+                        set((snapshot) => {
+                            const nextHistoryMeta = new Map(snapshot.sessionHistoryMeta);
+                            nextHistoryMeta.set(sessionId, {
+                                limit: typeof limit === 'number' && Number.isFinite(limit) ? limit : Number.MAX_SAFE_INTEGER,
+                                complete: false,
+                                loading: true,
+                            });
+                            return { sessionHistoryMeta: nextHistoryMeta };
+                        });
 
-                        const task = (async () => {
-                            const memLimits = getMemoryLimits();
-                            const noLimit = limit === Infinity;
-                            const previousMemoryState = get().sessionMemoryState.get(sessionId);
-                            const previousHistoryMeta = get().sessionHistoryMeta.get(sessionId);
-                            if (previousHistoryMeta?.loading) {
-                                return;
-                            }
+                        try {
+                            const session = await piClient.getSession(sessionId);
+                            const allMessages = toUiMessageEntries(session);
+                            const targetLimit = typeof limit === 'number' && Number.isFinite(limit) ? limit : allMessages.length;
+                            const messagesToKeep = targetLimit > 0 ? allMessages.slice(-targetLimit) : allMessages;
+                            const normalizedMessages = messagesToKeep.map((message) => ({
+                                ...message,
+                                info: normalizeMessageInfoForProjection(message.info as Message) as any,
+                                parts: (Array.isArray(message.parts) ? message.parts : []).map((part) => {
+                                    if (part?.type === 'text') {
+                                        const raw = (part as any).text ?? (part as any).content ?? '';
+                                        if (isExecutionForkMetaText(raw)) {
+                                            return { ...part, synthetic: true } as Part;
+                                        }
+                                    }
+                                    return part;
+                                }),
+                            }));
 
-                            // OpenCode parity: history window is driven by meta.limit.
-                            const baseLimit = previousHistoryMeta?.limit ?? memLimits.HISTORICAL_MESSAGES;
-                            const requestedLimit =
-                                typeof limit === 'number' && Number.isFinite(limit)
-                                    ? limit
-                                    : baseLimit;
-                            // Never proactively shrink loaded history window on resync.
-                            const targetLimit = Math.max(baseLimit, requestedLimit);
+                            const mergedMessages = dedupeMessagesById(normalizedMessages);
+                            const loadedTurnCount = countLoadedTurns(mergedMessages);
 
+                            set((state) => {
+                                const newMessages = new Map(state.messages);
+                                newMessages.set(sessionId, mergedMessages);
+
+                                const newMemoryState = new Map(state.sessionMemoryState);
+                                newMemoryState.set(sessionId, {
+                                    ...previousMemoryState,
+                                    viewportAnchor: Math.max(mergedMessages.length - 1, 0),
+                                    isStreaming: session.isStreaming,
+                                    lastAccessedAt: Date.now(),
+                                    backgroundMessageCount: 0,
+                                    totalAvailableMessages: allMessages.length,
+                                    loadedTurnCount,
+                                    hasMoreAbove: mergedMessages.length < allMessages.length,
+                                    hasMoreTurnsAbove: mergedMessages.length < allMessages.length,
+                                    historyLoading: false,
+                                    historyComplete: mergedMessages.length >= allMessages.length,
+                                    historyLimit: targetLimit,
+                                    streamingCooldownUntil: undefined,
+                                });
+
+                                const newHistoryMeta = new Map(state.sessionHistoryMeta);
+                                newHistoryMeta.set(sessionId, {
+                                    limit: targetLimit,
+                                    complete: mergedMessages.length >= allMessages.length,
+                                    loading: false,
+                                });
+
+                                const nextStreamingIds = new Map(state.streamingMessageIds);
+                                const activeAssistant = session.isStreaming
+                                    ? [...mergedMessages].reverse().find((entry) => entry.info.role === 'assistant')
+                                    : null;
+                                if (activeAssistant?.info?.id) {
+                                    nextStreamingIds.set(sessionId, activeAssistant.info.id);
+                                } else {
+                                    nextStreamingIds.delete(sessionId);
+                                }
+
+                                return {
+                                    messages: newMessages,
+                                    sessionMemoryState: newMemoryState,
+                                    sessionHistoryMeta: newHistoryMeta,
+                                    streamingMessageIds: nextStreamingIds,
+                                    isSyncing: false,
+                                };
+                            });
+                        } finally {
                             set((snapshot) => {
                                 if (!isLatestRequest()) {
                                     return snapshot;
@@ -1184,26 +1244,25 @@ export const useMessageStore = create<MessageStore>()(
                                     })),
                                 }));
 
-                                const apiClient = opencodeClient.getApiClient();
                                 const directory = opencodeClient.getDirectory();
 
                                 if (shellPayload || slashShellPayload) {
-                                    await apiClient.session.shell({
-                                        sessionID: sessionId,
-                                        ...(directory ? { directory } : {}),
-                                        ...(agent ? { agent } : {}),
-                                        model: {
-                                            providerID,
-                                            modelID,
-                                        },
-                                        command: (shellPayload ?? slashShellPayload)!.command,
-                                    });
-                                } else if (commandPayload && commandPayload.command.toLowerCase() === 'compact') {
-                                    await apiClient.session.summarize({
-                                        sessionID: sessionId,
-                                        ...(directory ? { directory } : {}),
+                                    await opencodeClient.sendMessage({
+                                        id: sessionId,
                                         providerID,
                                         modelID,
+                                        text: `/shell ${(shellPayload ?? slashShellPayload)!.command}`,
+                                        agent,
+                                        variant,
+                                    });
+                                } else if (commandPayload && commandPayload.command.toLowerCase() === 'compact') {
+                                    await opencodeClient.sendMessage({
+                                        id: sessionId,
+                                        providerID,
+                                        modelID,
+                                        text: '/compact',
+                                        agent,
+                                        variant,
                                     });
                                 } else if (commandPayload) {
                                     await opencodeClient.sendCommand({

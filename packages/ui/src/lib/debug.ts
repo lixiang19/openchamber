@@ -262,7 +262,7 @@ export const debugUtils = {
     settingsInfo = await safeFetchJson('/api/config/settings');
 
     try {
-      const resp = await fetch('/api/health');
+      const resp = await fetch('/api/system/info');
       const contentType = resp.headers.get('content-type') || '';
       const body = await safeText(resp);
       const isJson = contentType.toLowerCase().includes('application/json');
@@ -282,12 +282,10 @@ export const debugUtils = {
         ok: resp.ok,
         contentType,
         type: isJson ? 'json' : 'html',
-        openCodePort: parsed?.openCodePort ?? null,
-        openCodeRunning: parsed?.openCodeRunning ?? null,
-        openCodeSecureConnection: parsed?.openCodeSecureConnection ?? null,
-        openCodeAuthSource: parsed?.openCodeAuthSource ?? null,
-        isOpenCodeReady: parsed?.isOpenCodeReady ?? null,
-        lastOpenCodeError: parsed?.lastOpenCodeError ?? null,
+        runtime: parsed?.runtime ?? null,
+        openauroraVersion: parsed?.openauroraVersion ?? null,
+        pid: parsed?.pid ?? null,
+        startedAt: parsed?.startedAt ?? null,
         preview: body ? body.slice(0, 120) : null,
       };
     } catch (error) {
