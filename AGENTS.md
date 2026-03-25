@@ -123,52 +123,9 @@
 
 - 文档/功能spec目录不需要时刻更新，只有当用户明确要求更新时才进行更新
 
-# Ralphi 工作约定
-
-## 项目概览
-
-- 本仓库是 OpenAurora 的 Bun monorepo，包含 Web/PWA、共享 UI、桌面端、 VS Code 扩展（vs废弃不要了）。
-- 运行时入口分散在 `packages/web`、`packages/ui`、`packages/desktop`、`packages/vscode`，文档与方案沉淀在 `文档/`。
-
-## 快速命令
-
-日常代码变更后优先执行：
-
-```bash
-bun run lint
-bun run type-check
-```
-
-仅在大型改动、跨包重构或发版前执行：
-
-```bash
-bun run build
-bun run release:prepare
-```
-
-## 质量检查要求
-
-- 提交前必须通过 `bun run lint` 和 `bun run type-check`。
-- 不要把 `build` 当作日常验证手段，只有大型改动或发版前才运行。
-- 当前仓库没有稳定的仓库级 `test` 命令，发布验证依赖 `release:test` 系列脚本。
-
-## 关键约定
-
-- 保持严格 TypeScript，现有主包 `tsconfig` 均开启 `strict: true`。
-- 优先复用 `packages/ui` 中的共享实现，通过 workspace 包和路径别名接入，不要复制逻辑。
-- `packages/web` 负责 Web 运行时封装，`packages/ui` 负责共享界面层，`packages/desktop` 与 `packages/vscode` 只处理各自宿主集成。
-- 修改前优先阅读 `文档/` 下的中文方案文档；涉及模块职责、接口契约、主流程、配置边界或数据结构变化时，再更新 `文档/模块梳理/`。
-
-## 目录结构
-
-- `packages/web`：Web/PWA 入口、服务端封装、CLI 分发。
-- `packages/ui`：共享 React UI、状态管理、运行时 API 抽象。
-- `packages/desktop`：Tauri/macOS 桌面宿主与 sidecar 构建。
-
-- `文档`：设计方案、功能开发记录、测试与模块梳理文档。
-
-## 测试模式
-
-- 当前没有统一的单元测试框架落地到根脚本，不能假设存在 `bun run test`。
-- 日常迭代以 `lint` 和 `type-check` 为主要质量门禁。
-- 需要发版级验证时，再按场景执行 `bun run release:test`、`bun run release:test:intel` 或 `bun run release:test:arm`。
+# 项目现状
+- 项目处于底层opencode转向pi的节点，非常混乱
+- opencode的功能不要兼容和保留
+- 界面ui需要保留，和opencode无关的功能全部保留
+- pi只能使用官方api实现，无需兼容插件
+- 多使用mcp grep_app、exa、或者查看pi源码来进行学习如何制作

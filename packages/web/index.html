@@ -24,10 +24,10 @@
     <!-- Web app manifest (endpoint-first with data URL fallback) -->
     <script>
       const baseUrl = location.origin;
-      const defaultAppName = 'OpenChamber - AI Coding Assistant';
-      const defaultShortName = 'OpenChamber';
-      const pwaNameStorageKey = 'openchamber.pwaName';
-      const pwaRecentSessionsStorageKey = 'openchamber.pwaRecentSessions';
+      const defaultAppName = 'OpenAurora - AI Coding Assistant';
+      const defaultShortName = 'OpenAurora';
+      const pwaNameStorageKey = 'openaurora.pwaName';
+      const pwaRecentSessionsStorageKey = 'openaurora.pwaRecentSessions';
 
       const normalizePwaName = (value, fallback) => {
         if (typeof value !== 'string') {
@@ -163,7 +163,7 @@
         return {
           name: appName,
           short_name: shortName,
-          description: 'Web interface companion for OpenCode AI coding agent',
+          description: 'Pi-native coding workspace and chat interface',
           id: `${baseUrl}/`,
           start_url: `${baseUrl}/`,
           scope: `${baseUrl}/`,
@@ -281,13 +281,13 @@
       const initialInstallNameOverride = getQueryInstallNameOverride();
       void updateManifest(initialInstallNameOverride);
 
-      window.__OPENCHAMBER_GET_PWA_INSTALL_NAME__ = () => getStoredInstallName();
-      window.__OPENCHAMBER_SET_PWA_INSTALL_NAME__ = (value) => {
+      window.__OPENAURORA_GET_PWA_INSTALL_NAME__ = () => getStoredInstallName();
+      window.__OPENAURORA_SET_PWA_INSTALL_NAME__ = (value) => {
         const resolvedName = setStoredInstallName(value);
         void updateManifest(resolvedName);
         return resolvedName;
       };
-      window.__OPENCHAMBER_UPDATE_PWA_MANIFEST__ = () => {
+      window.__OPENAURORA_UPDATE_PWA_MANIFEST__ = () => {
         refreshManifestFromStorage();
       };
     </script>
@@ -345,12 +345,12 @@
     <!-- iOS Safari PWA styling -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="OpenChamber" />
+    <meta name="apple-mobile-web-app-title" content="OpenAurora" />
 
-    <title>OpenChamber - AI Coding Assistant</title>
-    <meta name="description" content="Web interface companion for OpenCode AI coding agent" />
-    <meta name="application-name" content="OpenChamber" />
-    <meta name="apple-mobile-web-app-title" content="OpenChamber" />
+    <title>OpenAurora - Pi Native Coding Assistant</title>
+    <meta name="description" content="Pi-native coding workspace and chat interface" />
+    <meta name="application-name" content="OpenAurora" />
+    <meta name="apple-mobile-web-app-title" content="OpenAurora" />
 
     <!-- Inline CSS for loading screen and Nerd Fonts (before Tailwind loads) -->
     <style>
@@ -445,7 +445,7 @@
       <!-- Loading fallback while React initializes -->
       <div id="initial-loading">
         <div style="display: flex; align-items: center; justify-content: center;">
-          <svg width="120" height="120" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OpenChamber loading icon">
+          <svg width="120" height="120" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OpenAurora loading icon">
             <!-- Isometric cube: edge=48, centerY=50 -->
             <!-- Points: top(50,2), left(8.432,26), right(91.568,26), center(50,50), bottomLeft(8.432,74), bottomRight(91.568,74), bottom(50,98) -->
 

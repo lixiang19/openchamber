@@ -11,6 +11,18 @@ import crypto from 'crypto';
 import { createUiAuth } from './lib/opencode/ui-auth.js';
 import { createTunnelAuth } from './lib/opencode/tunnel-auth.js';
 import {
+  installBundledOpencodeConfig,
+  installOpencodeConfigFromDirectory,
+  installOpencodeConfigFromUpload,
+} from './lib/opencode/install.js';
+import {
+  createBundledProjectFromTemplate,
+  DEFAULT_STARTER_PROJECT_NAME,
+  getDefaultStarterProjectPath,
+  normalizeProjectTemplateName,
+  STARTER_PROJECT_TEMPLATE_VERSION,
+} from './lib/projects/template.js';
+import {
   printTunnelWarning,
 } from './lib/cloudflare-tunnel.js';
 import { createTunnelService } from './lib/tunnels/index.js';
@@ -41,18 +53,18 @@ import {
 } from './lib/terminal/index.js';
 import webPush from 'web-push';
 import {
-  AGENT_RUNTIME_PI,
-  createPiRuntime,
-  resolveAgentRuntimeMode,
+  buildPromptTextFromParts,
+  normalizePiMessage,
   translateOpenCodeMessagesToSseEvents,
-  translatePiEnvelopeToSseEvents,
+  translatePiMessagesToOpenCodeMessages,
 } from './lib/pi/index.js';
+import { createPiSdkHost } from './lib/pi/sdk-host.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const DEFAULT_PORT = 3000;
-const DESKTOP_NOTIFY_PREFIX = '[OpenChamberDesktopNotify] ';
+const DESKTOP_NOTIFY_PREFIX = '[OpenAuroraDesktopNotify] ';
 const uiNotificationClients = new Set();
 const HEALTH_CHECK_INTERVAL = 15000;
 const SHUTDOWN_TIMEOUT = 10000;
@@ -61,19 +73,15 @@ const MODELS_METADATA_CACHE_TTL = 5 * 60 * 1000;
 const CLIENT_RELOAD_DELAY_MS = 800;
 const OPEN_CODE_READY_GRACE_MS = 12000;
 const LONG_REQUEST_TIMEOUT_MS = 4 * 60 * 1000;
-const AGENT_RUNTIME_MODE = resolveAgentRuntimeMode(
-  process.env.OPENAURORA_AGENT_RUNTIME || process.env.OPENCHAMBER_AGENT_RUNTIME || ''
-);
-const PI_RUNTIME = createPiRuntime({
-  cliPath: process.env.OPENAURORA_PI_BIN || process.env.PI_CLI_BIN,
-});
+const PI_SDK_HOST = createPiSdkHost();
+const OPENCODE_LEGACY_ENABLED = false;
 const TUNNEL_BOOTSTRAP_TTL_DEFAULT_MS = 30 * 60 * 1000;
 const TUNNEL_BOOTSTRAP_TTL_MIN_MS = 60 * 1000;
 const TUNNEL_BOOTSTRAP_TTL_MAX_MS = 24 * 60 * 60 * 1000;
 const TUNNEL_SESSION_TTL_DEFAULT_MS = 8 * 60 * 60 * 1000;
 const TUNNEL_SESSION_TTL_MIN_MS = 5 * 60 * 1000;
 const TUNNEL_SESSION_TTL_MAX_MS = 24 * 60 * 60 * 1000;
-const OPENCHAMBER_VERSION = (() => {
+const OPENAURORA_VERSION = (() => {
   try {
     const packagePath = path.resolve(__dirname, '..', 'package.json');
     const raw = fs.readFileSync(packagePath, 'utf8');
@@ -124,103 +132,8 @@ const normalizeDirectoryPath = (value) => {
   return trimmed;
 };
 
-const normalizePathForPersistence = (value) => {
-  if (typeof value !== 'string') {
-    return value;
-  }
-
-  const normalized = normalizeDirectoryPath(value);
-  if (typeof normalized !== 'string') {
-    return normalized;
-  }
-
-  const trimmed = normalized.trim();
-  if (!trimmed) {
-    return trimmed;
-  }
-
-  if (process.platform !== 'win32') {
-    return trimmed;
-  }
-
-  return trimmed.replace(/\//g, '\\');
-};
-
-const areStringArraysEqual = (a, b) => {
-  if (!Array.isArray(a) || !Array.isArray(b)) {
-    return false;
-  }
-  if (a.length !== b.length) {
-    return false;
-  }
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i] !== b[i]) {
-      return false;
-    }
-  }
-  return true;
-};
-
-const normalizeSettingsPaths = (input) => {
-  const settings = input && typeof input === 'object' ? input : {};
-  let next = settings;
-  let changed = false;
-
-  const ensureNext = () => {
-    if (next === settings) {
-      next = { ...settings };
-    }
-  };
-
-  const normalizePathField = (key) => {
-    if (typeof settings[key] !== 'string' || settings[key].length === 0) {
-      return;
-    }
-    const normalized = normalizePathForPersistence(settings[key]);
-    if (normalized !== settings[key]) {
-      ensureNext();
-      next[key] = normalized;
-      changed = true;
-    }
-  };
-
-  const normalizePathArrayField = (key) => {
-    if (!Array.isArray(settings[key])) {
-      return;
-    }
-
-    const normalized = normalizeStringArray(
-      settings[key]
-        .map((entry) => (typeof entry === 'string' ? normalizePathForPersistence(entry) : entry))
-        .filter((entry) => typeof entry === 'string' && entry.length > 0)
-    );
-
-    if (!areStringArraysEqual(normalized, settings[key])) {
-      ensureNext();
-      next[key] = normalized;
-      changed = true;
-    }
-  };
-
-  normalizePathField('lastDirectory');
-  normalizePathField('homeDirectory');
-  normalizePathArrayField('approvedDirectories');
-  normalizePathArrayField('pinnedDirectories');
-
-  if (Array.isArray(settings.projects)) {
-    const normalizedProjects = sanitizeProjects(settings.projects) || [];
-    if (JSON.stringify(normalizedProjects) !== JSON.stringify(settings.projects)) {
-      ensureNext();
-      next.projects = normalizedProjects;
-      changed = true;
-    }
-  }
-
-  return { settings: next, changed };
-};
-
-const OPENCHAMBER_USER_CONFIG_ROOT = path.join(os.homedir(), '.config', 'openchamber');
-const OPENCHAMBER_USER_THEMES_DIR = path.join(OPENCHAMBER_USER_CONFIG_ROOT, 'themes');
+const OPENAURORA_USER_CONFIG_ROOT = path.join(os.homedir(), '.config', 'openaurora');
+const OPENAURORA_USER_THEMES_DIR = path.join(OPENAURORA_USER_CONFIG_ROOT, 'themes');
 
 const MAX_THEME_JSON_BYTES = 512 * 1024;
 
@@ -418,7 +331,7 @@ const normalizeThemeJson = (raw) => {
 
 const readCustomThemesFromDisk = async () => {
   try {
-    const entries = await fsPromises.readdir(OPENCHAMBER_USER_THEMES_DIR, { withFileTypes: true });
+    const entries = await fsPromises.readdir(OPENAURORA_USER_THEMES_DIR, { withFileTypes: true });
     const themes = [];
     const seen = new Set();
 
@@ -426,7 +339,7 @@ const readCustomThemesFromDisk = async () => {
       if (!entry.isFile()) continue;
       if (!entry.name.toLowerCase().endsWith('.json')) continue;
 
-      const filePath = path.join(OPENCHAMBER_USER_THEMES_DIR, entry.name);
+      const filePath = path.join(OPENAURORA_USER_THEMES_DIR, entry.name);
       try {
         const stat = await fsPromises.stat(filePath);
         if (!stat.isFile()) continue;
@@ -489,10 +402,10 @@ const resolveWorkspacePath = (targetPath, baseDirectory) => {
     return { ok: true, base: resolvedBase, resolved };
   }
 
-  // Allow writing OpenChamber per-project config under ~/.config/openchamber.
+  // Allow writing OpenAurora per-project config under ~/.config/openaurora.
   // LEGACY_PROJECT_CONFIG: migration target root; allowed outside workspace.
-  if (isPathWithinRoot(resolved, OPENCHAMBER_USER_CONFIG_ROOT)) {
-    return { ok: true, base: path.resolve(OPENCHAMBER_USER_CONFIG_ROOT), resolved };
+  if (isPathWithinRoot(resolved, OPENAURORA_USER_CONFIG_ROOT)) {
+    return { ok: true, base: path.resolve(OPENAURORA_USER_CONFIG_ROOT), resolved };
   }
 
   return { ok: false, error: 'Path is outside of active workspace' };
@@ -670,7 +583,7 @@ const searchFilesystemFiles = async (rootPath, options) => {
           }
 
           const result = await new Promise((resolve) => {
-            const child = spawn(resolveGitBinaryForSpawn(), ['check-ignore', '--', ...pathsToCheck], {
+            const child = spawn('git', ['check-ignore', '--', ...pathsToCheck], {
               cwd: dir,
               windowsHide: true,
               stdio: ['ignore', 'pipe', 'pipe'],
@@ -1244,11 +1157,7 @@ const buildTemplateVariables = async (payload, sessionId) => {
   if (worktreeDir) {
     try {
       const { simpleGit } = await import('simple-git');
-      const git = simpleGit({
-        baseDir: worktreeDir,
-        spawnOptions: { windowsHide: true },
-        binary: resolveGitBinaryForSpawn(),
-      });
+      const git = simpleGit({ baseDir: worktreeDir, spawnOptions: { windowsHide: true } });
       branch = await Promise.race([
         git.revparse(['--abbrev-ref', 'HEAD']),
         new Promise((_, reject) => setTimeout(() => reject(new Error('git timeout')), 3000)),
@@ -1270,15 +1179,15 @@ const buildTemplateVariables = async (payload, sessionId) => {
   };
 };
 
-const OPENCHAMBER_DATA_DIR = process.env.OPENCHAMBER_DATA_DIR
-  ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-  : path.join(os.homedir(), '.config', 'openchamber');
-const SETTINGS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'settings.json');
-const PUSH_SUBSCRIPTIONS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'push-subscriptions.json');
-const CLOUDFLARE_MANAGED_REMOTE_TUNNELS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'cloudflare-managed-remote-tunnels.json');
-const CLOUDFLARE_LEGACY_NAMED_TUNNELS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'cloudflare-named-tunnels.json');
+const OPENAURORA_DATA_DIR = process.env.OPENAURORA_DATA_DIR
+  ? path.resolve(process.env.OPENAURORA_DATA_DIR)
+  : path.join(os.homedir(), '.config', 'openaurora');
+const SETTINGS_FILE_PATH = path.join(OPENAURORA_DATA_DIR, 'settings.json');
+const PUSH_SUBSCRIPTIONS_FILE_PATH = path.join(OPENAURORA_DATA_DIR, 'push-subscriptions.json');
+const CLOUDFLARE_MANAGED_REMOTE_TUNNELS_FILE_PATH = path.join(OPENAURORA_DATA_DIR, 'cloudflare-managed-remote-tunnels.json');
+const CLOUDFLARE_LEGACY_NAMED_TUNNELS_FILE_PATH = path.join(OPENAURORA_DATA_DIR, 'cloudflare-named-tunnels.json');
 const CLOUDFLARE_MANAGED_REMOTE_TUNNELS_VERSION = 1;
-const PROJECT_ICONS_DIR_PATH = path.join(OPENCHAMBER_DATA_DIR, 'project-icons');
+const PROJECT_ICONS_DIR_PATH = path.join(OPENAURORA_DATA_DIR, 'project-icons');
 const PROJECT_ICON_MIME_TO_EXTENSION = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -1291,6 +1200,7 @@ const PROJECT_ICON_EXTENSION_TO_MIME = Object.fromEntries(
 );
 const PROJECT_ICON_SUPPORTED_MIMES = new Set(Object.keys(PROJECT_ICON_MIME_TO_EXTENSION));
 const PROJECT_ICON_MAX_BYTES = 5 * 1024 * 1024;
+const STARTER_PROJECT_BOOTSTRAP_KEY = 'starterProjectBootstrap';
 const PROJECT_ICON_THEME_COLORS = {
   light: '#111111',
   dark: '#f5f5f5',
@@ -1422,7 +1332,7 @@ const applyProjectIconSvgTheme = (svgMarkup, themeVariant, iconColor) => {
     return svgMarkup;
   }
 
-  const overrideStyle = `<style data-openchamber-theme-icon="1">:root{color:${color}!important;}</style>`;
+  const overrideStyle = `<style data-openaurora-theme-icon="1">:root{color:${color}!important;}</style>`;
   return `${svgMarkup.slice(0, svgOpenTagEndIndex + 1)}${overrideStyle}${svgMarkup.slice(svgOpenTagEndIndex + 1)}`;
 };
 
@@ -1465,6 +1375,7 @@ const writeSettingsToDisk = async (settings) => {
 const PUSH_SUBSCRIPTIONS_VERSION = 1;
 let persistPushSubscriptionsLock = Promise.resolve();
 let persistManagedRemoteTunnelConfigLock = Promise.resolve();
+let starterProjectBootstrapLock = Promise.resolve();
 
 const readPushSubscriptionsFromDisk = async () => {
   try {
@@ -1705,6 +1616,17 @@ const resolveDirectoryCandidate = (value) => {
   return path.resolve(normalized);
 };
 
+const isExplicitDirectoryInput = (value) => {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return trimmed.startsWith('~') || path.isAbsolute(trimmed) || /^[A-Za-z]:[\\/]/.test(trimmed);
+};
+
 const validateDirectoryPath = async (candidate) => {
   const resolved = resolveDirectoryCandidate(candidate);
   if (!resolved) {
@@ -1914,8 +1836,7 @@ const sanitizeProjects = (input) => {
     const candidate = entry;
     const id = typeof candidate.id === 'string' ? candidate.id.trim() : '';
     const rawPath = typeof candidate.path === 'string' ? candidate.path.trim() : '';
-    const resolvedPath = rawPath ? path.resolve(normalizeDirectoryPath(rawPath)) : '';
-    const normalizedPath = resolvedPath ? normalizePathForPersistence(resolvedPath) : '';
+    const normalizedPath = rawPath ? path.resolve(normalizeDirectoryPath(rawPath)) : '';
     const label = typeof candidate.label === 'string' ? candidate.label.trim() : '';
     const icon = typeof candidate.icon === 'string' ? candidate.icon.trim() : '';
     const iconImage = candidate.iconImage && typeof candidate.iconImage === 'object'
@@ -1975,7 +1896,7 @@ const sanitizeProjects = (input) => {
   return result;
 };
 
-const DEFAULT_PWA_APP_NAME = 'OpenChamber - AI Coding Assistant';
+const DEFAULT_PWA_APP_NAME = 'OpenAurora - AI Coding Assistant';
 const PWA_APP_NAME_MAX_LENGTH = 64;
 
 const normalizePwaAppName = (value, fallback = '') => {
@@ -2025,16 +1946,10 @@ const sanitizeSettingsUpdate = (payload) => {
     result.splashFgDark = candidate.splashFgDark.trim();
   }
   if (typeof candidate.lastDirectory === 'string' && candidate.lastDirectory.length > 0) {
-    const normalized = normalizePathForPersistence(candidate.lastDirectory);
-    if (typeof normalized === 'string' && normalized.length > 0) {
-      result.lastDirectory = normalized;
-    }
+    result.lastDirectory = candidate.lastDirectory;
   }
   if (typeof candidate.homeDirectory === 'string' && candidate.homeDirectory.length > 0) {
-    const normalized = normalizePathForPersistence(candidate.homeDirectory);
-    if (typeof normalized === 'string' && normalized.length > 0) {
-      result.homeDirectory = normalized;
-    }
+    result.homeDirectory = candidate.homeDirectory;
   }
 
   // Absolute path to the opencode CLI binary (optional override).
@@ -2055,21 +1970,13 @@ const sanitizeSettingsUpdate = (payload) => {
   }
 
   if (Array.isArray(candidate.approvedDirectories)) {
-    result.approvedDirectories = normalizeStringArray(
-      candidate.approvedDirectories
-        .map((entry) => (typeof entry === 'string' ? normalizePathForPersistence(entry) : entry))
-        .filter((entry) => typeof entry === 'string' && entry.length > 0)
-    );
+    result.approvedDirectories = normalizeStringArray(candidate.approvedDirectories);
   }
   if (Array.isArray(candidate.securityScopedBookmarks)) {
     result.securityScopedBookmarks = normalizeStringArray(candidate.securityScopedBookmarks);
   }
   if (Array.isArray(candidate.pinnedDirectories)) {
-    result.pinnedDirectories = normalizeStringArray(
-      candidate.pinnedDirectories
-        .map((entry) => (typeof entry === 'string' ? normalizePathForPersistence(entry) : entry))
-        .filter((entry) => typeof entry === 'string' && entry.length > 0)
-    );
+    result.pinnedDirectories = normalizeStringArray(candidate.pinnedDirectories);
   }
 
 
@@ -2547,6 +2454,88 @@ const formatSettingsResponse = (settings) => {
   };
 };
 
+const createProjectRegistryEntry = (projectPath, label) => {
+  const now = Date.now();
+  return {
+    id: typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `proj_${now}_${Math.random().toString(36).slice(2, 8)}`,
+    path: projectPath,
+    label,
+    addedAt: now,
+    lastOpenedAt: now,
+  };
+};
+
+const buildStarterProjectBootstrapState = (overrides = {}) => ({
+  completed: true,
+  templateVersion: STARTER_PROJECT_TEMPLATE_VERSION,
+  updatedAt: Date.now(),
+  ...overrides,
+});
+
+const withStarterProjectBootstrapState = (settings, state) => ({
+  ...settings,
+  [STARTER_PROJECT_BOOTSTRAP_KEY]: state,
+});
+
+const persistStarterProjectBootstrapState = async (state) => {
+  const current = await readSettingsFromDisk();
+  const next = withStarterProjectBootstrapState(current, state);
+  await writeSettingsToDisk(next);
+  return next;
+};
+
+const ensureStarterProjectBootstrapped = async () => {
+  starterProjectBootstrapLock = starterProjectBootstrapLock.then(async () => {
+    const current = await readSettingsFromDiskMigrated();
+    const bootstrapState = current?.[STARTER_PROJECT_BOOTSTRAP_KEY];
+    if (bootstrapState && typeof bootstrapState === 'object' && bootstrapState.completed === true) {
+      return current;
+    }
+
+    const projects = sanitizeProjects(current.projects) || [];
+    if (projects.length > 0) {
+      return await persistStarterProjectBootstrapState(
+        buildStarterProjectBootstrapState({ reason: 'existing-projects' })
+      );
+    }
+
+    const targetPath = getDefaultStarterProjectPath();
+    let created = false;
+
+    try {
+      await createBundledProjectFromTemplate(targetPath);
+      created = true;
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== 'Target directory already exists and is not empty') {
+        throw error;
+      }
+
+      const validation = await validateDirectoryPath(targetPath);
+      if (!validation.ok) {
+        throw error;
+      }
+    }
+
+    const projectEntry = createProjectRegistryEntry(targetPath, DEFAULT_STARTER_PROJECT_NAME);
+    await persistSettings({
+      projects: [projectEntry],
+      activeProjectId: projectEntry.id,
+    });
+
+    return await persistStarterProjectBootstrapState(
+      buildStarterProjectBootstrapState({
+        reason: created ? 'created' : 'reused-existing-directory',
+        projectId: projectEntry.id,
+        projectPath: targetPath,
+      })
+    );
+  });
+
+  return starterProjectBootstrapLock;
+};
+
 const validateProjectEntries = async (projects) => {
   console.log(`[validateProjectEntries] Starting validation for ${projects.length} projects`);
 
@@ -2859,11 +2848,10 @@ const readSettingsFromDiskMigrated = async () => {
   const migration3 = await migrateSettingsFromLegacyCollapsedProjects(migration2.settings);
   const migration4 = await migrateSettingsNotificationDefaults(migration3.settings);
   const migration5 = await migrateSettingsFromLegacyNamedTunnelKeys(migration4.settings);
-  const migration6 = normalizeSettingsPaths(migration5.settings);
-  if (migration1.changed || migration2.changed || migration3.changed || migration4.changed || migration5.changed || migration6.changed) {
-    await writeSettingsToDisk(migration6.settings);
+  if (migration1.changed || migration2.changed || migration3.changed || migration4.changed || migration5.changed) {
+    await writeSettingsToDisk(migration5.settings);
   }
-  return migration6.settings;
+  return migration5.settings;
 };
 
 const getOrCreateVapidKeys = async () => {
@@ -3218,7 +3206,7 @@ const updateSessionState = (sessionId, status, eventId, metadata = {}) => {
     for (const res of uiNotificationClients) {
       try {
         writeSseEvent(res, {
-          type: 'openchamber:session-status',
+          type: 'openaurora:session-status',
           properties: {
             sessionId,
             status: state.status,
@@ -3324,7 +3312,7 @@ const markSessionViewed = (sessionId, clientId) => {
       for (const res of uiNotificationClients) {
         try {
           writeSseEvent(res, {
-            type: 'openchamber:session-status',
+            type: 'openaurora:session-status',
             properties: {
               sessionId,
               status: state.status,
@@ -3474,17 +3462,17 @@ const resetAllSessionActivityToIdle = () => {
 };
 
 const resolveVapidSubject = async () => {
-  const configured = process.env.OPENCHAMBER_VAPID_SUBJECT;
+  const configured = process.env.OPENAURORA_VAPID_SUBJECT;
   if (typeof configured === 'string' && configured.trim().length > 0) {
     return configured.trim();
   }
 
-  const originEnv = process.env.OPENCHAMBER_PUBLIC_ORIGIN;
+  const originEnv = process.env.OPENAURORA_PUBLIC_ORIGIN;
   if (typeof originEnv === 'string' && originEnv.trim().length > 0) {
     const trimmed = originEnv.trim();
     // Convert http://localhost to mailto for VAPID compatibility
     if (trimmed.startsWith('http://localhost')) {
-      return 'mailto:openchamber@localhost';
+      return 'mailto:openaurora@localhost';
     }
     return trimmed;
   }
@@ -3496,7 +3484,7 @@ const resolveVapidSubject = async () => {
       const trimmed = stored.trim();
       // Convert http://localhost to mailto for VAPID compatibility
       if (trimmed.startsWith('http://localhost')) {
-        return 'mailto:openchamber@localhost';
+        return 'mailto:openaurora@localhost';
       }
       return trimmed;
     }
@@ -3504,7 +3492,7 @@ const resolveVapidSubject = async () => {
     // ignore
   }
 
-  return 'mailto:openchamber@localhost';
+  return 'mailto:openaurora@localhost';
 };
 
 const ensurePushInitialized = async () => {
@@ -3512,8 +3500,8 @@ const ensurePushInitialized = async () => {
   const keys = await getOrCreateVapidKeys();
   const subject = await resolveVapidSubject();
 
-  if (subject === 'mailto:openchamber@localhost') {
-    console.warn('[Push] No public origin configured for VAPID; set OPENCHAMBER_VAPID_SUBJECT or enable push once from a real origin.');
+  if (subject === 'mailto:openaurora@localhost') {
+    console.warn('[Push] No public origin configured for VAPID; set OPENAURORA_VAPID_SUBJECT or enable push once from a real origin.');
   }
 
   webPush.setVapidDetails(subject, keys.publicKey, keys.privateKey);
@@ -3528,11 +3516,6 @@ const persistSettings = async (changes) => {
     console.log(`[persistSettings] Current projects count:`, Array.isArray(current.projects) ? current.projects.length : 'N/A');
     const sanitized = sanitizeSettingsUpdate(changes);
     let next = mergePersistedSettings(current, sanitized);
-
-    const normalizedState = normalizeSettingsPaths(next);
-    if (normalizedState.changed) {
-      next = normalizedState.settings;
-    }
 
     if (Array.isArray(next.projects)) {
       console.log(`[persistSettings] Validating ${next.projects.length} projects...`);
@@ -3589,7 +3572,7 @@ const persistSettings = async (changes) => {
 
 // HMR-persistent state via globalThis
 // These values survive Vite HMR reloads to prevent zombie OpenCode processes
-const HMR_STATE_KEY = '__openchamberHmrState';
+const HMR_STATE_KEY = '__openauroraHmrState';
 const getHmrState = () => {
   if (!globalThis[HMR_STATE_KEY]) {
     globalThis[HMR_STATE_KEY] = {
@@ -3753,8 +3736,8 @@ async function probeExternalOpenCode(port, origin) {
 const ENV_CONFIGURED_OPENCODE_PORT = (() => {
   const raw =
     process.env.OPENCODE_PORT ||
-    process.env.OPENCHAMBER_OPENCODE_PORT ||
-    process.env.OPENCHAMBER_INTERNAL_PORT;
+    process.env.OPENAURORA_OPENCODE_PORT ||
+    process.env.OPENAURORA_INTERNAL_PORT;
   if (!raw) {
     return null;
   }
@@ -3797,15 +3780,15 @@ const ENV_CONFIGURED_OPENCODE_HOST = (() => {
 const ENV_EFFECTIVE_PORT = ENV_CONFIGURED_OPENCODE_HOST?.port ?? ENV_CONFIGURED_OPENCODE_PORT;
 
 const ENV_SKIP_OPENCODE_START = process.env.OPENCODE_SKIP_START === 'true' ||
-                                    process.env.OPENCHAMBER_SKIP_OPENCODE_START === 'true';
-const ENV_DESKTOP_NOTIFY = process.env.OPENCHAMBER_DESKTOP_NOTIFY === 'true';
+                                    process.env.OPENAURORA_SKIP_OPENCODE_START === 'true';
+const ENV_DESKTOP_NOTIFY = process.env.OPENAURORA_DESKTOP_NOTIFY === 'true';
 const ENV_CONFIGURED_OPENCODE_WSL_DISTRO =
   typeof process.env.OPENCODE_WSL_DISTRO === 'string' && process.env.OPENCODE_WSL_DISTRO.trim().length > 0
     ? process.env.OPENCODE_WSL_DISTRO.trim()
     : (
-      typeof process.env.OPENCHAMBER_OPENCODE_WSL_DISTRO === 'string' &&
-      process.env.OPENCHAMBER_OPENCODE_WSL_DISTRO.trim().length > 0
-        ? process.env.OPENCHAMBER_OPENCODE_WSL_DISTRO.trim()
+      typeof process.env.OPENAURORA_OPENCODE_WSL_DISTRO === 'string' &&
+      process.env.OPENAURORA_OPENCODE_WSL_DISTRO.trim().length > 0
+        ? process.env.OPENAURORA_OPENCODE_WSL_DISTRO.trim()
         : null
     );
 
@@ -3928,7 +3911,6 @@ function getLoginShellEnvSnapshot() {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
         maxBuffer: 10 * 1024 * 1024,
-        windowsHide: true,
       });
 
       if (result.status !== 0) {
@@ -3967,7 +3949,6 @@ function getWindowsShellEnvSnapshot() {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
         maxBuffer: 10 * 1024 * 1024,
-        windowsHide: true,
       });
       if (result.status !== 0) {
         continue;
@@ -3987,7 +3968,6 @@ function getWindowsShellEnvSnapshot() {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       maxBuffer: 10 * 1024 * 1024,
-      windowsHide: true,
     });
     if (result.status === 0 && typeof result.stdout === 'string' && result.stdout.length > 0) {
       return parseNullSeparatedEnvSnapshot(result.stdout.replace(/\r?\n/g, '\0'));
@@ -4044,7 +4024,7 @@ function applyLoginShellEnvSnapshot() {
 applyLoginShellEnvSnapshot();
 
 const ENV_CONFIGURED_API_PREFIX = normalizeApiPrefix(
-  process.env.OPENCODE_API_PREFIX || process.env.OPENCHAMBER_API_PREFIX || ''
+  process.env.OPENCODE_API_PREFIX || process.env.OPENAURORA_API_PREFIX || ''
 );
 
   if (ENV_CONFIGURED_API_PREFIX && ENV_CONFIGURED_API_PREFIX !== '') {
@@ -4057,87 +4037,10 @@ let resolvedOpencodeBinary = null;
 let resolvedOpencodeBinarySource = null;
 let resolvedNodeBinary = null;
 let resolvedBunBinary = null;
-let resolvedGitBinary = null;
 let useWslForOpencode = false;
 let resolvedWslBinary = null;
 let resolvedWslOpencodePath = null;
 let resolvedWslDistro = null;
-
-function resolveGitBinaryForSpawn() {
-  if (process.platform !== 'win32') {
-    return 'git';
-  }
-
-  if (resolvedGitBinary) {
-    return resolvedGitBinary;
-  }
-
-  const explicit = [process.env.GIT_BINARY, process.env.OPENCHAMBER_GIT_BINARY]
-    .map((value) => (typeof value === 'string' ? value.trim() : ''))
-    .filter(Boolean);
-  for (const candidate of explicit) {
-    if (isExecutable(candidate)) {
-      resolvedGitBinary = candidate;
-      return resolvedGitBinary;
-    }
-  }
-
-  const candidates = [];
-  const normalizeGitCandidate = (candidate) => {
-    if (typeof candidate !== 'string') {
-      return '';
-    }
-    const trimmed = candidate.trim();
-    if (!trimmed) {
-      return '';
-    }
-    const ext = path.extname(trimmed).toLowerCase();
-    if (ext === '.cmd' || ext === '.bat' || ext === '.com') {
-      const exeCandidate = trimmed.slice(0, -ext.length) + '.exe';
-      if (isExecutable(exeCandidate)) {
-        return exeCandidate;
-      }
-    }
-    return trimmed;
-  };
-
-  const pathCandidate = normalizeGitCandidate(searchPathFor('git'));
-  if (pathCandidate && isExecutable(pathCandidate)) {
-    candidates.push(pathCandidate);
-  }
-
-  const pathExeCandidate = normalizeGitCandidate(searchPathFor('git.exe'));
-  if (pathExeCandidate && isExecutable(pathExeCandidate)) {
-    candidates.push(pathExeCandidate);
-  }
-
-  const programRoots = [
-    process.env.ProgramFiles,
-    process.env['ProgramFiles(x86)'],
-    process.env.LocalAppData,
-  ]
-    .map((value) => (typeof value === 'string' ? value.trim() : ''))
-    .filter(Boolean);
-  for (const root of programRoots) {
-    const installCandidates = [
-      path.join(root, 'Git', 'cmd', 'git.exe'),
-      path.join(root, 'Git', 'bin', 'git.exe'),
-      path.join(root, 'Git', 'mingw64', 'bin', 'git.exe'),
-      path.join(root, 'Programs', 'Git', 'cmd', 'git.exe'),
-      path.join(root, 'Programs', 'Git', 'bin', 'git.exe'),
-    ];
-    for (const candidate of installCandidates) {
-      const normalized = normalizeGitCandidate(candidate);
-      if (normalized && isExecutable(normalized)) {
-        candidates.push(normalized);
-      }
-    }
-  }
-
-  const preferredExe = candidates.find((candidate) => candidate.toLowerCase().endsWith('.exe'));
-  resolvedGitBinary = preferredExe || candidates[0] || 'git.exe';
-  return resolvedGitBinary;
-}
 
 function isExecutable(filePath) {
   try {
@@ -4195,7 +4098,7 @@ function resolveWslExecutablePath() {
     return null;
   }
 
-  const explicit = [process.env.WSL_BINARY, process.env.OPENCHAMBER_WSL_BINARY]
+  const explicit = [process.env.WSL_BINARY, process.env.OPENAURORA_WSL_BINARY]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .filter(Boolean);
 
@@ -4209,7 +4112,6 @@ function resolveWslExecutablePath() {
     const result = spawnSync('where', ['wsl'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
     });
     if (result.status === 0) {
       const lines = (result.stdout || '')
@@ -4261,7 +4163,6 @@ function probeWslForOpencode() {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 6000,
-        windowsHide: true,
       },
     );
 
@@ -4312,8 +4213,8 @@ function resolveOpencodeCliPath() {
   const explicit = [
     process.env.OPENCODE_BINARY,
     process.env.OPENCODE_PATH,
-    process.env.OPENCHAMBER_OPENCODE_PATH,
-    process.env.OPENCHAMBER_OPENCODE_BIN,
+    process.env.OPENAURORA_OPENCODE_PATH,
+    process.env.OPENAURORA_OPENCODE_BIN,
   ]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .filter(Boolean);
@@ -4378,7 +4279,6 @@ function resolveOpencodeCliPath() {
       const result = spawnSync('where', ['opencode'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
       });
       if (result.status === 0) {
         const lines = (result.stdout || '')
@@ -4414,7 +4314,6 @@ function resolveOpencodeCliPath() {
       const result = spawnSync(shell, ['-lic', 'command -v opencode'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
       });
       if (result.status === 0) {
         const found = (result.stdout || '').trim().split(/\s+/).pop() || '';
@@ -4433,7 +4332,7 @@ function resolveOpencodeCliPath() {
 }
 
 function resolveNodeCliPath() {
-  const explicit = [process.env.NODE_BINARY, process.env.OPENCHAMBER_NODE_BINARY]
+  const explicit = [process.env.NODE_BINARY, process.env.OPENAURORA_NODE_BINARY]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .filter(Boolean);
 
@@ -4465,7 +4364,6 @@ function resolveNodeCliPath() {
       const result = spawnSync('where', ['node'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
       });
       if (result.status === 0) {
         const lines = (result.stdout || '')
@@ -4488,7 +4386,6 @@ function resolveNodeCliPath() {
       const result = spawnSync(shell, ['-lic', 'command -v node'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
       });
       if (result.status === 0) {
         const found = (result.stdout || '').trim().split(/\s+/).pop() || '';
@@ -4505,7 +4402,7 @@ function resolveNodeCliPath() {
 }
 
 function resolveBunCliPath() {
-  const explicit = [process.env.BUN_BINARY, process.env.OPENCHAMBER_BUN_BINARY]
+  const explicit = [process.env.BUN_BINARY, process.env.OPENAURORA_BUN_BINARY]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .filter(Boolean);
 
@@ -4548,7 +4445,6 @@ function resolveBunCliPath() {
       const result = spawnSync('where', ['bun'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
       });
       if (result.status === 0) {
         const lines = (result.stdout || '')
@@ -4571,7 +4467,6 @@ function resolveBunCliPath() {
       const result = spawnSync(shell, ['-lic', 'command -v bun'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
       });
       if (result.status === 0) {
         const found = (result.stdout || '').trim().split(/\s+/).pop() || '';
@@ -5203,7 +5098,7 @@ function broadcastUiNotification(payload) {
   for (const res of uiNotificationClients) {
     try {
       writeSseEvent(res, {
-        type: 'openchamber:notification',
+        type: 'openaurora:notification',
         properties: {
           ...payload,
           // Tell the UI whether the sidecar stdout notification channel is active.
@@ -5781,18 +5676,18 @@ function scheduleOpenCodeApiDetection() {
 function parseArgs(argv = process.argv.slice(2)) {
   const args = Array.isArray(argv) ? [...argv] : [];
   const envPassword =
-    process.env.OPENCHAMBER_UI_PASSWORD ||
+    process.env.OPENAURORA_UI_PASSWORD ||
     process.env.OPENCODE_UI_PASSWORD ||
     null;
-  const envCfTunnel = process.env.OPENCHAMBER_TRY_CF_TUNNEL === 'true';
-  const envTunnelProvider = process.env.OPENCHAMBER_TUNNEL_PROVIDER || undefined;
-  const envTunnelMode = process.env.OPENCHAMBER_TUNNEL_MODE || undefined;
-  const envTunnelConfigRaw = process.env.OPENCHAMBER_TUNNEL_CONFIG;
+  const envCfTunnel = process.env.OPENAURORA_TRY_CF_TUNNEL === 'true';
+  const envTunnelProvider = process.env.OPENAURORA_TUNNEL_PROVIDER || undefined;
+  const envTunnelMode = process.env.OPENAURORA_TUNNEL_MODE || undefined;
+  const envTunnelConfigRaw = process.env.OPENAURORA_TUNNEL_CONFIG;
   const envTunnelConfig = typeof envTunnelConfigRaw === 'string'
     ? (envTunnelConfigRaw.trim().length > 0 ? envTunnelConfigRaw.trim() : null)
     : undefined;
-  const envTunnelToken = process.env.OPENCHAMBER_TUNNEL_TOKEN || undefined;
-  const envTunnelHostname = process.env.OPENCHAMBER_TUNNEL_HOSTNAME || undefined;
+  const envTunnelToken = process.env.OPENAURORA_TUNNEL_TOKEN || undefined;
+  const envTunnelHostname = process.env.OPENAURORA_TUNNEL_HOSTNAME || undefined;
 
   const options = {
     port: DEFAULT_PORT,
@@ -5898,7 +5793,7 @@ function killProcessOnPort(port) {
   if (!port) return;
   try {
     // Kill any process listening on our port to clean up orphaned children.
-    const result = spawnSync('lsof', ['-ti', `:${port}`], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+    const result = spawnSync('lsof', ['-ti', `:${port}`], { encoding: 'utf8', timeout: 5000 });
     const output = result.stdout || '';
     const myPid = process.pid;
     for (const pidStr of output.split(/\s+/)) {
@@ -5982,7 +5877,6 @@ async function createManagedOpenCodeServerProcess({
   const child = spawn(binary, args, {
     cwd,
     env,
-    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -6536,7 +6430,7 @@ function setupProxy(app) {
       return upstreamPath;
     }
     try {
-      const parsed = new URL(upstreamPath, 'http://openchamber.local');
+      const parsed = new URL(upstreamPath, 'http://openaurora.local');
       const pathname = parsed.pathname || '/';
       if (pathname === '/session' || pathname.startsWith('/session/')) {
         return upstreamPath;
@@ -6564,357 +6458,6 @@ function setupProxy(app) {
       : (typeof req.url === 'string' ? req.url : '/');
     return rewriteWindowsDirectoryParam(stripApiPrefix(rawUrl));
   };
-
-  const isPiRuntimeEnabled = () => AGENT_RUNTIME_MODE === AGENT_RUNTIME_PI;
-
-  const resolvePiRequestedDirectory = (req) => {
-    const headerDirectory = typeof req.get === 'function' ? req.get('x-opencode-directory') : null;
-    const queryDirectory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
-    return typeof headerDirectory === 'string' && headerDirectory.trim().length > 0
-      ? headerDirectory.trim()
-      : typeof queryDirectory === 'string' && queryDirectory.trim().length > 0
-        ? queryDirectory.trim()
-        : null;
-  };
-
-  const matchesPiSessionDirectory = (sessionDirectory, requestedDirectory) => {
-    if (!requestedDirectory || typeof requestedDirectory !== 'string') {
-      return true;
-    }
-    if (!sessionDirectory || typeof sessionDirectory !== 'string') {
-      return false;
-    }
-    return sessionDirectory === requestedDirectory || sessionDirectory.startsWith(`${requestedDirectory}${path.sep}`);
-  };
-
-  const writePiSseEventsForSession = async (res, session, options = {}) => {
-    const statusBySession = PI_RUNTIME.getSessionStatus();
-    const messages = await PI_RUNTIME.getMessages(session.id);
-    const events = translateOpenCodeMessagesToSseEvents(
-      { session },
-      messages,
-      {
-        status: options.includeStatus === false ? null : statusBySession[session.id] || { type: 'idle' },
-        directory: session.directory,
-      },
-    );
-
-    for (const event of events) {
-      writeSseEvent(res, event);
-    }
-  };
-
-  const writePiQuestionEvents = (res, questions, directory) => {
-    const items = Array.isArray(questions) ? questions : [];
-    for (const question of items) {
-      if (!question || typeof question !== 'object') {
-        continue;
-      }
-      writeSseEvent(res, {
-        type: 'question.asked',
-        properties: {
-          ...question,
-          ...(directory ? { directory } : {}),
-        },
-      });
-    }
-  };
-
-  const handlePiSseStream = async (req, res, options = {}) => {
-    const requestedDirectory = resolvePiRequestedDirectory(req);
-    const includeAllSessions = options.global === true;
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-
-    if (typeof res.flushHeaders === 'function') {
-      res.flushHeaders();
-    }
-
-    const relevantSessions = PI_RUNTIME.listSessions({
-      directory: includeAllSessions ? undefined : requestedDirectory,
-    }).filter((session) => matchesPiSessionDirectory(session.directory, includeAllSessions ? null : requestedDirectory));
-
-    for (const session of relevantSessions) {
-      await writePiSseEventsForSession(res, session, { includeStatus: true });
-    }
-    writePiQuestionEvents(res, PI_RUNTIME.listPendingQuestions({ directory: includeAllSessions ? undefined : requestedDirectory }), requestedDirectory);
-
-    const heartbeat = setInterval(() => {
-      writeSseEvent(res, { type: 'openaurora:heartbeat', timestamp: Date.now() });
-    }, 15000);
-
-    let closed = false;
-    const unsubscribe = PI_RUNTIME.subscribe(async ({ session, envelope }) => {
-      if (closed) {
-        return;
-      }
-      if (!matchesPiSessionDirectory(session?.directory, includeAllSessions ? null : requestedDirectory)) {
-        return;
-      }
-
-      if (envelope?.envelope === 'agent-event' && (envelope.eventType === 'agent_start' || envelope.eventType === 'turn_start')) {
-        const status = PI_RUNTIME.getSessionStatus()[session.id] || { type: 'busy' };
-        writeSseEvent(res, {
-          type: 'session.status',
-          properties: {
-            sessionID: session.id,
-            status,
-            directory: session.directory,
-          },
-        });
-        return;
-      }
-
-      if (envelope?.envelope === 'agent-event' && (envelope.eventType === 'message_start' || envelope.eventType === 'message_update')) {
-        const events = translatePiEnvelopeToSseEvents({ session }, envelope, { directory: session.directory });
-        for (const event of events) {
-          writeSseEvent(res, event);
-        }
-        return;
-      }
-
-      if (envelope?.envelope === 'extension-ui-request' && envelope.request) {
-        const questions = PI_RUNTIME.listPendingQuestions({ directory: session.directory });
-        const match = questions.filter((question) => question?.id === envelope.request.id);
-        if (match.length > 0) {
-          writePiQuestionEvents(res, match, session.directory);
-        }
-        return;
-      }
-
-      if (envelope?.envelope === 'agent-event' && (envelope.eventType === 'message_end' || envelope.eventType === 'tool_execution_end' || envelope.eventType === 'agent_end')) {
-        try {
-          await PI_RUNTIME.refreshMessages(session.id);
-          await writePiSseEventsForSession(res, session, { includeStatus: true });
-        } catch (error) {
-          writeSseEvent(res, {
-            type: 'session.error',
-            properties: {
-              sessionID: session.id,
-              directory: session.directory,
-              error: {
-                name: 'UnknownError',
-                data: {
-                  message: error?.message || 'Failed to translate Pi runtime events',
-                },
-              },
-            },
-          });
-        }
-      }
-    });
-
-    const cleanup = () => {
-      closed = true;
-      clearInterval(heartbeat);
-      unsubscribe();
-    };
-
-    req.on('close', cleanup);
-    req.on('error', cleanup);
-  };
-
-  app.get('/api/global/event', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-    return handlePiSseStream(req, res, { global: true });
-  });
-
-  app.get('/api/event', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-    return handlePiSseStream(req, res, { global: false });
-  });
-
-  app.get('/api/session', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
-      const search = Array.isArray(req.query.search) ? req.query.search[0] : req.query.search;
-      const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
-      const limit = Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : undefined;
-      return res.json(PI_RUNTIME.listSessions({ directory, search, limit }));
-    } catch (error) {
-      return res.status(500).json({ error: error?.message || 'Failed to list Pi sessions' });
-    }
-  });
-
-  app.post('/api/session', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
-      const session = PI_RUNTIME.createSession({
-        directory,
-        title: req.body?.title,
-        parentID: req.body?.parentID,
-      });
-      return res.json(session);
-    } catch (error) {
-      return res.status(400).json({ error: error?.message || 'Failed to create Pi session' });
-    }
-  });
-
-  app.get('/api/session/status', (_req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    return res.json(PI_RUNTIME.getSessionStatus());
-  });
-
-  app.get('/api/session/:sessionId', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      return res.json(PI_RUNTIME.getSession(req.params.sessionId));
-    } catch (error) {
-      return res.status(404).json({ error: error?.message || 'Pi session not found' });
-    }
-  });
-
-  app.get('/api/session/:sessionId/message', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
-      const limit = Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : undefined;
-      return res.json(await PI_RUNTIME.getMessages(req.params.sessionId, limit));
-    } catch (error) {
-      return res.status(404).json({ error: error?.message || 'Failed to load Pi session messages' });
-    }
-  });
-
-  app.get('/api/question', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
-      return res.json(PI_RUNTIME.listPendingQuestions({ directory }));
-    } catch (error) {
-      return res.status(500).json({ error: error?.message || 'Failed to list Pi questions' });
-    }
-  });
-
-  app.post('/api/question/:requestId/reply', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      const answers = Array.isArray(req.body?.answers) ? req.body.answers : [];
-      return res.json(await PI_RUNTIME.replyToQuestion(req.params.requestId, answers));
-    } catch (error) {
-      const status = /Unknown Pi question request/i.test(error?.message || '') ? 404 : 503;
-      return res.status(status).json({ error: error?.message || 'Failed to reply to Pi question' });
-    }
-  });
-
-  app.post('/api/question/:requestId/reject', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      return res.json(await PI_RUNTIME.rejectQuestion(req.params.requestId));
-    } catch (error) {
-      const status = /Unknown Pi question request/i.test(error?.message || '') ? 404 : 503;
-      return res.status(status).json({ error: error?.message || 'Failed to reject Pi question' });
-    }
-  });
-
-  app.get('/api/permission', (_req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-    return res.json([]);
-  });
-
-  app.post('/api/permission/:requestId/reply', (_req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-    return res.json(false);
-  });
-
-  app.post('/api/session/:sessionId/prompt_async', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      await PI_RUNTIME.promptAsync(req.params.sessionId, req.body ?? {});
-      return res.status(204).send();
-    } catch (error) {
-      const message = error?.message || 'Failed to submit Pi prompt';
-      const status = /Unknown Pi session/i.test(message) ? 404 : 503;
-      return res.status(status).json({ error: message });
-    }
-  });
-
-  app.post('/api/session/:sessionId/abort', async (req, res, next) => {
-    if (!isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    try {
-      return res.json(await PI_RUNTIME.abort(req.params.sessionId));
-    } catch (error) {
-      const message = error?.message || 'Failed to abort Pi session';
-      const status = /Unknown Pi session/i.test(message) ? 404 : 503;
-      return res.status(status).json({ error: message });
-    }
-  });
-
-  app.use('/api', (req, res, next) => {
-    if (
-      req.path.startsWith('/themes/custom') ||
-      req.path.startsWith('/push') ||
-      req.path.startsWith('/config/agents') ||
-      req.path.startsWith('/config/opencode-resolution') ||
-      req.path.startsWith('/config/settings') ||
-      req.path.startsWith('/config/skills') ||
-      req.path === '/config/reload' ||
-      req.path === '/health'
-    ) {
-      return next();
-    }
-
-    if (isPiRuntimeEnabled()) {
-      return next();
-    }
-
-    const waitElapsed = openCodeNotReadySince === 0 ? 0 : Date.now() - openCodeNotReadySince;
-    const stillWaiting =
-      (!isOpenCodeReady && (openCodeNotReadySince === 0 || waitElapsed < OPEN_CODE_READY_GRACE_MS)) ||
-      isRestartingOpenCode ||
-      !openCodePort;
-
-    if (stillWaiting) {
-      return res.status(503).json({
-        error: 'OpenCode is restarting',
-        restarting: true,
-      });
-    }
-
-    next();
-  });
 
   const isSseApiPath = (path) => path === '/event' || path === '/global/event';
 
@@ -7257,7 +6800,7 @@ function setupProxy(app) {
           const globalPayload = globalRes.ok ? await globalRes.json().catch(() => []) : [];
           const globalSessions = Array.isArray(globalPayload) ? globalPayload : [];
 
-          const settingsPath = path.join(os.homedir(), '.config', 'openchamber', 'settings.json');
+          const settingsPath = path.join(os.homedir(), '.config', 'openaurora', 'settings.json');
           let projectDirs = [];
           try {
             const settingsRaw = fs.readFileSync(settingsPath, 'utf8');
@@ -7454,7 +6997,7 @@ async function main(options = {}) {
     exitOnShutdown = options.exitOnShutdown;
   }
 
-  console.log(`Starting OpenChamber on port ${port === 0 ? 'auto' : port}`);
+  console.log(`Starting OpenAurora on port ${port === 0 ? 'auto' : port}`);
 
   // Check macOS Say TTS availability once at startup
   let sayTTSCapability = { available: false, voices: [], reason: 'Not checked' };
@@ -7493,41 +7036,731 @@ async function main(options = {}) {
   expressApp = app;
   server = http.createServer(app);
 
+  app.use('/api', express.json({ limit: '10mb' }));
+
+  const PI_COMPAT_PROVIDER_ID = 'pi';
+  const PI_COMPAT_MODEL_ID = 'pi-default';
+  const PI_COMPAT_AGENT_NAME = 'pi';
+  const piCompatSessionState = new Map();
+
+  const matchesPiCompatDirectory = (sessionDirectory, requestedDirectory) => {
+    if (!requestedDirectory || typeof requestedDirectory !== 'string') {
+      return true;
+    }
+    if (!sessionDirectory || typeof sessionDirectory !== 'string') {
+      return false;
+    }
+    return sessionDirectory === requestedDirectory || sessionDirectory.startsWith(`${requestedDirectory}${path.sep}`);
+  };
+
+  const getPiCompatSessionState = (sessionId) => {
+    const existing = piCompatSessionState.get(sessionId);
+    if (existing) {
+      return existing;
+    }
+    const initial = {
+      lastAgent: PI_COMPAT_AGENT_NAME,
+      lastModel: {
+        providerID: PI_COMPAT_PROVIDER_ID,
+        modelID: PI_COMPAT_MODEL_ID,
+      },
+    };
+    piCompatSessionState.set(sessionId, initial);
+    return initial;
+  };
+
+  const updatePiCompatSessionState = (sessionId, patch = {}) => {
+    const current = getPiCompatSessionState(sessionId);
+    const next = {
+      ...current,
+      ...patch,
+    };
+    piCompatSessionState.set(sessionId, next);
+    return next;
+  };
+
+  const toPiCompatStatus = (sessionSnapshot) => {
+    switch (sessionSnapshot?.status) {
+      case 'streaming':
+      case 'compacting':
+        return { type: 'busy' };
+      case 'retrying':
+        return {
+          type: 'retry',
+          attempt: 1,
+          message: typeof sessionSnapshot?.workingMessage === 'string' && sessionSnapshot.workingMessage.trim().length > 0
+            ? sessionSnapshot.workingMessage.trim()
+            : 'Retrying',
+          next: Date.now() + 1000,
+        };
+      default:
+        return { type: 'idle' };
+    }
+  };
+
+  const toPiCompatSession = (sessionSnapshot) => {
+    const runtimeState = getPiCompatSessionState(sessionSnapshot.id);
+    return {
+      id: sessionSnapshot.id,
+      slug: sessionSnapshot.id,
+      projectID: 'pi',
+      directory: sessionSnapshot.cwd,
+      title: sessionSnapshot.title,
+      version: 'pi',
+      time: {
+        created: sessionSnapshot.createdAt,
+        updated: sessionSnapshot.updatedAt,
+      },
+      agent: runtimeState.lastAgent,
+      model: runtimeState.lastModel,
+    };
+  };
+
+  const toPiCompatSessionRecord = (sessionSnapshot) => {
+    const runtimeState = getPiCompatSessionState(sessionSnapshot.id);
+    return {
+      session: toPiCompatSession(sessionSnapshot),
+      lastAgent: runtimeState.lastAgent,
+      lastModel: runtimeState.lastModel,
+      lastUserMessageId: null,
+    };
+  };
+
+  const listPiCompatSessions = ({ directory, search, limit } = {}) => {
+    let sessions = PI_SDK_HOST.listSessions().map((session) => toPiCompatSession(session));
+
+    if (typeof directory === 'string' && directory.trim().length > 0) {
+      const normalizedDirectory = directory.trim();
+      sessions = sessions.filter((session) => matchesPiCompatDirectory(session.directory, normalizedDirectory));
+    }
+
+    if (typeof search === 'string' && search.trim().length > 0) {
+      const needle = search.trim().toLowerCase();
+      sessions = sessions.filter((session) =>
+        session.title.toLowerCase().includes(needle) ||
+        session.directory.toLowerCase().includes(needle)
+      );
+    }
+
+    sessions.sort((a, b) => (b.time?.updated || 0) - (a.time?.updated || 0));
+
+    if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
+      return sessions.slice(0, limit);
+    }
+
+    return sessions;
+  };
+
+  const listPiCompatMessages = (sessionId, limit) => {
+    const sessionSnapshot = PI_SDK_HOST.getSession(sessionId);
+    const normalizedMessages = Array.isArray(sessionSnapshot.messages)
+      ? sessionSnapshot.messages.map((message) => normalizePiMessage(message)).filter(Boolean)
+      : [];
+    const records = translatePiMessagesToOpenCodeMessages(toPiCompatSessionRecord(sessionSnapshot), normalizedMessages);
+    if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
+      return records.slice(-limit);
+    }
+    return records;
+  };
+
+  const toPiCompatQuestionRequest = (request) => {
+    if (!request || request.method === 'confirm') {
+      return null;
+    }
+
+    return {
+      id: request.id,
+      sessionID: request.sessionId,
+      questions: [{
+        header: request.title || 'Input needed',
+        question: request.message || request.placeholder || request.title || 'Provide a response',
+        options: Array.isArray(request.options)
+          ? request.options.map((option) => ({ label: option, description: '' }))
+          : [],
+        multiple: false,
+        custom: request.method !== 'select',
+      }],
+      metadata: {
+        bridgeMethod: request.method,
+      },
+    };
+  };
+
+  const toPiCompatPermissionRequest = (request) => {
+    if (!request || request.method !== 'confirm') {
+      return null;
+    }
+
+    return {
+      id: request.id,
+      sessionID: request.sessionId,
+      permission: request.title || 'Confirmation required',
+      patterns: [request.message || request.title || 'Confirm to continue'].filter(Boolean),
+      metadata: {
+        bridgeMethod: request.method,
+      },
+      always: [],
+    };
+  };
+
+  const listPiCompatQuestions = ({ directory } = {}) => {
+    const sessions = listPiCompatSessions({ directory });
+    return sessions.flatMap((session) => {
+      const snapshot = PI_SDK_HOST.getSession(session.id);
+      return (snapshot.interactiveRequests || [])
+        .map((request) => toPiCompatQuestionRequest(request))
+        .filter(Boolean);
+    });
+  };
+
+  const listPiCompatPermissions = ({ directory } = {}) => {
+    const sessions = listPiCompatSessions({ directory });
+    return sessions.flatMap((session) => {
+      const snapshot = PI_SDK_HOST.getSession(session.id);
+      return (snapshot.interactiveRequests || [])
+        .map((request) => toPiCompatPermissionRequest(request))
+        .filter(Boolean);
+    });
+  };
+
+  const findPiCompatInteractiveRequest = (requestId) => {
+    for (const session of PI_SDK_HOST.listSessions()) {
+      const match = (session.interactiveRequests || []).find((request) => request.id === requestId);
+      if (match) {
+        return match;
+      }
+    }
+    return null;
+  };
+
+  const writePiCompatSessionSnapshotEvents = (res, sessionSnapshot, options = {}) => {
+    const compatSession = toPiCompatSession(sessionSnapshot);
+    const compatRecord = toPiCompatSessionRecord(sessionSnapshot);
+    const messages = listPiCompatMessages(sessionSnapshot.id);
+    const events = translateOpenCodeMessagesToSseEvents(compatRecord, messages, {
+      status: options.includeStatus === false ? null : toPiCompatStatus(sessionSnapshot),
+      directory: compatSession.directory,
+    });
+
+    if (options.includeSessionEvent !== false) {
+      writeSseEvent(res, {
+        type: options.sessionEventType || 'session.updated',
+        properties: {
+          info: compatSession,
+          directory: compatSession.directory,
+        },
+      });
+    }
+
+    for (const event of events) {
+      writeSseEvent(res, event);
+    }
+
+    for (const request of sessionSnapshot.interactiveRequests || []) {
+      const question = toPiCompatQuestionRequest(request);
+      if (question) {
+        writeSseEvent(res, {
+          type: 'question.asked',
+          properties: {
+            ...question,
+            directory: compatSession.directory,
+          },
+        });
+      }
+      const permission = toPiCompatPermissionRequest(request);
+      if (permission) {
+        writeSseEvent(res, {
+          type: 'permission.asked',
+          properties: {
+            ...permission,
+            directory: compatSession.directory,
+          },
+        });
+      }
+    }
+  };
+
   app.get('/health', (req, res) => {
+    const piHealth = PI_SDK_HOST.getHealth();
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
-      openCodePort: openCodePort,
-      openCodeRunning: Boolean(openCodePort && isOpenCodeReady && !isRestartingOpenCode),
-      openCodeSecureConnection: isOpenCodeConnectionSecure(),
-      openCodeAuthSource: openCodeAuthSource || null,
+      runtime: 'pi',
+      piReady: piHealth.ready,
+      piSessionCount: piHealth.sessionCount,
+      openCodePort: null,
+      openCodeRunning: piHealth.ready,
+      openCodeSecureConnection: false,
+      openCodeAuthSource: null,
       openCodeApiPrefix: '',
       openCodeApiPrefixDetected: true,
-      isOpenCodeReady,
-      lastOpenCodeError,
-      opencodeBinaryResolved: resolvedOpencodeBinary || null,
-      opencodeBinarySource: resolvedOpencodeBinarySource || null,
-      opencodeShimInterpreter: resolvedOpencodeBinary ? opencodeShimInterpreter(resolvedOpencodeBinary) : null,
-      opencodeViaWsl: useWslForOpencode,
-      opencodeWslBinary: resolvedWslBinary || null,
-      opencodeWslPath: resolvedWslOpencodePath || null,
-      opencodeWslDistro: resolvedWslDistro || null,
+      isOpenCodeReady: piHealth.ready,
+      lastOpenCodeError: null,
+      opencodeBinaryResolved: resolvedNodeBinary || process.execPath || null,
+      opencodeBinarySource: 'pi-runtime',
+      opencodeShimInterpreter: null,
+      opencodeViaWsl: false,
+      opencodeWslBinary: null,
+      opencodeWslPath: null,
+      opencodeWslDistro: null,
       nodeBinaryResolved: resolvedNodeBinary || null,
       bunBinaryResolved: resolvedBunBinary || null,
     });
   });
 
-  app.post('/api/system/shutdown', (req, res) => {
+  app.post('/api/system/shutdown', async (req, res) => {
     res.json({ ok: true });
+    try {
+      await PI_SDK_HOST.dispose();
+    } catch {
+    }
     gracefulShutdown({ exitProcess: false }).catch((error) => {
       console.error('Shutdown request failed:', error?.message || error);
     });
   });
 
+  app.post('/api/pi/sessions', async (req, res) => {
+    try {
+      const session = await PI_SDK_HOST.createSession({
+        cwd: req.body?.cwd,
+        title: req.body?.title,
+      });
+      res.json(session);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to create Pi session' });
+    }
+  });
+
+  app.get('/api/pi/sessions', (_req, res) => {
+    res.json(PI_SDK_HOST.listSessions());
+  });
+
+  app.get('/api/pi/sessions/:sessionId', (req, res) => {
+    try {
+      res.json(PI_SDK_HOST.getSession(req.params.sessionId));
+    } catch (error) {
+      res.status(404).json({ error: error?.message || 'Session not found' });
+    }
+  });
+
+  app.post('/api/pi/sessions/:sessionId/prompt', async (req, res) => {
+    try {
+      await PI_SDK_HOST.prompt(req.params.sessionId, { text: req.body?.text });
+      res.status(204).end();
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to submit prompt' });
+    }
+  });
+
+  app.post('/api/pi/sessions/:sessionId/abort', async (req, res) => {
+    try {
+      await PI_SDK_HOST.abort(req.params.sessionId);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to abort session' });
+    }
+  });
+
+  app.post('/api/pi/requests/:requestId/respond', async (req, res) => {
+    try {
+      await PI_SDK_HOST.respondToInteractiveRequest(req.params.requestId, req.body?.response);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to respond to interactive request' });
+    }
+  });
+
+  app.post('/api/pi/requests/:requestId/reject', async (req, res) => {
+    try {
+      await PI_SDK_HOST.rejectInteractiveRequest(req.params.requestId);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to reject interactive request' });
+    }
+  });
+
+  app.get('/api/pi/events', (req, res) => {
+    const requestedSessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId.trim() : '';
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders();
+    }
+
+    for (const session of PI_SDK_HOST.listSessions()) {
+      if (requestedSessionId && session.id !== requestedSessionId) {
+        continue;
+      }
+      writeSseEvent(res, { type: 'session_snapshot', session });
+    }
+
+    const heartbeat = setInterval(() => {
+      writeSseEvent(res, { type: 'heartbeat', timestamp: Date.now() });
+    }, 15000);
+
+    const unsubscribe = PI_SDK_HOST.subscribe((payload) => {
+      if (
+        requestedSessionId &&
+        payload?.session?.id !== requestedSessionId &&
+        payload?.sessionId !== requestedSessionId
+      ) {
+        return;
+      }
+      writeSseEvent(res, payload);
+    });
+
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+
+    req.on('close', cleanup);
+    req.on('error', cleanup);
+  });
+
+  app.get('/api/session', (req, res) => {
+    try {
+      const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+      const search = Array.isArray(req.query.search) ? req.query.search[0] : req.query.search;
+      const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+      const limit = Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : undefined;
+      res.json(listPiCompatSessions({ directory, search, limit }));
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to list sessions' });
+    }
+  });
+
+  app.post('/api/session', async (req, res) => {
+    try {
+      const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+      const session = await PI_SDK_HOST.createSession({
+        cwd: typeof directory === 'string' && directory.trim().length > 0 ? directory.trim() : req.body?.cwd,
+        title: req.body?.title,
+      });
+      res.json(toPiCompatSession(session));
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to create session' });
+    }
+  });
+
+  app.get('/api/session/status', (req, res) => {
+    const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+    const result = {};
+    for (const session of listPiCompatSessions({ directory })) {
+      result[session.id] = toPiCompatStatus(PI_SDK_HOST.getSession(session.id));
+    }
+    res.json(result);
+  });
+
+  app.get('/api/session/:sessionId', (req, res) => {
+    try {
+      res.json(toPiCompatSession(PI_SDK_HOST.getSession(req.params.sessionId)));
+    } catch (error) {
+      res.status(404).json({ error: error?.message || 'Session not found' });
+    }
+  });
+
+  app.get('/api/session/:sessionId/message', (req, res) => {
+    try {
+      const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+      const limit = Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : undefined;
+      res.json(listPiCompatMessages(req.params.sessionId, limit));
+    } catch (error) {
+      res.status(404).json({ error: error?.message || 'Failed to load session messages' });
+    }
+  });
+
+  app.post('/api/session/:sessionId/prompt_async', async (req, res) => {
+    try {
+      const model = req.body?.model;
+      const providerID = typeof model?.providerID === 'string' && model.providerID.trim().length > 0
+        ? model.providerID.trim()
+        : PI_COMPAT_PROVIDER_ID;
+      const modelID = typeof model?.modelID === 'string' && model.modelID.trim().length > 0
+        ? model.modelID.trim()
+        : PI_COMPAT_MODEL_ID;
+      const agent = typeof req.body?.agent === 'string' && req.body.agent.trim().length > 0
+        ? req.body.agent.trim()
+        : PI_COMPAT_AGENT_NAME;
+      updatePiCompatSessionState(req.params.sessionId, {
+        lastAgent: agent,
+        lastModel: { providerID, modelID },
+      });
+      const promptText = buildPromptTextFromParts(Array.isArray(req.body?.parts) ? req.body.parts : []);
+      await PI_SDK_HOST.prompt(req.params.sessionId, { text: promptText });
+      res.status(204).end();
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to submit prompt' });
+    }
+  });
+
+  app.post('/api/session/:sessionId/command', async (req, res) => {
+    try {
+      const modelString = typeof req.body?.model === 'string' ? req.body.model.trim() : '';
+      const [providerID = PI_COMPAT_PROVIDER_ID, modelID = PI_COMPAT_MODEL_ID] = modelString.split('/');
+      const agent = typeof req.body?.agent === 'string' && req.body.agent.trim().length > 0
+        ? req.body.agent.trim()
+        : PI_COMPAT_AGENT_NAME;
+      updatePiCompatSessionState(req.params.sessionId, {
+        lastAgent: agent,
+        lastModel: { providerID, modelID },
+      });
+      const commandName = typeof req.body?.command === 'string' ? req.body.command.trim() : '';
+      const commandArgs = typeof req.body?.arguments === 'string' ? req.body.arguments.trim() : '';
+      const promptText = `/${commandName}${commandArgs ? ` ${commandArgs}` : ''}`.trim();
+      await PI_SDK_HOST.prompt(req.params.sessionId, { text: promptText });
+      res.status(204).end();
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to run command' });
+    }
+  });
+
+  app.post('/api/session/:sessionId/abort', async (req, res) => {
+    try {
+      await PI_SDK_HOST.abort(req.params.sessionId);
+      res.json(true);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to abort session' });
+    }
+  });
+
+  app.get('/api/question', (req, res) => {
+    const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+    res.json(listPiCompatQuestions({ directory }));
+  });
+
+  app.post('/api/question/:requestId/reply', async (req, res) => {
+    try {
+      const request = findPiCompatInteractiveRequest(req.params.requestId);
+      if (!request) {
+        return res.status(404).json({ error: 'Question not found' });
+      }
+      const answers = Array.isArray(req.body?.answers) ? req.body.answers : [];
+      let responseValue;
+      if (request.method === 'select') {
+        const first = Array.isArray(answers[0]) ? answers[0][0] : answers[0];
+        responseValue = typeof first === 'string' ? first : request.options?.[0] || '';
+      } else {
+        const first = Array.isArray(answers[0]) ? answers[0][0] : answers[0];
+        responseValue = typeof first === 'string' ? first : '';
+      }
+      await PI_SDK_HOST.respondToInteractiveRequest(req.params.requestId, responseValue);
+      res.json(true);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to reply to question' });
+    }
+  });
+
+  app.post('/api/question/:requestId/reject', async (req, res) => {
+    try {
+      await PI_SDK_HOST.rejectInteractiveRequest(req.params.requestId);
+      res.json(true);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to reject question' });
+    }
+  });
+
+  app.get('/api/permission', (req, res) => {
+    const directory = Array.isArray(req.query.directory) ? req.query.directory[0] : req.query.directory;
+    res.json(listPiCompatPermissions({ directory }));
+  });
+
+  app.post('/api/permission/:requestId/reply', async (req, res) => {
+    try {
+      const reply = typeof req.body?.reply === 'string'
+        ? req.body.reply
+        : typeof req.body?.response === 'string'
+          ? req.body.response
+          : 'reject';
+      if (reply === 'reject') {
+        await PI_SDK_HOST.rejectInteractiveRequest(req.params.requestId);
+      } else {
+        await PI_SDK_HOST.respondToInteractiveRequest(req.params.requestId, true);
+      }
+      res.json(true);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to reply to permission' });
+    }
+  });
+
+  app.get('/api/config/providers', (req, res) => {
+    const provider = {
+      id: PI_COMPAT_PROVIDER_ID,
+      name: 'Pi',
+      source: 'api',
+      env: [],
+      options: {},
+      models: {
+        [PI_COMPAT_MODEL_ID]: {
+          id: PI_COMPAT_MODEL_ID,
+          providerID: PI_COMPAT_PROVIDER_ID,
+          api: {
+            id: 'pi-sdk',
+            url: 'local',
+            npm: '@mariozechner/pi-coding-agent',
+          },
+          name: 'Pi Default',
+          family: 'pi',
+          capabilities: {
+            temperature: false,
+            reasoning: true,
+            attachment: true,
+            toolcall: true,
+            input: { text: true, audio: false, image: true, video: false, pdf: true },
+            output: { text: true, audio: false, image: false, video: false, pdf: false },
+            interleaved: false,
+          },
+          cost: {
+            input: 0,
+            output: 0,
+            cache: { read: 0, write: 0 },
+          },
+          limit: {
+            context: 200000,
+            output: 8192,
+          },
+          status: 'active',
+          options: {},
+          headers: {},
+          release_date: '2026-01-01',
+        },
+      },
+    };
+
+    res.json({
+      providers: [provider],
+      default: {
+        [PI_COMPAT_PROVIDER_ID]: PI_COMPAT_MODEL_ID,
+      },
+    });
+  });
+
+  app.get('/api/agent', (req, res) => {
+    res.json([
+      {
+        name: PI_COMPAT_AGENT_NAME,
+        description: 'Pi agent runtime',
+        mode: 'all',
+        native: true,
+        hidden: false,
+        permission: [],
+        model: {
+          providerID: PI_COMPAT_PROVIDER_ID,
+          modelID: PI_COMPAT_MODEL_ID,
+        },
+        options: {},
+      },
+    ]);
+  });
+
+  app.get('/api/event', (req, res) => {
+    const requestedDirectory = typeof req.query.directory === 'string' ? req.query.directory.trim() : '';
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders();
+    }
+
+    writeSseEvent(res, { type: 'server.connected', properties: {} });
+    for (const session of PI_SDK_HOST.listSessions()) {
+      if (requestedDirectory && !matchesPiCompatDirectory(session.cwd, requestedDirectory)) {
+        continue;
+      }
+      writePiCompatSessionSnapshotEvents(res, session);
+    }
+
+    const heartbeat = setInterval(() => {
+      writeSseEvent(res, { type: 'openaurora:heartbeat', timestamp: Date.now() });
+    }, 15000);
+
+    const unsubscribe = PI_SDK_HOST.subscribe((payload) => {
+      if (payload?.type === 'notification') {
+        writeSseEvent(res, {
+          type: 'openaurora:notification',
+          properties: {
+            title: payload.level === 'error' ? 'Agent error' : 'Agent update',
+            body: payload.message || '',
+            tag: payload.sessionId || 'pi',
+          },
+        });
+        return;
+      }
+      if (payload?.type !== 'session_snapshot' || !payload.session) {
+        return;
+      }
+      if (requestedDirectory && !matchesPiCompatDirectory(payload.session.cwd, requestedDirectory)) {
+        return;
+      }
+      writePiCompatSessionSnapshotEvents(res, payload.session);
+    });
+
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+
+    req.on('close', cleanup);
+    req.on('error', cleanup);
+  });
+
+  app.get('/api/global/event', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders();
+    }
+
+    writeSseEvent(res, { type: 'server.connected', properties: {} });
+    for (const session of PI_SDK_HOST.listSessions()) {
+      writePiCompatSessionSnapshotEvents(res, session);
+    }
+
+    const heartbeat = setInterval(() => {
+      writeSseEvent(res, { type: 'openaurora:heartbeat', timestamp: Date.now() });
+    }, 15000);
+
+    const unsubscribe = PI_SDK_HOST.subscribe((payload) => {
+      if (payload?.type === 'notification') {
+        writeSseEvent(res, {
+          type: 'openaurora:notification',
+          properties: {
+            title: payload.level === 'error' ? 'Agent error' : 'Agent update',
+            body: payload.message || '',
+            tag: payload.sessionId || 'pi',
+          },
+        });
+        return;
+      }
+      if (payload?.type !== 'session_snapshot' || !payload.session) {
+        return;
+      }
+      writePiCompatSessionSnapshotEvents(res, payload.session);
+    });
+
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+
+    req.on('close', cleanup);
+    req.on('error', cleanup);
+  });
+
   app.get('/api/system/info', (req, res) => {
     res.json({
-      openchamberVersion: OPENCHAMBER_VERSION,
-      runtime: process.env.OPENCHAMBER_RUNTIME || 'web',
+      openauroraVersion: OPENAURORA_VERSION,
+      runtime: 'pi',
       pid: process.pid,
       startedAt: serverStartedAt,
     });
@@ -7538,6 +7771,7 @@ async function main(options = {}) {
       req.path.startsWith('/api/config/agents') ||
       req.path.startsWith('/api/config/commands') ||
       req.path.startsWith('/api/config/mcp') ||
+      req.path.startsWith('/api/config/opencode') ||
       req.path.startsWith('/api/config/settings') ||
       req.path.startsWith('/api/config/skills') ||
       req.path.startsWith('/api/projects') ||
@@ -7549,7 +7783,7 @@ async function main(options = {}) {
       req.path.startsWith('/api/push') ||
       req.path.startsWith('/api/voice') ||
       req.path.startsWith('/api/tts') ||
-      req.path.startsWith('/api/openchamber/tunnel')
+      req.path.startsWith('/api/openaurora/tunnel')
     ) {
 
       express.json({ limit: '50mb' })(req, res, next);
@@ -8099,7 +8333,7 @@ async function main(options = {}) {
     });
   });
 
-  app.get('/api/openchamber/update-check', async (req, res) => {
+  app.get('/api/openaurora/update-check', async (req, res) => {
     try {
       const { checkForUpdates } = await import('./lib/package-manager.js');
       const parseString = (value) => (typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined);
@@ -8116,13 +8350,28 @@ async function main(options = {}) {
         if (value.includes('mobi') || value.includes('android') || value.includes('iphone')) return 'mobile';
         return 'desktop';
       };
+      const inferArch = (ua) => {
+        const value = (ua || '').toLowerCase();
+        if (!value) return 'unknown';
+        if (value.includes('aarch64') || value.includes('arm64') || value.includes(' arm;') || value.includes('armv')) return 'arm64';
+        if (value.includes('x86_64') || value.includes('x64') || value.includes('amd64') || value.includes('win64') || value.includes('x86-64')) return 'x64';
+        return 'unknown';
+      };
+      const inferPlatform = (ua) => {
+        const value = (ua || '').toLowerCase();
+        if (!value) return undefined;
+        if (value.includes('mac os') || value.includes('macintosh') || value.includes('darwin')) return 'macos';
+        if (value.includes('windows') || value.includes('win32') || value.includes('win64')) return 'windows';
+        if (value.includes('linux') || value.includes('x11')) return 'linux';
+        return 'web';
+      };
       const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : '';
 
       const updateInfo = await checkForUpdates({
         appType: parseString(req.query.appType),
         deviceClass: parseString(req.query.deviceClass) || inferDeviceClass(userAgent),
-        platform: parseString(req.query.platform),
-        arch: parseString(req.query.arch),
+        platform: parseString(req.query.platform) || inferPlatform(userAgent),
+        arch: parseString(req.query.arch) || inferArch(userAgent),
         instanceMode: parseString(req.query.instanceMode),
         currentVersion: parseString(req.query.currentVersion),
         reportUsage: parseReportUsage(parseString(req.query.reportUsage)),
@@ -8137,7 +8386,7 @@ async function main(options = {}) {
     }
   });
 
-  app.post('/api/openchamber/update-install', async (_req, res) => {
+  app.post('/api/openaurora/update-install', async (_req, res) => {
     try {
       const { spawn: spawnChild } = await import('child_process');
       const {
@@ -8190,7 +8439,7 @@ async function main(options = {}) {
 
       // Try to read stored instance options for restart
       const tmpDir = os.tmpdir();
-      const instanceFilePath = path.join(tmpDir, `openchamber-${currentPort}.json`);
+      const instanceFilePath = path.join(tmpDir, `openaurora-${currentPort}.json`);
       let storedOptions = { port: currentPort, daemon: true };
       try {
         const content = await fs.promises.readFile(instanceFilePath, 'utf8');
@@ -8208,7 +8457,7 @@ async function main(options = {}) {
       };
 
       // Build restart command using explicit runtime + CLI path.
-      // Avoids relying on `openchamber` being in PATH for service environments.
+      // Avoids relying on `openaurora` being in PATH for service environments.
       const cliPath = path.resolve(__dirname, '..', 'bin', 'cli.js');
       const restartParts = [
         isWindows ? quoteCmd(process.execPath) : quotePosix(process.execPath),
@@ -8219,7 +8468,7 @@ async function main(options = {}) {
         '--daemon',
       ];
       let restartCmdPrimary = restartParts.join(' ');
-      let restartCmdFallback = `openchamber serve --port ${storedOptions.port} --daemon`;
+      let restartCmdFallback = `openaurora serve --port ${storedOptions.port} --daemon`;
       if (storedOptions.uiPassword) {
         if (isWindows) {
           // Escape for cmd.exe quoted argument
@@ -8260,7 +8509,7 @@ async function main(options = {}) {
             timeout /t 2 /nobreak >nul
             ${updateCmd}
             if %ERRORLEVEL% EQU 0 (
-              echo Update successful, restarting OpenChamber...
+              echo Update successful, restarting OpenAurora...
               ${restartCmd}
             ) else (
               echo Update failed
@@ -8271,7 +8520,7 @@ async function main(options = {}) {
             sleep 2
             ${updateCmd}
             if [ $? -eq 0 ]; then
-              echo "Update successful, restarting OpenChamber..."
+              echo "Update successful, restarting OpenAurora..."
               ${restartCmd}
             else
               echo "Update failed"
@@ -8281,7 +8530,7 @@ async function main(options = {}) {
 
         // Spawn detached shell to run update after we exit.
         // Capture output to disk so restart failures are diagnosable.
-        const updateLogPath = path.join(OPENCHAMBER_DATA_DIR, 'update-install.log');
+        const updateLogPath = path.join(OPENAURORA_DATA_DIR, 'update-install.log');
         let logFd = null;
         try {
           fs.mkdirSync(path.dirname(updateLogPath), { recursive: true });
@@ -8320,7 +8569,7 @@ async function main(options = {}) {
     }
   });
 
-  app.get('/api/openchamber/models-metadata', async (req, res) => {
+  app.get('/api/openaurora/models-metadata', async (req, res) => {
     const now = Date.now();
 
     if (cachedModelsMetadata && now - cachedModelsMetadataTimestamp < MODELS_METADATA_CACHE_TTL) {
@@ -8578,7 +8827,7 @@ async function main(options = {}) {
 
   // ── Tunnel API ─────────────────────────────────────────────────────
 
-  app.get('/api/openchamber/tunnel/check', async (req, res) => {
+  app.get('/api/openaurora/tunnel/check', async (req, res) => {
     try {
       const requestedProvider = typeof req?.query?.provider === 'string' && req.query.provider.trim().length > 0
         ? normalizeTunnelProvider(req.query.provider)
@@ -8681,15 +8930,15 @@ async function main(options = {}) {
       return res.status(500).json({ ok: false, error: 'Failed to run tunnel doctor' });
     }
   };
-  app.post('/api/openchamber/tunnel/doctor', handleTunnelDoctor);
-  app.get('/api/openchamber/tunnel/doctor', handleTunnelDoctor);
+  app.post('/api/openaurora/tunnel/doctor', handleTunnelDoctor);
+  app.get('/api/openaurora/tunnel/doctor', handleTunnelDoctor);
 
-  app.get('/api/openchamber/tunnel/providers', (_req, res) => {
+  app.get('/api/openaurora/tunnel/providers', (_req, res) => {
     const providers = tunnelProviderRegistry.listCapabilities();
     return res.json({ providers });
   });
 
-  app.get('/api/openchamber/tunnel/status', async (_req, res) => {
+  app.get('/api/openaurora/tunnel/status', async (_req, res) => {
     try {
       const settings = await readSettingsFromDiskMigrated();
       const normalizedMode = normalizeTunnelMode(settings?.tunnelMode);
@@ -8782,7 +9031,7 @@ async function main(options = {}) {
     }
   });
 
-  app.put('/api/openchamber/tunnel/managed-remote-token', async (req, res) => {
+  app.put('/api/openaurora/tunnel/managed-remote-token', async (req, res) => {
     try {
       // Token presets are currently Cloudflare-specific.
       const presetId = typeof req?.body?.presetId === 'string' ? req.body.presetId.trim() : '';
@@ -8808,7 +9057,7 @@ async function main(options = {}) {
     }
   });
 
-  app.post('/api/openchamber/tunnel/start', async (_req, res) => {
+  app.post('/api/openaurora/tunnel/start', async (_req, res) => {
     try {
       const settings = await readSettingsFromDiskMigrated();
       // Reject explicitly supplied unknown providers/modes early, before normalization converts them to defaults.
@@ -8945,7 +9194,7 @@ async function main(options = {}) {
     }
   });
 
-  app.post('/api/openchamber/tunnel/stop', (_req, res) => {
+  app.post('/api/openaurora/tunnel/stop', (_req, res) => {
     let revokedBootstrapCount = 0;
     let invalidatedSessionCount = 0;
     const activeTunnelId = tunnelAuthController.getActiveTunnelId();
@@ -8967,290 +9216,9 @@ async function main(options = {}) {
 
   // ── End Tunnel API ────────────────────────────────────────────────
 
-  app.get('/api/global/event', async (req, res) => {
-    let targetUrl;
-    try {
-      targetUrl = new URL(buildOpenCodeUrl('/global/event', ''));
-    } catch {
-      return res.status(503).json({ error: 'OpenCode service unavailable' });
-    }
-
-    const headers = {
-      Accept: 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-      ...getOpenCodeAuthHeaders(),
-    };
-
-    const lastEventId = req.header('Last-Event-ID');
-    if (typeof lastEventId === 'string' && lastEventId.length > 0) {
-      headers['Last-Event-ID'] = lastEventId;
-    }
-
-    const controller = new AbortController();
-    const cleanup = () => {
-      if (!controller.signal.aborted) {
-        controller.abort();
-      }
-    };
-
-    req.on('close', cleanup);
-    req.on('error', cleanup);
-
-    let upstream;
-    try {
-      upstream = await fetch(targetUrl.toString(), {
-        headers,
-        signal: controller.signal,
-      });
-    } catch (error) {
-      return res.status(502).json({ error: 'Failed to connect to OpenCode event stream' });
-    }
-
-    if (!upstream.ok || !upstream.body) {
-      return res.status(502).json({ error: `OpenCode event stream unavailable (${upstream.status})` });
-    }
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-
-    if (typeof res.flushHeaders === 'function') {
-      res.flushHeaders();
-    }
-
-    uiNotificationClients.add(res);
-    const cleanupClient = () => {
-      uiNotificationClients.delete(res);
-    };
-    req.on('close', cleanupClient);
-    req.on('error', cleanupClient);
-
-    const heartbeatInterval = setInterval(() => {
-      writeSseEvent(res, { type: 'openchamber:heartbeat', timestamp: Date.now() });
-    }, 15000);
-
-    const decoder = new TextDecoder();
-    const reader = upstream.body.getReader();
-    let buffer = '';
-
-    const forwardBlock = (block) => {
-      if (!block) return;
-      const payload = parseSseDataPayload(block);
-
-      res.write(`${block}
-
-`);
-      // Cache session titles from session.updated/session.created events (global stream)
-      maybeCacheSessionInfoFromEvent(payload);
-
-      // Keep server-authoritative session state fresh even if the
-      // background watcher is disconnected.
-      if (payload && payload.type === 'session.status') {
-        const update = extractSessionStatusUpdate(payload);
-        if (update) {
-          updateSessionState(update.sessionId, update.type, update.eventId || `proxy-${Date.now()}`, {
-            attempt: update.attempt,
-            message: update.message,
-            next: update.next,
-          });
-        }
-      }
-
-      const transitions = deriveSessionActivityTransitions(payload);
-      if (transitions && transitions.length > 0) {
-        for (const activity of transitions) {
-          if (setSessionActivityPhase(activity.sessionId, activity.phase)) {
-            writeSseEvent(res, {
-              type: 'openchamber:session-activity',
-              properties: {
-                sessionId: activity.sessionId,
-                phase: activity.phase,
-              }
-            });
-          }
-        }
-      }
-    };
-
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
-
-        let separatorIndex = buffer.indexOf('\n\n');
-        while (separatorIndex !== -1) {
-          const block = buffer.slice(0, separatorIndex);
-          buffer = buffer.slice(separatorIndex + 2);
-          forwardBlock(block);
-          separatorIndex = buffer.indexOf('\n\n');
-        }
-      }
-
-      if (buffer.trim().length > 0) {
-        forwardBlock(buffer.trim());
-      }
-    } catch (error) {
-      if (!controller.signal.aborted) {
-        console.warn('SSE proxy stream error:', error);
-      }
-    } finally {
-      clearInterval(heartbeatInterval);
-      cleanupClient();
-      cleanup();
-      try {
-        res.end();
-      } catch {
-        // ignore
-      }
-    }
-  });
-
-  app.get('/api/event', async (req, res) => {
-    let targetUrl;
-    try {
-      targetUrl = new URL(buildOpenCodeUrl('/event', ''));
-    } catch {
-      return res.status(503).json({ error: 'OpenCode service unavailable' });
-    }
-
-    const headerDirectory = typeof req.get === 'function' ? req.get('x-opencode-directory') : null;
-    const directoryParam = Array.isArray(req.query.directory)
-      ? req.query.directory[0]
-      : req.query.directory;
-    const resolvedDirectory = headerDirectory || directoryParam || null;
-    if (typeof resolvedDirectory === 'string' && resolvedDirectory.trim().length > 0) {
-      targetUrl.searchParams.set('directory', resolvedDirectory.trim());
-    }
-
-    const headers = {
-      Accept: 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-      ...getOpenCodeAuthHeaders(),
-    };
-
-    const lastEventId = req.header('Last-Event-ID');
-    if (typeof lastEventId === 'string' && lastEventId.length > 0) {
-      headers['Last-Event-ID'] = lastEventId;
-    }
-
-    const controller = new AbortController();
-    const cleanup = () => {
-      if (!controller.signal.aborted) {
-        controller.abort();
-      }
-    };
-
-    req.on('close', cleanup);
-    req.on('error', cleanup);
-
-    let upstream;
-    try {
-      upstream = await fetch(targetUrl.toString(), {
-        headers,
-        signal: controller.signal,
-      });
-    } catch (error) {
-      return res.status(502).json({ error: 'Failed to connect to OpenCode event stream' });
-    }
-
-    if (!upstream.ok || !upstream.body) {
-      return res.status(502).json({ error: `OpenCode event stream unavailable (${upstream.status})` });
-    }
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-
-    if (typeof res.flushHeaders === 'function') {
-      res.flushHeaders();
-    }
-
-    const heartbeatInterval = setInterval(() => {
-      writeSseEvent(res, { type: 'openchamber:heartbeat', timestamp: Date.now() });
-    }, 15000);
-
-    const decoder = new TextDecoder();
-    const reader = upstream.body.getReader();
-    let buffer = '';
-
-    const forwardBlock = (block) => {
-      if (!block) return;
-      const payload = parseSseDataPayload(block);
-
-      res.write(`${block}
-
-`);
-      // Cache session titles from session.updated/session.created events (per-session stream)
-      maybeCacheSessionInfoFromEvent(payload);
-
-      if (payload && payload.type === 'session.status') {
-        const update = extractSessionStatusUpdate(payload);
-        if (update) {
-          updateSessionState(update.sessionId, update.type, update.eventId || `proxy-${Date.now()}`, {
-            attempt: update.attempt,
-            message: update.message,
-            next: update.next,
-          });
-        }
-      }
-
-      const transitions = deriveSessionActivityTransitions(payload);
-      if (transitions && transitions.length > 0) {
-        for (const activity of transitions) {
-          if (setSessionActivityPhase(activity.sessionId, activity.phase)) {
-            writeSseEvent(res, {
-              type: 'openchamber:session-activity',
-              properties: {
-                sessionId: activity.sessionId,
-                phase: activity.phase,
-              }
-            });
-          }
-        }
-      }
-    };
-
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
-
-        let separatorIndex = buffer.indexOf('\n\n');
-        while (separatorIndex !== -1) {
-          const block = buffer.slice(0, separatorIndex);
-          buffer = buffer.slice(separatorIndex + 2);
-          forwardBlock(block);
-          separatorIndex = buffer.indexOf('\n\n');
-        }
-      }
-
-      if (buffer.trim().length > 0) {
-        forwardBlock(buffer.trim());
-      }
-    } catch (error) {
-      if (!controller.signal.aborted) {
-        console.warn('SSE proxy stream error:', error);
-      }
-    } finally {
-      clearInterval(heartbeatInterval);
-      cleanup();
-      try {
-        res.end();
-      } catch {
-        // ignore
-      }
-    }
-  });
-
   app.get('/api/config/settings', async (_req, res) => {
     try {
-      const settings = await readSettingsFromDiskMigrated();
+      const settings = await ensureStarterProjectBootstrapped();
       res.json(formatSettingsResponse(settings));
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -9326,6 +9294,87 @@ async function main(options = {}) {
       console.error(`[API:PUT /api/config/settings] Failed to save settings:`, error);
       console.error(`[API:PUT /api/config/settings] Error stack:`, error.stack);
       res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to save settings' });
+    }
+  });
+
+  app.post('/api/projects/create-from-template', async (req, res) => {
+    try {
+      const projectName = normalizeProjectTemplateName(req.body?.projectName);
+      if (!isExplicitDirectoryInput(req.body?.parentDirectory)) {
+        return res.status(400).json({ success: false, error: 'Parent directory must be an absolute path' });
+      }
+
+      const parentDirectory = resolveDirectoryCandidate(req.body?.parentDirectory);
+      if (!parentDirectory) {
+        return res.status(400).json({ success: false, error: 'Parent directory is required' });
+      }
+
+      const targetDirectory = path.join(parentDirectory, projectName);
+      const created = await createBundledProjectFromTemplate(targetDirectory);
+      const settings = await readSettingsFromDiskMigrated();
+      const projects = sanitizeProjects(settings.projects) || [];
+      const projectEntry = createProjectRegistryEntry(created.targetDirectory, projectName);
+      const updatedSettings = await persistSettings({
+        projects: [...projects, projectEntry],
+        activeProjectId: projectEntry.id,
+      });
+
+      res.json({
+        success: true,
+        project: projectEntry,
+        targetDirectory: created.targetDirectory,
+        stats: created.stats,
+        settings: updatedSettings,
+      });
+    } catch (error) {
+      const statusCode = error && typeof error === 'object' && typeof error.statusCode === 'number'
+        ? error.statusCode
+        : 500;
+      res.status(statusCode).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create project from template',
+      });
+    }
+  });
+
+  app.post('/api/config/opencode/install', async (req, res) => {
+    try {
+      const source = typeof req.body?.source === 'string' ? req.body.source.trim() : '';
+      if (!source) {
+        return res.status(400).json({ success: false, error: 'Installation source is required' });
+      }
+
+      let result;
+      if (source === 'template') {
+        result = await installBundledOpencodeConfig();
+      } else if (source === 'directory') {
+        const directoryPath = typeof req.body?.directoryPath === 'string' ? req.body.directoryPath : '';
+        result = await installOpencodeConfigFromDirectory(directoryPath);
+      } else if (source === 'upload') {
+        result = await installOpencodeConfigFromUpload(req.body?.files);
+      } else {
+        return res.status(400).json({ success: false, error: 'Unsupported installation source' });
+      }
+
+      await refreshOpenCodeAfterConfigChange(`opencode config install (${source})`);
+
+      res.json({
+        success: true,
+        ...result,
+        requiresReload: true,
+        message: 'OpenCode configuration installed successfully. Refreshing interface…',
+        reloadDelayMs: CLIENT_RELOAD_DELAY_MS,
+      });
+    } catch (error) {
+      const statusCode =
+        error && typeof error === 'object' && typeof error.statusCode === 'number'
+          ? error.statusCode
+          : 500;
+      console.error('Failed to install OpenCode configuration:', error);
+      res.status(statusCode).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to install OpenCode configuration',
+      });
     }
   });
 
@@ -10664,7 +10713,7 @@ async function main(options = {}) {
 
   // ================= GitHub OAuth (Device Flow) =================
 
-  // Note: scopes may be overridden via OPENCHAMBER_GITHUB_SCOPES or settings.json (see lib/github/auth.js).
+  // Note: scopes may be overridden via OPENAURORA_GITHUB_SCOPES or settings.json (see lib/github/auth.js).
 
   let githubLibraries = null;
   const getGitHubLibraries = async () => {
@@ -10747,7 +10796,7 @@ async function main(options = {}) {
       const clientId = getGitHubClientId();
       if (!clientId) {
         return res.status(400).json({
-          error: 'GitHub OAuth client not configured. Set OPENCHAMBER_GITHUB_CLIENT_ID.',
+          error: 'GitHub OAuth client not configured. Set OPENAURORA_GITHUB_CLIENT_ID.',
         });
       }
 
@@ -10779,7 +10828,7 @@ async function main(options = {}) {
       const clientId = getGitHubClientId();
       if (!clientId) {
         return res.status(400).json({
-          error: 'GitHub OAuth client not configured. Set OPENCHAMBER_GITHUB_CLIENT_ID.',
+          error: 'GitHub OAuth client not configured. Set OPENAURORA_GITHUB_CLIENT_ID.',
         });
       }
 
@@ -12491,27 +12540,6 @@ async function main(options = {}) {
     }
   });
 
-  app.delete('/api/git/remotes', async (req, res) => {
-    const { removeRemote } = await getGitLibraries();
-    try {
-      const directory = req.query.directory;
-      if (!directory) {
-        return res.status(400).json({ error: 'directory parameter is required' });
-      }
-
-      const remote = String(req.body?.remote || '').trim();
-      if (!remote) {
-        return res.status(400).json({ error: 'remote is required' });
-      }
-
-      const result = await removeRemote(directory, { remote });
-      res.json(result);
-    } catch (error) {
-      console.error('Failed to remove remote:', error);
-      res.status(500).json({ error: error.message || 'Failed to remove remote' });
-    }
-  });
-
   app.post('/api/git/rebase', async (req, res) => {
     const { rebase } = await getGitLibraries();
     try {
@@ -12818,7 +12846,7 @@ async function main(options = {}) {
       // Worktrees are an optional feature. Avoid repeated 500s (and repeated client retries)
       // when the directory isn't a git repo or uses shell shorthand like "~/".
       console.warn('Failed to get worktrees, returning empty list:', error?.message || error);
-      res.setHeader('X-OpenChamber-Warning', 'git worktrees unavailable');
+      res.setHeader('X-OpenAurora-Warning', 'git worktrees unavailable');
       res.json([]);
     }
   });
@@ -13205,18 +13233,18 @@ async function main(options = {}) {
         // macOS: open -R selects the file in Finder; open opens a folder
         const stat = await fsPromises.stat(resolved);
         if (stat.isDirectory()) {
-          spawn('open', [resolved], { windowsHide: true, stdio: 'ignore', detached: true }).unref();
+          spawn('open', [resolved], { stdio: 'ignore', detached: true }).unref();
         } else {
-          spawn('open', ['-R', resolved], { windowsHide: true, stdio: 'ignore', detached: true }).unref();
+          spawn('open', ['-R', resolved], { stdio: 'ignore', detached: true }).unref();
         }
       } else if (platform === 'win32') {
         // Windows: explorer /select, highlights the file
-        spawn('explorer', ['/select,', resolved], { windowsHide: true, stdio: 'ignore', detached: true }).unref();
+        spawn('explorer', ['/select,', resolved], { stdio: 'ignore', detached: true }).unref();
       } else {
         // Linux: xdg-open opens the parent directory
         const stat = await fsPromises.stat(resolved);
         const dir = stat.isDirectory() ? resolved : path.dirname(resolved);
-        spawn('xdg-open', [dir], { windowsHide: true, stdio: 'ignore', detached: true }).unref();
+        spawn('xdg-open', [dir], { stdio: 'ignore', detached: true }).unref();
       }
 
       res.json({ success: true, path: resolved });
@@ -13235,7 +13263,7 @@ async function main(options = {}) {
   const execJobs = new Map();
   const EXEC_JOB_TTL_MS = 30 * 60 * 1000;
   const COMMAND_TIMEOUT_MS = (() => {
-    const raw = Number(process.env.OPENCHAMBER_FS_EXEC_TIMEOUT_MS);
+    const raw = Number(process.env.OPENAURORA_FS_EXEC_TIMEOUT_MS);
     if (Number.isFinite(raw) && raw > 0) return raw;
     // `bun install` (common worktree setup cmd) often takes >60s.
     return 5 * 60 * 1000;
@@ -13267,7 +13295,6 @@ async function main(options = {}) {
       const child = spawn(shell, [shellFlag, command], {
         cwd: resolvedCwd,
         env: execEnv,
-        windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
@@ -13538,7 +13565,7 @@ async function main(options = {}) {
               // Use git check-ignore with paths as arguments
               // Pass paths directly as arguments (works for reasonable directory sizes)
               const result = await new Promise((resolve) => {
-                const child = spawn(resolveGitBinaryForSpawn(), ['check-ignore', '--', ...pathsToCheck], {
+                const child = spawn('git', ['check-ignore', '--', ...pathsToCheck], {
                   cwd: resolvedPath,
                   windowsHide: true,
                   stdio: ['ignore', 'pipe', 'pipe'],
@@ -13657,7 +13684,7 @@ async function main(options = {}) {
   const getTerminalShellCandidates = () => {
     if (process.platform === 'win32') {
       const windowsCandidates = [
-        process.env.OPENCHAMBER_TERMINAL_SHELL,
+        process.env.OPENAURORA_TERMINAL_SHELL,
         process.env.SHELL,
         process.env.ComSpec,
         path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
@@ -13684,7 +13711,7 @@ async function main(options = {}) {
     }
 
     const unixCandidates = [
-      process.env.OPENCHAMBER_TERMINAL_SHELL,
+      process.env.OPENAURORA_TERMINAL_SHELL,
       process.env.SHELL,
       '/bin/zsh',
       '/bin/bash',
@@ -14263,12 +14290,14 @@ async function main(options = {}) {
     res.json({ success: true, killedCount });
   });
 
-  setupProxy(app);
-  scheduleOpenCodeApiDetection();
-  void bootstrapOpenCodeAtStartup();
+  if (OPENCODE_LEGACY_ENABLED) {
+    setupProxy(app);
+    scheduleOpenCodeApiDetection();
+    void bootstrapOpenCodeAtStartup();
+  }
 
   const distPath = (() => {
-    const env = typeof process.env.OPENCHAMBER_DIST_DIR === 'string' ? process.env.OPENCHAMBER_DIST_DIR.trim() : '';
+    const env = typeof process.env.OPENAURORA_DIST_DIR === 'string' ? process.env.OPENAURORA_DIST_DIR.trim() : '';
     if (env) {
       return path.resolve(env);
     }
@@ -14524,8 +14553,8 @@ async function main(options = {}) {
 
   let activePort = port;
 
-  const bindHost = typeof process.env.OPENCHAMBER_HOST === 'string' && process.env.OPENCHAMBER_HOST.trim().length > 0
-    ? process.env.OPENCHAMBER_HOST.trim()
+  const bindHost = typeof process.env.OPENAURORA_HOST === 'string' && process.env.OPENAURORA_HOST.trim().length > 0
+    ? process.env.OPENAURORA_HOST.trim()
     : null;
 
   await new Promise((resolve, reject) => {
@@ -14540,12 +14569,12 @@ async function main(options = {}) {
       activePort = typeof addressInfo === 'object' && addressInfo ? addressInfo.port : port;
 
       try {
-        process.send?.({ type: 'openchamber:ready', port: activePort });
+        process.send?.({ type: 'openaurora:ready', port: activePort });
       } catch {
         // ignore
       }
 
-      console.log(`OpenChamber server running on port ${activePort}`);
+      console.log(`OpenAurora server running on port ${activePort}`);
       console.log(`Health check: http://localhost:${activePort}/health`);
       console.log(`Web interface: http://localhost:${activePort}`);
 

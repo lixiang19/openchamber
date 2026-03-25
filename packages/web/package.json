@@ -28,6 +28,7 @@
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/ibm-plex-sans": "^5.1.1",
     "@ibm/plex": "^6.4.1",
+    "@mariozechner/pi-coding-agent": "^0.62.0",
     "@octokit/rest": "^22.0.1",
     "@opencode-ai/sdk": "^1.2.27",
     "@radix-ui/react-collapsible": "^1.1.12",

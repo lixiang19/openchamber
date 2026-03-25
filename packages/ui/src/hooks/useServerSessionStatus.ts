@@ -31,7 +31,7 @@ const FOLLOW_UP_POLL_DELAY_MS = 1100;
 const MIN_IMMEDIATE_POLL_GAP_MS = 1200;
 const FOLLOW_UP_REARM_COOLDOWN_MS = 5000;
 
-// Ref to be accessed from outside (e.g., useEventStream) for triggering immediate poll
+// Ref exposed for non-hook callers that need to force an immediate poll.
 let triggerImmediatePollRef: (() => void) | null = null;
 
 // Global function to trigger immediate poll from outside React
