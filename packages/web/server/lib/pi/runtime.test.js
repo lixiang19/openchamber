@@ -220,19 +220,19 @@ describe('translatePiMessagesToOpenCodeMessages', () => {
           subagent_type: 'reviewer',
         },
         output: 'lint ok',
-      },
-      metadata: {
-        sessionId: 'sub-1',
-        summary: [
-          {
-            id: 'child-call-1',
-            tool: 'bash',
-            state: {
-              status: 'completed',
-              title: 'lint ok',
+        metadata: {
+          sessionId: 'sub-1',
+          summary: [
+            {
+              id: 'child-call-1',
+              tool: 'bash',
+              state: {
+                status: 'completed',
+                title: 'lint ok',
+              },
             },
-          },
-        ],
+          ],
+        },
       },
     });
   });
