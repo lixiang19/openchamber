@@ -415,8 +415,6 @@ const shouldBatchPartDelta = (
     return false;
 };
 
-const RECENT_SEND_EMPTY_GUARD_MS = 15_000;
-
 const MIN_SORTABLE_LENGTH = 10;
 
 const extractSortableId = (id: unknown): string | null => {
@@ -779,33 +777,66 @@ export const useMessageStore = create<MessageStore>()(
                 pendingUserMessageMetaBySession: new Map(),
 
                 loadMessages: async (sessionId: string, limit?: number) => {
-                        const previousMemoryState = get().sessionMemoryState.get(sessionId);
-                        const previousHistoryMeta = get().sessionHistoryMeta.get(sessionId);
-                        if (previousHistoryMeta?.loading) {
-                            return;
-                        }
+                    const inFlight = loadMessagesInFlightBySession.get(sessionId);
+                    if (inFlight) {
+                        return inFlight;
+                    }
 
-                        set((snapshot) => {
-                            const nextHistoryMeta = new Map(snapshot.sessionHistoryMeta);
-                            nextHistoryMeta.set(sessionId, {
-                                limit: typeof limit === 'number' && Number.isFinite(limit) ? limit : Number.MAX_SAFE_INTEGER,
-                                complete: false,
-                                loading: true,
-                            });
-                            return { sessionHistoryMeta: nextHistoryMeta };
+                    const previousMemoryState = get().sessionMemoryState.get(sessionId);
+                    const targetLimit = typeof limit === "number" && Number.isFinite(limit)
+                        ? Math.max(1, Math.floor(limit))
+                        : getMemoryLimits().HISTORICAL_MESSAGES;
+                    const nextRequestSeq = (loadMessagesRequestSeqBySession.get(sessionId) ?? 0) + 1;
+                    loadMessagesRequestSeqBySession.set(sessionId, nextRequestSeq);
+                    const isLatestRequest = () => loadMessagesRequestSeqBySession.get(sessionId) === nextRequestSeq;
+
+                    set((snapshot) => {
+                        const nextHistoryMeta = new Map(snapshot.sessionHistoryMeta);
+                        nextHistoryMeta.set(sessionId, {
+                            limit: targetLimit,
+                            complete: false,
+                            loading: true,
                         });
 
+                        const nextMemoryState = new Map(snapshot.sessionMemoryState);
+                        const currentMemoryState = nextMemoryState.get(sessionId) ?? previousMemoryState ?? {
+                            viewportAnchor: 0,
+                            isStreaming: false,
+                            lastAccessedAt: Date.now(),
+                            backgroundMessageCount: 0,
+                        };
+                        nextMemoryState.set(sessionId, {
+                            ...currentMemoryState,
+                            lastAccessedAt: Date.now(),
+                            historyLoading: true,
+                            historyLimit: targetLimit,
+                        });
+
+                        return {
+                            sessionHistoryMeta: nextHistoryMeta,
+                            sessionMemoryState: nextMemoryState,
+                        };
+                    });
+
+                    const task = (async () => {
                         try {
                             const session = await piClient.getSession(sessionId);
-                            const allMessages = toUiMessageEntries(session);
-                            const targetLimit = typeof limit === 'number' && Number.isFinite(limit) ? limit : allMessages.length;
-                            const messagesToKeep = targetLimit > 0 ? allMessages.slice(-targetLimit) : allMessages;
+                            if (!isLatestRequest()) {
+                                return;
+                            }
+
+                            const revertMessageId = getSessionRevertMessageId(sessionId);
+                            const rawMessages = filterMessagesByRevertPoint(toUiMessageEntries(session), revertMessageId)
+                                .sort(compareMessageEntriesChronologically);
+                            const messagesToKeep = targetLimit >= rawMessages.length
+                                ? rawMessages
+                                : rawMessages.slice(-targetLimit);
                             const normalizedMessages = messagesToKeep.map((message) => ({
                                 ...message,
                                 info: normalizeMessageInfoForProjection(message.info as Message) as any,
                                 parts: (Array.isArray(message.parts) ? message.parts : []).map((part) => {
-                                    if (part?.type === 'text') {
-                                        const raw = (part as any).text ?? (part as any).content ?? '';
+                                    if (part?.type === "text") {
+                                        const raw = (part as any).text ?? (part as any).content ?? "";
                                         if (isExecutionForkMetaText(raw)) {
                                             return { ...part, synthetic: true } as Part;
                                         }
@@ -813,27 +844,54 @@ export const useMessageStore = create<MessageStore>()(
                                     return part;
                                 }),
                             }));
-
                             const mergedMessages = dedupeMessagesById(normalizedMessages);
                             const loadedTurnCount = countLoadedTurns(mergedMessages);
+                            const hasMoreAbove = mergedMessages.length < rawMessages.length;
+                            const activeAssistant = session.isStreaming
+                                ? [...mergedMessages].reverse().find((entry) => entry.info.role === "assistant")
+                                : null;
+                            const activeAssistantId = typeof activeAssistant?.info?.id === "string"
+                                ? activeAssistant.info.id
+                                : null;
 
                             set((state) => {
+                                if (!isLatestRequest()) {
+                                    return state;
+                                }
+
+                                const previousMessages = state.messages.get(sessionId) || [];
+                                const previousIds = new Set(previousMessages.map((message) => message.info.id));
+                                const nextIds = new Set(mergedMessages.map((message) => message.info.id));
+                                const removedIds: string[] = [];
+                                previousIds.forEach((id) => {
+                                    if (!nextIds.has(id)) {
+                                        removedIds.push(id);
+                                    }
+                                });
+
                                 const newMessages = new Map(state.messages);
                                 newMessages.set(sessionId, mergedMessages);
+                                primeSessionMessagePositionIndex(sessionId, mergedMessages);
 
                                 const newMemoryState = new Map(state.sessionMemoryState);
+                                const currentMemoryState = newMemoryState.get(sessionId) ?? previousMemoryState ?? {
+                                    viewportAnchor: 0,
+                                    isStreaming: false,
+                                    lastAccessedAt: Date.now(),
+                                    backgroundMessageCount: 0,
+                                };
                                 newMemoryState.set(sessionId, {
-                                    ...previousMemoryState,
+                                    ...currentMemoryState,
                                     viewportAnchor: Math.max(mergedMessages.length - 1, 0),
                                     isStreaming: session.isStreaming,
                                     lastAccessedAt: Date.now(),
                                     backgroundMessageCount: 0,
-                                    totalAvailableMessages: allMessages.length,
+                                    totalAvailableMessages: rawMessages.length,
                                     loadedTurnCount,
-                                    hasMoreAbove: mergedMessages.length < allMessages.length,
-                                    hasMoreTurnsAbove: mergedMessages.length < allMessages.length,
+                                    hasMoreAbove,
+                                    hasMoreTurnsAbove: hasMoreAbove,
                                     historyLoading: false,
-                                    historyComplete: mergedMessages.length >= allMessages.length,
+                                    historyComplete: !hasMoreAbove,
                                     historyLimit: targetLimit,
                                     streamingCooldownUntil: undefined,
                                 });
@@ -841,259 +899,119 @@ export const useMessageStore = create<MessageStore>()(
                                 const newHistoryMeta = new Map(state.sessionHistoryMeta);
                                 newHistoryMeta.set(sessionId, {
                                     limit: targetLimit,
-                                    complete: mergedMessages.length >= allMessages.length,
+                                    complete: !hasMoreAbove,
                                     loading: false,
                                 });
 
                                 const nextStreamingIds = new Map(state.streamingMessageIds);
-                                const activeAssistant = session.isStreaming
-                                    ? [...mergedMessages].reverse().find((entry) => entry.info.role === 'assistant')
-                                    : null;
-                                if (activeAssistant?.info?.id) {
-                                    nextStreamingIds.set(sessionId, activeAssistant.info.id);
+                                if (activeAssistantId) {
+                                    nextStreamingIds.set(sessionId, activeAssistantId);
                                 } else {
                                     nextStreamingIds.delete(sessionId);
                                 }
 
-                                return {
+                                const result: Record<string, any> = {
                                     messages: newMessages,
                                     sessionMemoryState: newMemoryState,
                                     sessionHistoryMeta: newHistoryMeta,
                                     streamingMessageIds: nextStreamingIds,
                                     isSyncing: false,
                                 };
+
+                                clearLifecycleTimersForIds(removedIds);
+                                const updatedLifecycle = removeLifecycleEntries(state.messageStreamStates, removedIds);
+                                if (updatedLifecycle !== state.messageStreamStates) {
+                                    result.messageStreamStates = updatedLifecycle;
+                                }
+
+                                if (removedIds.length > 0) {
+                                    const currentStreaming = state.streamingMessageIds.get(sessionId);
+                                    if (currentStreaming && removedIds.includes(currentStreaming)) {
+                                        result.streamingMessageIds = setStreamingIdForSession(
+                                            result.streamingMessageIds ?? state.streamingMessageIds,
+                                            sessionId,
+                                            null,
+                                        );
+                                    }
+                                }
+
+                                if (removedIds.length > 0) {
+                                    const nextIndex = removeMessageSessionIndexEntries(
+                                        result.messageSessionIndex ?? state.messageSessionIndex,
+                                        removedIds,
+                                    );
+                                    if (nextIndex !== (result.messageSessionIndex ?? state.messageSessionIndex)) {
+                                        result.messageSessionIndex = nextIndex;
+                                    }
+                                }
+
+                                if (removedIds.length > 0) {
+                                    const nextPendingParts = new Map(state.pendingAssistantParts);
+                                    let pendingChanged = false;
+                                    removedIds.forEach((id) => {
+                                        if (nextPendingParts.delete(id)) {
+                                            pendingChanged = true;
+                                        }
+                                    });
+                                    if (pendingChanged) {
+                                        result.pendingAssistantParts = nextPendingParts;
+                                    }
+                                }
+
+                                const targetIndex = result.messageSessionIndex ?? state.messageSessionIndex;
+                                let indexAccumulator = targetIndex;
+                                mergedMessages.forEach((message) => {
+                                    const id = (message?.info as { id?: unknown })?.id;
+                                    if (typeof id === "string" && id.length > 0) {
+                                        indexAccumulator = upsertMessageSessionIndex(indexAccumulator, id, sessionId);
+                                    }
+                                });
+                                if (indexAccumulator !== targetIndex) {
+                                    result.messageSessionIndex = indexAccumulator;
+                                }
+
+                                return result;
                             });
                         } finally {
                             set((snapshot) => {
                                 if (!isLatestRequest()) {
                                     return snapshot;
                                 }
+
                                 const nextHistoryMeta = new Map(snapshot.sessionHistoryMeta);
                                 const currentMeta = nextHistoryMeta.get(sessionId);
                                 nextHistoryMeta.set(sessionId, {
-                                    limit: currentMeta?.limit ?? baseLimit,
+                                    limit: currentMeta?.limit ?? targetLimit,
                                     complete: currentMeta?.complete ?? false,
-                                    loading: true,
+                                    loading: false,
                                 });
-                                return { sessionHistoryMeta: nextHistoryMeta };
-                            });
 
-                            // Don't pass Infinity to API - use undefined for "fetch all".
-                            // Use targetLimit directly and infer "has more" when payload fills the window,
-                            // matching OpenCode behavior and avoiding hidden "load older" on exact-limit responses.
-                            try {
-                                const fetchLimit = noLimit ? undefined : targetLimit;
-                                const allMessages = await executeWithSessionDirectory(sessionId, () => opencodeClient.getSessionMessages(sessionId, fetchLimit));
-                                if (!isLatestRequest()) {
-                                    return;
+                                const nextMemoryState = new Map(snapshot.sessionMemoryState);
+                                const currentMemoryState = nextMemoryState.get(sessionId);
+                                if (currentMemoryState) {
+                                    nextMemoryState.set(sessionId, {
+                                        ...currentMemoryState,
+                                        historyLoading: false,
+                                        historyLimit: currentMemoryState.historyLimit ?? targetLimit,
+                                    });
                                 }
 
-                                // Filter out reverted messages first
-                                const revertMessageId = getSessionRevertMessageId(sessionId);
-                                const messagesWithoutReverted = filterMessagesByRevertPoint<{ info: Message; parts: Part[] }>(
-                                    allMessages as { info: Message; parts: Part[] }[],
-                                    revertMessageId,
-                                );
-                                const orderedMessages = [...messagesWithoutReverted].sort(compareMessageEntriesChronologically);
-
-                                // If server fills the requested window, assume there may be more above.
-                                const hasMoreAbove = typeof fetchLimit === 'number'
-                                    ? orderedMessages.length >= targetLimit
-                                    : false;
-
-                                const messagesToKeep = orderedMessages.slice(-targetLimit);
-
-                                set((state) => {
-                                    if (!isLatestRequest()) {
-                                        return state;
-                                    }
-
-                                    const previousMessages = state.messages.get(sessionId) || [];
-                                    const normalizedMessages = messagesToKeep.map((message) => {
-                                        const infoWithMarker = normalizeMessageInfoForProjection(message.info as Message) as any;
-
-                                        const serverParts = (Array.isArray(message.parts) ? message.parts : []).map((part) => {
-                                            if (part?.type === 'text') {
-                                                const raw = (part as any).text ?? (part as any).content ?? '';
-                                                if (isExecutionForkMetaText(raw)) {
-                                                    return { ...part, synthetic: true } as Part;
-                                                }
-                                            }
-                                            return part;
-                                        });
-                                        return {
-                                            ...message,
-                                            info: infoWithMarker,
-                                            parts: serverParts,
-                                        };
-                                    });
-
-                                    const mergedMessages = dedupeMessagesById(normalizedMessages);
-                                    const currentMemoryState = state.sessionMemoryState.get(sessionId) ?? previousMemoryState;
-                                    const hasStreamingMessage = Boolean(state.streamingMessageIds.get(sessionId));
-                                    const sentRecently =
-                                        typeof currentMemoryState?.lastUserMessageAt === 'number'
-                                        && Date.now() - currentMemoryState.lastUserMessageAt < RECENT_SEND_EMPTY_GUARD_MS;
-
-                                    const shouldPreserveExistingSnapshot =
-                                        mergedMessages.length === 0
-                                        && previousMessages.length > 0
-                                        && (hasStreamingMessage || currentMemoryState?.isStreaming === true || sentRecently);
-
-                                    if (shouldPreserveExistingSnapshot) {
-                                        const newMemoryState = new Map(state.sessionMemoryState);
-                                        const existingMemory = newMemoryState.get(sessionId) ?? previousMemoryState ?? {
-                                            viewportAnchor: 0,
-                                            isStreaming: false,
-                                            lastAccessedAt: Date.now(),
-                                            backgroundMessageCount: 0,
-                                        };
-                                        newMemoryState.set(sessionId, {
-                                            ...existingMemory,
-                                            lastAccessedAt: Date.now(),
-                                            historyLoading: false,
-                                            historyLimit: targetLimit,
-                                        });
-
-                                        const newHistoryMeta = new Map(state.sessionHistoryMeta);
-                                        const currentMeta = newHistoryMeta.get(sessionId);
-                                        newHistoryMeta.set(sessionId, {
-                                            limit: targetLimit,
-                                            complete: currentMeta?.complete ?? false,
-                                            loading: false,
-                                        });
-
-                                        return {
-                                            sessionMemoryState: newMemoryState,
-                                            sessionHistoryMeta: newHistoryMeta,
-                                        };
-                                    }
-
-                                    const loadedTurnCount = countLoadedTurns(mergedMessages);
-                                    const previousIds = new Set(previousMessages.map((msg) => msg.info.id));
-                                    const nextIds = new Set(mergedMessages.map((msg) => msg.info.id));
-                                    const removedIds: string[] = [];
-                                    previousIds.forEach((id) => {
-                                        if (!nextIds.has(id)) {
-                                            removedIds.push(id);
-                                        }
-                                    });
-
-                                    const newMessages = new Map(state.messages);
-                                    newMessages.set(sessionId, mergedMessages);
-                                    primeSessionMessagePositionIndex(sessionId, mergedMessages);
-
-                                    const newMemoryState = new Map(state.sessionMemoryState);
-                                    newMemoryState.set(sessionId, {
-                                        ...previousMemoryState,
-                                        viewportAnchor: mergedMessages.length - 1,
-                                        isStreaming: false,
-                                        lastAccessedAt: Date.now(),
-                                        backgroundMessageCount: 0,
-                                        totalAvailableMessages: previousMemoryState?.totalAvailableMessages,
-                                        loadedTurnCount,
-                                        hasMoreAbove,
-                                        hasMoreTurnsAbove: hasMoreAbove,
-                                        historyLoading: false,
-                                        historyComplete: !hasMoreAbove,
-                                        historyLimit: targetLimit,
-                                        streamingCooldownUntil: undefined,
-                                    });
-
-                                    const newHistoryMeta = new Map(state.sessionHistoryMeta);
-                                    newHistoryMeta.set(sessionId, {
-                                        limit: targetLimit,
-                                        complete: !hasMoreAbove,
-                                        loading: false,
-                                    });
-
-                                    const result: Record<string, any> = {
-                                        messages: newMessages,
-                                        sessionMemoryState: newMemoryState,
-                                        sessionHistoryMeta: newHistoryMeta,
-                                    };
-
-                                    clearLifecycleTimersForIds(removedIds);
-                                    const updatedLifecycle = removeLifecycleEntries(state.messageStreamStates, removedIds);
-                                    if (updatedLifecycle !== state.messageStreamStates) {
-                                        result.messageStreamStates = updatedLifecycle;
-                                    }
-
-                                    if (removedIds.length > 0) {
-                                        const currentStreaming = state.streamingMessageIds.get(sessionId);
-                                        if (currentStreaming && removedIds.includes(currentStreaming)) {
-                                            result.streamingMessageIds = setStreamingIdForSession(
-                                                result.streamingMessageIds ?? state.streamingMessageIds,
-                                                sessionId,
-                                                null
-                                            );
-                                        }
-                                    }
-
-                                    if (removedIds.length > 0) {
-                                        const nextIndex = removeMessageSessionIndexEntries(
-                                            result.messageSessionIndex ?? state.messageSessionIndex,
-                                            removedIds
-                                        );
-                                        if (nextIndex !== (result.messageSessionIndex ?? state.messageSessionIndex)) {
-                                            result.messageSessionIndex = nextIndex;
-                                        }
-                                    }
-
-                                    if (removedIds.length > 0) {
-                                        const nextPendingParts = new Map(state.pendingAssistantParts);
-                                        let pendingChanged = false;
-                                        removedIds.forEach((id) => {
-                                            if (nextPendingParts.delete(id)) {
-                                                pendingChanged = true;
-                                            }
-                                        });
-                                        if (pendingChanged) {
-                                            result.pendingAssistantParts = nextPendingParts;
-                                        }
-                                    }
-
-                                    const targetIndex = result.messageSessionIndex ?? state.messageSessionIndex;
-                                    let indexAccumulator = targetIndex;
-                                    mergedMessages.forEach((message) => {
-                                        const id = (message?.info as { id?: unknown })?.id;
-                                        if (typeof id === "string" && id.length > 0) {
-                                            indexAccumulator = upsertMessageSessionIndex(indexAccumulator, id, sessionId);
-                                        }
-                                    });
-                                    if (indexAccumulator !== targetIndex) {
-                                        result.messageSessionIndex = indexAccumulator;
-                                    }
-
-                                    return result;
-                                });
-                            } finally {
-                                set((snapshot) => {
-                                    if (!isLatestRequest()) {
-                                        return snapshot;
-                                    }
-                                    const currentMeta = snapshot.sessionHistoryMeta.get(sessionId);
-                                    if (!currentMeta?.loading) {
-                                        return snapshot;
-                                    }
-                                    const nextHistoryMeta = new Map(snapshot.sessionHistoryMeta);
-                                    nextHistoryMeta.set(sessionId, {
-                                        ...currentMeta,
-                                        loading: false,
-                                    });
-                                    return { sessionHistoryMeta: nextHistoryMeta };
-                                });
-                            }
-                        })();
-
-                        loadMessagesInFlightBySession.set(sessionId, task);
-                        try {
-                            await task;
-                        } finally {
-                            if (loadMessagesInFlightBySession.get(sessionId) === task) {
-                                loadMessagesInFlightBySession.delete(sessionId);
-                            }
+                                return {
+                                    sessionHistoryMeta: nextHistoryMeta,
+                                    sessionMemoryState: nextMemoryState,
+                                };
+                            });
                         }
+                    })();
+
+                    loadMessagesInFlightBySession.set(sessionId, task);
+                    try {
+                        await task;
+                    } finally {
+                        if (loadMessagesInFlightBySession.get(sessionId) === task) {
+                            loadMessagesInFlightBySession.delete(sessionId);
+                        }
+                    }
                 },
 
                 sendMessage: async (content: string, providerID: string, modelID: string, agent?: string, currentSessionId?: string, attachments?: AttachedFile[], agentMentionName?: string | null, additionalParts?: Array<{ text: string; attachments?: AttachedFile[]; synthetic?: boolean }>, variant?: string, inputMode: 'normal' | 'shell' = 'normal', format?: { type: 'json_schema'; schema: Record<string, unknown>; retryCount?: number }) => {

@@ -18,7 +18,6 @@ import type { PiInteractiveRequestViewState, PiServerEvent, PiSessionViewState }
 import {
   extractPiQuestionResponseValue,
   getPiUiAgents,
-  getPiUiProviders,
   piSessionStatusToUiStatus,
   toUiMessageEntries,
   toUiQuestionRequest,
@@ -155,6 +154,8 @@ class OpencodeService {
   private globalSseFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private globalSseLastFlushAt = 0;
   private globalPiSource: EventSource | null = null;
+  private listDirectoryCache = new Map<string, { entries: FilesystemEntry[]; expiresAt: number }>();
+  private listDirectoryInFlight = new Map<string, Promise<FilesystemEntry[]>>();
 
   constructor(baseUrl: string = DEFAULT_BASE_URL) {
     const desktopBase = resolveDesktopBaseUrl();
@@ -813,7 +814,13 @@ class OpencodeService {
 
     await this.fetchPi<void>(`/sessions/${encodeURIComponent(params.id)}/prompt`, {
       method: 'POST',
-      body: JSON.stringify({ text: promptText }),
+      body: JSON.stringify({
+        text: promptText,
+        model: {
+          providerID: params.providerID,
+          modelID: params.modelID,
+        },
+      }),
     });
 
     return tempMessageId;
@@ -1094,7 +1101,11 @@ class OpencodeService {
     providers: Provider[];
     default: { [key: string]: string };
   }> {
-    return getPiUiProviders();
+    const directory = typeof this.currentDirectory === 'string' && this.currentDirectory.trim().length > 0
+      ? this.currentDirectory.trim()
+      : '';
+    const query = directory ? `?cwd=${encodeURIComponent(directory)}` : '';
+    return this.fetchPi<{ providers: Provider[]; default: { [key: string]: string } }>(`/providers${query}`);
   }
 
   // App Management - using config endpoint since /app doesn't exist in this version
@@ -1387,20 +1398,53 @@ class OpencodeService {
     }
 
     const task = (async () => {
-    const desktopFiles = getDesktopFilesApi();
-    if (desktopFiles) {
+      const desktopFiles = getDesktopFilesApi();
+      if (desktopFiles) {
+        try {
+          const result = await desktopFiles.listDirectory(directoryPath || '', options);
+          if (!result || !Array.isArray(result.entries)) {
+            return [];
+          }
+          const entries = result.entries.map<FilesystemEntry>((entry) => ({
+            name: entry.name,
+            path: normalizeFsPath(entry.path),
+            isDirectory: !!entry.isDirectory,
+            isFile: !entry.isDirectory,
+            isSymbolicLink: false,
+          }));
+          this.listDirectoryCache.set(cacheKey, {
+            entries,
+            expiresAt: Date.now() + FS_LIST_CACHE_TTL_MS,
+          });
+          return entries;
+        } catch (error) {
+          console.error('Failed to list directory contents:', error);
+          throw error;
+        }
+      }
+
       try {
-        const result = await desktopFiles.listDirectory(directoryPath || '', options);
+        const params = new URLSearchParams();
+        if (directoryPath && directoryPath.trim().length > 0) {
+          params.set('path', directoryPath);
+        }
+        if (options?.respectGitignore) {
+          params.set('respectGitignore', 'true');
+        }
+        const query = params.toString();
+        const response = await fetch(`${this.baseUrl}/fs/list${query ? `?${query}` : ''}`);
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          const message = typeof error.error === 'string' ? error.error : 'Failed to list directory';
+          throw new Error(message);
+        }
+
+        const result = await response.json();
         if (!result || !Array.isArray(result.entries)) {
           return [];
         }
-        const entries = result.entries.map<FilesystemEntry>((entry) => ({
-          name: entry.name,
-          path: normalizeFsPath(entry.path),
-          isDirectory: !!entry.isDirectory,
-          isFile: !entry.isDirectory,
-          isSymbolicLink: false,
-        }));
+
+        const entries = result.entries as FilesystemEntry[];
         this.listDirectoryCache.set(cacheKey, {
           entries,
           expiresAt: Date.now() + FS_LIST_CACHE_TTL_MS,
@@ -1410,39 +1454,6 @@ class OpencodeService {
         console.error('Failed to list directory contents:', error);
         throw error;
       }
-    }
-
-    try {
-      const params = new URLSearchParams();
-      if (directoryPath && directoryPath.trim().length > 0) {
-        params.set('path', directoryPath);
-      }
-      if (options?.respectGitignore) {
-        params.set('respectGitignore', 'true');
-      }
-      const query = params.toString();
-      const response = await fetch(`${this.baseUrl}/fs/list${query ? `?${query}` : ''}`);
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        const message = typeof error.error === 'string' ? error.error : 'Failed to list directory';
-        throw new Error(message);
-      }
-
-      const result = await response.json();
-      if (!result || !Array.isArray(result.entries)) {
-        return [];
-      }
-
-      const entries = result.entries as FilesystemEntry[];
-      this.listDirectoryCache.set(cacheKey, {
-        entries,
-        expiresAt: Date.now() + FS_LIST_CACHE_TTL_MS,
-      });
-      return entries;
-    } catch (error) {
-      console.error('Failed to list directory contents:', error);
-      throw error;
-    }
     })();
 
     const trackedTask = task.finally(() => {

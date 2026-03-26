@@ -61,6 +61,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: [
+      { find: '@openchamber/ui', replacement: path.resolve(__dirname, '../ui/src') },
       { find: '@openaurora/ui', replacement: path.resolve(__dirname, '../ui/src') },
       { find: '@web', replacement: path.resolve(__dirname, './src') },
       { find: '@', replacement: path.resolve(__dirname, '../ui/src') },

@@ -23,6 +23,7 @@ import type { ToolPopupContent } from '../types';
 import { ensurePierreThemeRegistered } from '@/lib/shiki/appThemeRegistry';
 import { getDefaultTheme } from '@/lib/theme/themes';
 import type { MessageRecord } from '@/lib/messageCompletion';
+import { useSessionActivity } from '@/hooks/useSessionActivity';
 
 import {
     formatEditOutput,
@@ -156,9 +157,6 @@ const MAX_DURATION_MS = 5 * 60 * 1000; // 5 minutes cap
 const TASK_TOOL_POLL_FAST_MS = 1200;
 const TASK_TOOL_POLL_IDLE_MS = 3200;
 const TASK_TOOL_POLL_HIDDEN_MS = 6000;
-const TASK_TOOL_INITIAL_FETCH_LIMIT = 500;
-const TASK_TOOL_ACTIVE_FETCH_LIMIT = 160;
-const TASK_TOOL_IDLE_FETCH_LIMIT = 80;
 const TASK_TOOL_NO_CHANGE_BACKOFF_AFTER_POLLS = 3;
 const TASK_TOOL_SETTLE_GRACE_MS = 2500;
 
@@ -653,41 +651,6 @@ const buildTaskSummaryEntriesFromSession = (messages: SessionMessageWithParts[])
     }
 
     return entries;
-};
-
-const buildTaskSessionMessagesSignature = (messages: SessionMessageWithParts[]): string => {
-    if (!Array.isArray(messages) || messages.length === 0) {
-        return '0';
-    }
-
-    const lastMessage = messages[messages.length - 1];
-    const lastMessageId = typeof lastMessage?.info?.id === 'string' ? lastMessage.info.id : '';
-    const lastMessageUpdated =
-        typeof lastMessage?.info?.time?.completed === 'number'
-            ? lastMessage.info.time.completed
-            : typeof lastMessage?.info?.time?.created === 'number'
-                ? lastMessage.info.time.created
-                : 0;
-    const lastParts = Array.isArray(lastMessage?.parts) ? lastMessage.parts : [];
-    const lastPart = lastParts[lastParts.length - 1] as Record<string, unknown> | undefined;
-    const tailType = typeof lastPart?.type === 'string' ? lastPart.type : '';
-    const tailId = typeof lastPart?.id === 'string' ? lastPart.id : '';
-    const tailTextLength = (() => {
-        const textCandidate = lastPart?.text;
-        if (typeof textCandidate === 'string') {
-            return textCandidate.length;
-        }
-        const stateCandidate = lastPart?.state;
-        if (stateCandidate && typeof stateCandidate === 'object') {
-            const stateStatus = (stateCandidate as Record<string, unknown>).status;
-            if (typeof stateStatus === 'string') {
-                return stateStatus.length;
-            }
-        }
-        return 0;
-    })();
-
-    return `${messages.length}:${lastMessageId}:${lastMessageUpdated}:${lastParts.length}:${tailType}:${tailId}:${tailTextLength}`;
 };
 
 const getTaskSummaryLabel = (entry: TaskToolSummaryEntry): string => {
@@ -1879,16 +1842,6 @@ const ToolPart: React.FC<ToolPartProps> = ({
             return document.visibilityState === 'visible';
         };
 
-        const resolveFetchLimit = (isInitialFetch: boolean) => {
-            if (isInitialFetch && childSessionTaskSummaryEntries.length === 0) {
-                return TASK_TOOL_INITIAL_FETCH_LIMIT;
-            }
-            if (isActive || childSessionHasInFlightTools || childSessionActive) {
-                return TASK_TOOL_ACTIVE_FETCH_LIMIT;
-            }
-            return TASK_TOOL_IDLE_FETCH_LIMIT;
-        };
-
         const resolvePollDelay = () => {
             if (!isVisible()) {
                 return TASK_TOOL_POLL_HIDDEN_MS;
@@ -1905,11 +1858,11 @@ const ToolPart: React.FC<ToolPartProps> = ({
             }
             pollTimer = window.setTimeout(() => {
                 pollTimer = undefined;
-                void fetchSessionMessages(false);
+                void fetchSessionMessages();
             }, resolvePollDelay());
         };
 
-        const fetchSessionMessages = async (isInitialFetch: boolean) => {
+        const fetchSessionMessages = async () => {
             try {
                 const session = await piClient.getSession(taskSessionId);
                 const messages = toUiMessageEntries(session).slice(-500);
@@ -1924,7 +1877,7 @@ const ToolPart: React.FC<ToolPartProps> = ({
             }
         };
 
-        void fetchSessionMessages(true);
+        void fetchSessionMessages();
 
         return () => {
             cancelled = true;

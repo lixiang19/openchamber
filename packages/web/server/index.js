@@ -47,6 +47,7 @@ import {
   readTerminalInputWsControlFrame,
 } from './lib/terminal/index.js';
 import webPush from 'web-push';
+import { createPiProvidersService } from './lib/pi/providers.js';
 import { createPiSdkHost } from './lib/pi/sdk-host.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -63,6 +64,7 @@ const CLIENT_RELOAD_DELAY_MS = 800;
 const OPEN_CODE_READY_GRACE_MS = 12000;
 const LONG_REQUEST_TIMEOUT_MS = 4 * 60 * 1000;
 const PI_SDK_HOST = createPiSdkHost();
+const PI_PROVIDERS_SERVICE = createPiProvidersService();
 const TUNNEL_BOOTSTRAP_TTL_DEFAULT_MS = 30 * 60 * 1000;
 const TUNNEL_BOOTSTRAP_TTL_MIN_MS = 60 * 1000;
 const TUNNEL_BOOTSTRAP_TTL_MAX_MS = 24 * 60 * 60 * 1000;
@@ -726,14 +728,7 @@ const shouldApplyResolvedTemplateMessage = (template, resolved, variables) => {
 
 const ZEN_DEFAULT_MODEL = 'gpt-5-nano';
 
-/**
- * Validated fallback zen model determined at startup by checking available free
- * models from the zen API. When `null`, startup validation hasn't run yet (or
- * failed), so `resolveZenModel` falls back to `ZEN_DEFAULT_MODEL`.
- */
-let validatedZenFallback = null;
-
-/** Cached free zen models response and timestamp (shared by startup + endpoint). */
+/** Cached free zen models response and timestamp for the zen models endpoint. */
 let cachedZenModels = null;
 let cachedZenModelsTimestamp = 0;
 const ZEN_MODELS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -774,55 +769,15 @@ const fetchFreeZenModels = async () => {
 };
 
 /**
- * Resolve the zen model to use. Checks the provided override first,
- * then falls back to the stored zenModel setting, then to the validated
- * startup fallback, then to the hardcoded default.
+ * Resolve the zen model to use. The runtime only honors an explicit request
+ * override now; otherwise it uses the built-in default.
  */
 const resolveZenModel = async (override) => {
   if (typeof override === 'string' && override.trim().length > 0) {
     return override.trim();
   }
-  try {
-    const settings = await readSettingsFromDisk();
-    if (typeof settings?.zenModel === 'string' && settings.zenModel.trim().length > 0) {
-      return settings.zenModel.trim();
-    }
-  } catch {
-    // ignore
-  }
-  return validatedZenFallback || ZEN_DEFAULT_MODEL;
+  return ZEN_DEFAULT_MODEL;
 };
-
-const validateZenModelAtStartup = async () => {
-  try {
-    const freeModels = await fetchFreeZenModels();
-    const freeModelIds = freeModels.map((m) => m.id);
-
-    if (freeModelIds.length > 0) {
-      validatedZenFallback = freeModelIds[0];
-
-      const settings = await readSettingsFromDisk();
-      const storedModel = typeof settings?.zenModel === 'string' ? settings.zenModel.trim() : '';
-
-      if (!storedModel || !freeModelIds.includes(storedModel)) {
-        const fallback = freeModelIds[0];
-        console.log(
-          storedModel
-            ? `[zen] Stored model "${storedModel}" not found in free models, falling back to "${fallback}"`
-            : `[zen] No model configured, setting default to "${fallback}"`
-        );
-        await persistSettings({ zenModel: fallback });
-      } else {
-        console.log(`[zen] Stored model "${storedModel}" verified as available`);
-      }
-    } else {
-      console.warn('[zen] No free models returned from API, skipping validation');
-    }
-  } catch (error) {
-    console.warn('[zen] Startup model validation failed (non-blocking):', error?.message || error);
-  }
-};
-
 
 const summarizeText = async (text, targetLength, zenModel) => {
   if (!text || typeof text !== 'string' || text.trim().length === 0) return text;
@@ -5089,7 +5044,7 @@ const maybeSendPushForTrigger = async (payload) => {
           lastMessage = await fetchLastAssistantMessageText(sessionId, messageId);
         }
 
-        const notifZenModel = await resolveZenModel(settings?.zenModel);
+        const notifZenModel = await resolveZenModel();
         variables.last_message = await prepareNotificationLastMessage({
           message: lastMessage,
           settings,
@@ -5150,7 +5105,7 @@ const maybeSendPushForTrigger = async (payload) => {
           lastMessage = await fetchLastAssistantMessageText(sessionId, errorMessageId);
         }
 
-        const errZenModel = await resolveZenModel(settings?.zenModel);
+        const errZenModel = await resolveZenModel();
         variables.last_message = await prepareNotificationLastMessage({
           message: lastMessage,
           settings,
@@ -6039,9 +5994,6 @@ async function main(options = {}) {
     sayTTSCapability = { available: false, voices: [], reason: 'Not macOS' };
   }
 
-  // Startup model validation is best-effort and runs in background.
-  void validateZenModelAtStartup();
-
   const app = express();
   const serverStartedAt = new Date().toISOString();
   app.set('trust proxy', true);
@@ -6106,7 +6058,10 @@ async function main(options = {}) {
 
   app.post('/api/pi/sessions/:sessionId/prompt', async (req, res) => {
     try {
-      await PI_SDK_HOST.prompt(req.params.sessionId, { text: req.body?.text });
+      await PI_SDK_HOST.prompt(req.params.sessionId, {
+        text: req.body?.text,
+        model: req.body?.model,
+      });
       res.status(204).end();
     } catch (error) {
       res.status(500).json({ error: error?.message || 'Failed to submit prompt' });
@@ -6137,6 +6092,17 @@ async function main(options = {}) {
       res.json({ ok: true });
     } catch (error) {
       res.status(500).json({ error: error?.message || 'Failed to reject interactive request' });
+    }
+  });
+
+  app.get('/api/pi/providers', async (req, res) => {
+    try {
+      const providers = await PI_PROVIDERS_SERVICE.getProviders({
+        cwd: typeof req.query.cwd === 'string' ? req.query.cwd : undefined,
+      });
+      res.json(providers);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to load Pi providers' });
     }
   });
 

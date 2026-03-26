@@ -6,6 +6,7 @@ This module holds the server-side normalization model for Pi RPC output before i
 ## Entrypoints and structure
 - `packages/web/server/lib/pi/index.js`: public exports for the Pi bridge helpers.
 - `packages/web/server/lib/pi/bridge-schema.js`: normalized event catalog plus envelope and message normalizers.
+- `packages/web/server/lib/pi/providers.js`: Pi model/provider discovery service built directly on `AuthStorage`, `ModelRegistry`, and `SettingsManager`.
 - `packages/web/server/lib/pi/runtime.js`: in-memory Pi session runtime bridge for session creation, prompt submission, abort, message refresh, and OpenCode-compatible message projection.
 
 ## Public exports
@@ -38,5 +39,6 @@ This module holds the server-side normalization model for Pi RPC output before i
 - Set `OPENAURORA_AGENT_RUNTIME=pi` (or `OPENCHAMBER_AGENT_RUNTIME=pi`) to activate the Pi session routes.
 - Set `OPENAURORA_PI_BIN` or `PI_CLI_BIN` when the Pi executable is not available as plain `pi` on `PATH`.
 - The normalized model intentionally excludes plugin/package identity. The current bridge only targets Pi core runtime behavior.
+- Model/provider discovery must stay separate from session bootstrap. `providers.js` reads Pi's `ModelRegistry` directly instead of creating throwaway sessions.
 - Unknown RPC lines are preserved as `envelope: unknown` so the caller can log protocol drift instead of dropping data silently.
 - The runtime bridge currently handles session bootstrap, prompt submission, abort, pull-based message refresh, and snapshot-style SSE translation for `session.status`, `message.updated`, and `message.part.updated`.

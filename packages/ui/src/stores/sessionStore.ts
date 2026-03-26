@@ -302,69 +302,84 @@ export const useSessionStore = create<SessionStore>()(
                         const requestSeq = ++loadSessionsRequestSeq;
                         const isLatestRequest = () => requestSeq === loadSessionsRequestSeq;
                         set({ isLoading: true, error: null });
-                        try {
-                        const directoryStore = useDirectoryStore.getState();
-                        const projectsStore = useProjectsStore.getState();
-                        const vscodeWorkspaceDirectory = readVSCodeWorkspaceDirectory();
-                        const activeProject = projectsStore.projects.find((project) => project.id === projectsStore.activeProjectId) ?? null;
-                        const activeProjectRoot = normalizePath(activeProject?.path ?? null);
-                        const activeDirectory = normalizePath(vscodeWorkspaceDirectory ?? directoryStore.currentDirectory ?? opencodeClient.getDirectory() ?? activeProjectRoot);
-
-                        const snapshots = await piClient.listSessions();
-                        if (!isLatestRequest()) {
-                            return;
-                        }
-
-                        const sessions = dedupeSessionsById(snapshots.map((session) => toUiSession(session)));
-                        const sessionsByDirectory = buildSessionsByDirectory(sessions);
-                        const validSessionIds = new Set(sessions.map((session) => session.id));
-                        const stateSnapshot = get();
-
-                        let nextCurrentId = stateSnapshot.currentSessionId;
-                        if (!nextCurrentId || !validSessionIds.has(nextCurrentId)) {
-                            const storedSelection = activeDirectory ? getStoredSessionForDirectory(activeDirectory) : null;
-                            nextCurrentId = storedSelection && validSessionIds.has(storedSelection)
-                                ? storedSelection
-                                : sessions[0]?.id ?? null;
-                        }
-
-                        const resolvedDirectoryForCurrent = nextCurrentId
-                            ? getSessionDirectory(sessions, nextCurrentId)
-                            : activeDirectory;
 
                         try {
-                            opencodeClient.setDirectory(resolvedDirectoryForCurrent ?? activeDirectory ?? undefined);
+                            const directoryStore = useDirectoryStore.getState();
+                            const projectsStore = useProjectsStore.getState();
+                            const vscodeWorkspaceDirectory = readVSCodeWorkspaceDirectory();
+                            const activeProject = projectsStore.projects.find((project) => project.id === projectsStore.activeProjectId) ?? null;
+                            const activeProjectRoot = normalizePath(activeProject?.path ?? null);
+                            const activeDirectory = normalizePath(vscodeWorkspaceDirectory ?? directoryStore.currentDirectory ?? opencodeClient.getDirectory() ?? activeProjectRoot);
+
+                            const snapshots = await piClient.listSessions();
+                            if (!isLatestRequest()) {
+                                return;
+                            }
+
+                            const sessions = dedupeSessionsById(snapshots.map((session) => toUiSession(session)));
+                            const sessionsByDirectory = buildSessionsByDirectory(sessions);
+                            const validSessionIds = new Set(sessions.map((session) => session.id));
+                            const stateSnapshot = get();
+
+                            let nextCurrentId = stateSnapshot.currentSessionId;
+                            if (!nextCurrentId || !validSessionIds.has(nextCurrentId)) {
+                                const storedSelection = activeDirectory ? getStoredSessionForDirectory(activeDirectory) : null;
+                                nextCurrentId = storedSelection && validSessionIds.has(storedSelection)
+                                    ? storedSelection
+                                    : sessions[0]?.id ?? null;
+                            }
+
+                            const resolvedDirectoryForCurrent = nextCurrentId
+                                ? getSessionDirectory(sessions, nextCurrentId)
+                                : activeDirectory;
+
+                            try {
+                                opencodeClient.setDirectory(resolvedDirectoryForCurrent ?? activeDirectory ?? undefined);
+                            } catch (error) {
+                                console.warn('Failed to sync Pi directory after session load:', error);
+                            }
+
+                            set({
+                                sessions,
+                                archivedSessions: [],
+                                sessionsByDirectory,
+                                currentSessionId: nextCurrentId,
+                                lastLoadedDirectory: activeDirectory ?? null,
+                                isLoading: false,
+                                error: null,
+                                worktreeMetadata: new Map(),
+                                availableWorktrees: [],
+                                availableWorktreesByProject: new Map(),
+                            });
+
+                            if (activeDirectory) {
+                                storeSessionForDirectory(activeDirectory, nextCurrentId);
+                            }
+                            if (resolvedDirectoryForCurrent && resolvedDirectoryForCurrent !== activeDirectory) {
+                                storeSessionForDirectory(resolvedDirectoryForCurrent, nextCurrentId);
+                            }
                         } catch (error) {
-                            console.warn('Failed to sync Pi directory after session load:', error);
+                            if (!isLatestRequest()) {
+                                return;
+                            }
+                            set({
+                                error: error instanceof Error ? error.message : 'Failed to load Pi sessions',
+                                isLoading: false,
+                            });
                         }
+                    })();
 
-                        set({
-                            sessions,
-                            archivedSessions: [],
-                            sessionsByDirectory,
-                            currentSessionId: nextCurrentId,
-                            lastLoadedDirectory: activeDirectory ?? null,
-                            isLoading: false,
-                            error: null,
-                            worktreeMetadata: new Map(),
-                            availableWorktrees: [],
-                            availableWorktreesByProject: new Map(),
-                        });
-
-                        if (activeDirectory) {
-                            storeSessionForDirectory(activeDirectory, nextCurrentId);
+                    loadSessionsInFlight = task;
+                    try {
+                        await task;
+                    } finally {
+                        if (loadSessionsInFlight === task) {
+                            loadSessionsInFlight = null;
                         }
-                        if (resolvedDirectoryForCurrent && resolvedDirectoryForCurrent !== activeDirectory) {
-                            storeSessionForDirectory(resolvedDirectoryForCurrent, nextCurrentId);
+                        if (loadSessionsQueued) {
+                            loadSessionsQueued = false;
+                            await get().loadSessions();
                         }
-                    } catch (error) {
-                        if (!isLatestRequest()) {
-                            return;
-                        }
-                        set({
-                            error: error instanceof Error ? error.message : 'Failed to load Pi sessions',
-                            isLoading: false,
-                        });
                     }
                 },
 

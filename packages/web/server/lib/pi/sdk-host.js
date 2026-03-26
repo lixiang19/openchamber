@@ -281,6 +281,27 @@ export const createPiSdkHost = () => {
     setToolsExpanded() {},
   });
 
+  const resolveSessionModel = async (session, requestedModel) => {
+    const providerID = normalizeString(requestedModel?.providerID);
+    const modelID = normalizeString(requestedModel?.modelID);
+
+    if (!providerID && !modelID) {
+      return null;
+    }
+    if (!providerID || !modelID) {
+      throw new Error('Pi model selection requires both providerID and modelID');
+    }
+
+    session.modelRegistry.refresh();
+    const availableModels = await Promise.resolve(session.modelRegistry.getAvailable());
+    const selectedModel = availableModels.find((model) => model.provider === providerID && model.id === modelID);
+    if (!selectedModel) {
+      throw new Error(`Pi model not available: ${providerID}/${modelID}`);
+    }
+
+    return selectedModel;
+  };
+
   const attachSession = async (record) => {
     await record.session.bindExtensions({
       uiContext: createExtensionUiContext(record),
@@ -468,7 +489,7 @@ export const createPiSdkHost = () => {
       });
       return buildSessionSnapshot(record);
     },
-    async prompt(sessionId, { text } = {}) {
+    async prompt(sessionId, { text, model } = {}) {
       const record = sessions.get(sessionId);
       if (!record) {
         throw new Error(`Unknown Pi session: ${sessionId}`);
@@ -481,6 +502,16 @@ export const createPiSdkHost = () => {
       record.status = 'streaming';
       emitSystemStatus(record, 'streaming');
       try {
+        const selectedModel = await resolveSessionModel(record.session, model);
+        if (
+          selectedModel &&
+          (!record.session.model ||
+            record.session.model.provider !== selectedModel.provider ||
+            record.session.model.id !== selectedModel.id)
+        ) {
+          await record.session.setModel(selectedModel);
+        }
+
         await record.session.prompt(promptText, { source: 'interactive' });
       } catch (error) {
         record.lastError = error instanceof Error ? error.message : String(error);
