@@ -5,25 +5,15 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 
 import {
-  AGENT_RUNTIME_OPENCODE,
   AGENT_RUNTIME_PI,
   buildPromptTextFromParts,
-  createPiRuntime,
   mapPiUiRequestToQuestionRequest,
-  resolveAgentRuntimeMode,
   translateOpenCodeMessagesToSseEvents,
   translatePiEnvelopeToSseEvents,
   translatePiMessagesToOpenCodeMessages,
 } from './runtime.js';
 
 describe('pi runtime helpers', () => {
-  it('resolves the runtime mode with opencode fallback', () => {
-    expect(resolveAgentRuntimeMode('pi')).toBe(AGENT_RUNTIME_PI);
-    expect(resolveAgentRuntimeMode('PI')).toBe(AGENT_RUNTIME_PI);
-    expect(resolveAgentRuntimeMode('opencode')).toBe(AGENT_RUNTIME_OPENCODE);
-    expect(resolveAgentRuntimeMode('unknown')).toBe(AGENT_RUNTIME_OPENCODE);
-  });
-
   it('builds Pi prompt text from OpenCode message parts', () => {
     expect(buildPromptTextFromParts([
       { type: 'text', text: 'Review this patch' },
@@ -114,16 +104,6 @@ describe('pi runtime helpers', () => {
     });
   });
 
-  it('restores idle status when Pi prompt startup fails', async () => {
-    const runtime = createPiRuntime({ cliPath: '/definitely/missing/pi-binary' });
-    const session = runtime.createSession({ directory: '/tmp/project', title: 'Broken Pi' });
-
-    await expect(runtime.promptAsync(session.id, {
-      parts: [{ type: 'text', text: 'hello' }],
-    })).rejects.toThrow();
-
-    expect(runtime.getSessionStatus()[session.id]).toEqual({ type: 'idle' });
-  });
 });
 
 describe('translatePiMessagesToOpenCodeMessages', () => {

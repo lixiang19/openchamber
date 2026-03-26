@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-import { createAgentSession } from '@mariozechner/pi-coding-agent';
+import { DefaultResourceLoader, SessionManager, SettingsManager, createAgentSession } from '@mariozechner/pi-coding-agent';
 
 import { discoverAgents } from './agents.js';
 import { normalizePiRpcEnvelope } from './bridge-schema.js';
@@ -8,6 +8,7 @@ import { createSubagentToolDefinition } from './extensions/subagent.js';
 import { createQuestionToolDefinition } from './extensions/question.js';
 
 const EVENT_HISTORY_LIMIT = 200;
+const COMMAND_CATALOG_CACHE_TTL_MS = 5000;
 
 const cloneJson = (value) => {
   if (value === undefined || value === null) {
@@ -22,6 +23,92 @@ const cloneJson = (value) => {
 const normalizeString = (value) => {
   if (typeof value !== 'string') return '';
   return value.trim();
+};
+
+const normalizeThinkingLevel = (value) => {
+  const normalized = normalizeString(value).toLowerCase();
+  return ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(normalized)
+    ? normalized
+    : null;
+};
+
+const normalizePositiveInteger = (value) => {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 1) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (Number.isInteger(parsed) && parsed >= 1) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
+const normalizePermissionConfig = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const normalized = Object.fromEntries(
+    Object.entries(value)
+      .map(([toolName, action]) => [normalizeString(toolName).toLowerCase(), normalizeString(action).toLowerCase()])
+      .filter(([toolName, action]) => toolName && (action === 'allow' || action === 'deny'))
+  );
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+};
+
+const applyAgentPermissionFilter = (toolNames, permission) => {
+  const normalizedPermission = normalizePermissionConfig(permission);
+  if (!normalizedPermission) {
+    return [...toolNames];
+  }
+
+  return toolNames.filter((toolName) => normalizedPermission[normalizeString(toolName).toLowerCase()] !== 'deny');
+};
+
+const buildAgentPromptAppend = (agent) => {
+  if (!agent) {
+    return [];
+  }
+
+  const sections = [];
+  const prompt = normalizeString(agent.systemPrompt);
+  if (prompt) {
+    sections.push(prompt);
+  }
+
+  const steps = normalizePositiveInteger(agent.steps);
+  if (steps) {
+    sections.push([
+      `Turn budget: ${steps}.`,
+      'You may use at most this many internal turns for the current task.',
+      'Before you would exceed the limit, stop calling tools and respond with your best final answer based on the work completed so far.',
+    ].join(' '));
+  }
+
+  return sections;
+};
+
+const getAgentConfigSignature = (agent) => {
+  if (!agent) {
+    return '';
+  }
+
+  return JSON.stringify({
+    name: agent.name,
+    mode: agent.mode,
+    source: agent.source,
+    sourceScope: agent.sourceScope,
+    systemPrompt: agent.systemPrompt,
+    model: agent.model || '',
+    thinking: agent.thinking || '',
+    steps: normalizePositiveInteger(agent.steps) || 0,
+    permission: normalizePermissionConfig(agent.permission) || {},
+    enabled: agent.enabled !== false,
+    displayName: agent.displayName || '',
+  });
 };
 
 const createRequestLabel = (method) => {
@@ -41,11 +128,20 @@ const serializeToolExecutions = (toolExecutions) => Array.from(toolExecutions.va
 const serializeInteractiveRequests = (interactiveRequests) => Array.from(interactiveRequests.values()).map((entry) => ({ ...entry }));
 const serializeStatusEntries = (statusEntries) => Array.from(statusEntries.entries()).map(([key, text]) => ({ key, text }));
 const serializeWidgets = (widgets) => Array.from(widgets.entries()).map(([key, value]) => ({ key, ...value }));
+const serializeSlashCommands = (commands) => Array.isArray(commands)
+  ? commands.map((cmd) => ({
+      name: cmd.name,
+      description: typeof cmd.description === 'string' ? cmd.description : '',
+      source: cmd.source,
+      sourceInfo: cmd.sourceInfo,
+    }))
+  : [];
 
 export const createPiSdkHost = () => {
   const sessions = new Map();
   const subscribers = new Set();
   const interactiveRequestIndex = new Map();
+  const commandCatalogCache = new Map();
 
   const emit = (payload) => {
     for (const listener of subscribers) {
@@ -147,6 +243,9 @@ export const createPiSdkHost = () => {
         placeholder: typeof payload?.placeholder === 'string' ? payload.placeholder : '',
         options: Array.isArray(payload?.options) ? payload.options.filter((item) => typeof item === 'string') : [],
         prefill: typeof payload?.prefill === 'string' ? payload.prefill : '',
+        questions: Array.isArray(payload?.questions) ? cloneJson(payload.questions) : [],
+        bridgeKind: typeof payload?.bridgeKind === 'string' ? payload.bridgeKind : undefined,
+        webSupport: typeof payload?.webSupport === 'string' ? payload.webSupport : undefined,
         createdAt: Date.now(),
       };
       record.interactiveRequests.set(id, request);
@@ -305,6 +404,96 @@ export const createPiSdkHost = () => {
     return selectedModel;
   };
 
+  const resolveAgentFrontmatterModel = async (session, modelSpec) => {
+    const normalizedSpec = normalizeString(modelSpec);
+    if (!normalizedSpec) {
+      return null;
+    }
+
+    session.modelRegistry.refresh();
+    const availableModels = await Promise.resolve(session.modelRegistry.getAvailable());
+
+    if (normalizedSpec.includes('/')) {
+      const [providerID, modelID, ...rest] = normalizedSpec.split('/');
+      if (!providerID || !modelID || rest.length > 0) {
+        throw new Error(`Invalid Pi agent model: ${normalizedSpec}`);
+      }
+      const exact = availableModels.find((model) => model.provider === providerID && model.id === modelID);
+      if (!exact) {
+        throw new Error(`Pi agent model not available: ${normalizedSpec}`);
+      }
+      return exact;
+    }
+
+    const matches = availableModels.filter((model) => model.id === normalizedSpec);
+    if (matches.length === 1) {
+      return matches[0];
+    }
+    if (matches.length > 1) {
+      const options = matches.map((model) => `${model.provider}/${model.id}`).join(', ');
+      throw new Error(`Ambiguous Pi agent model "${normalizedSpec}". Use one of: ${options}`);
+    }
+
+    throw new Error(`Pi agent model not available: ${normalizedSpec}`);
+  };
+
+  const applySessionAgentSelection = async (record, requestedAgentName, requestedModel) => {
+    const nextAgentName = normalizeString(requestedAgentName);
+    const agents = await discoverAgents(record.cwd);
+    record.availableAgents = agents;
+
+    const agent = nextAgentName
+      ? agents.find((candidate) => candidate.name === nextAgentName)
+      : null;
+
+    if (nextAgentName && !agent) {
+      const available = agents
+        .filter((candidate) => candidate.mode !== 'subagent')
+        .map((candidate) => candidate.name)
+        .join(', ') || 'none';
+      throw new Error(`Unknown Pi agent: ${nextAgentName}. Available agents: ${available}`);
+    }
+
+    const nextAgentSignature = getAgentConfigSignature(agent);
+    const shouldReload = nextAgentSignature !== (record.selectedAgentSignature || '');
+
+    if (shouldReload) {
+      record.selectedAgentName = agent?.name || null;
+      record.selectedAgentConfig = agent || null;
+      record.selectedAgentSignature = nextAgentSignature;
+      await record.session.reload();
+    } else {
+      record.selectedAgentName = agent?.name || null;
+      record.selectedAgentConfig = agent || null;
+      record.selectedAgentSignature = nextAgentSignature;
+    }
+
+    const activeToolNames = applyAgentPermissionFilter(record.defaultToolNames, agent?.permission);
+    record.session.setActiveToolsByName(activeToolNames);
+    record.turnBudget = {
+      maxTurns: normalizePositiveInteger(agent?.steps),
+      usedTurns: 0,
+      exhausted: false,
+    };
+
+    const selectedModel = await resolveSessionModel(record.session, requestedModel)
+      || await resolveAgentFrontmatterModel(record.session, agent?.model);
+
+    if (
+      selectedModel
+      && (!record.session.model
+        || record.session.model.provider !== selectedModel.provider
+        || record.session.model.id !== selectedModel.id)
+    ) {
+      await record.session.setModel(selectedModel);
+    }
+
+    const thinkingLevel = normalizeThinkingLevel(agent?.thinking);
+    if (thinkingLevel && record.session.thinkingLevel !== thinkingLevel) {
+      record.session.setThinkingLevel(thinkingLevel);
+    }
+  };
+
   const attachSession = async (record) => {
     await record.session.bindExtensions({
       uiContext: createExtensionUiContext(record),
@@ -321,7 +510,6 @@ export const createPiSdkHost = () => {
     record.unsubscribe = record.session.subscribe((event) => {
       switch (event.type) {
         case 'agent_start':
-        case 'turn_start':
         case 'message_start':
         case 'message_update':
         case 'tool_execution_start':
@@ -329,6 +517,16 @@ export const createPiSdkHost = () => {
           record.lastError = null;
           record.status = 'streaming';
           break;
+        case 'turn_start': {
+          record.lastError = null;
+          record.status = 'streaming';
+          const maxTurns = normalizePositiveInteger(record.turnBudget?.maxTurns);
+          if (maxTurns && record.turnBudget.usedTurns >= maxTurns && !record.turnBudget.exhausted) {
+            record.turnBudget.exhausted = true;
+            void record.session.abort().catch(() => {});
+          }
+          break;
+        }
         case 'tool_execution_end': {
           const previous = record.toolExecutions.get(event.toolCallId) || {
             toolCallId: event.toolCallId,
@@ -348,8 +546,14 @@ export const createPiSdkHost = () => {
           break;
         }
         case 'message_end':
-        case 'turn_end':
         case 'agent_end':
+          record.lastError = null;
+          updateStatusFromSession(record);
+          break;
+        case 'turn_end':
+          if (normalizePositiveInteger(record.turnBudget?.maxTurns)) {
+            record.turnBudget.usedTurns += 1;
+          }
           record.lastError = null;
           updateStatusFromSession(record);
           break;
@@ -424,6 +628,51 @@ export const createPiSdkHost = () => {
     });
   };
 
+  const listCommandsForCwd = async (cwd) => {
+    const normalizedCwd = normalizeString(cwd) || process.cwd();
+    const cacheKey = normalizedCwd;
+    const cached = commandCatalogCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.commands;
+    }
+
+    let getCommandsBridge;
+    const settingsManager = SettingsManager.create(normalizedCwd);
+    const resourceLoader = new DefaultResourceLoader({
+      cwd: normalizedCwd,
+      settingsManager,
+      extensionFactories: [
+        (pi) => {
+          getCommandsBridge = () => pi.getCommands();
+        },
+      ],
+    });
+
+    await resourceLoader.reload();
+
+    const { session } = await createAgentSession({
+      cwd: normalizedCwd,
+      settingsManager,
+      resourceLoader,
+      sessionManager: SessionManager.inMemory(normalizedCwd),
+    });
+
+    try {
+      const commands = serializeSlashCommands(getCommandsBridge?.() ?? []);
+      commandCatalogCache.set(cacheKey, {
+        commands,
+        expiresAt: now + COMMAND_CATALOG_CACHE_TTL_MS,
+      });
+      return commands;
+    } finally {
+      try {
+        session.dispose();
+      } catch {
+      }
+    }
+  };
+
   return {
     subscribe(listener) {
       subscribers.add(listener);
@@ -444,8 +693,25 @@ export const createPiSdkHost = () => {
         return createInteractiveRequest(recordRef.current, method, payload);
       });
 
+      const settingsManager = SettingsManager.create(normalizedCwd);
+      const resourceLoader = new DefaultResourceLoader({
+        cwd: normalizedCwd,
+        settingsManager,
+        appendSystemPromptOverride: (base) => {
+          const agent = recordRef.current?.selectedAgentConfig;
+          const promptSections = buildAgentPromptAppend(agent);
+          if (promptSections.length === 0) {
+            return base;
+          }
+          return [...base, ...promptSections];
+        },
+      });
+      await resourceLoader.reload();
+
       const { session } = await createAgentSession({
         cwd: normalizedCwd,
+        settingsManager,
+        resourceLoader,
         customTools: [subagentTool, questionTool],
       });
       const id = session.sessionId;
@@ -467,8 +733,14 @@ export const createPiSdkHost = () => {
         workingMessage: null,
         editorText: '',
         eventHistory: [],
-      recordRef.current = record;
+        defaultToolNames: session.getActiveToolNames(),
+        selectedAgentName: null,
+        selectedAgentConfig: null,
+        selectedAgentSignature: '',
+        availableAgents: [],
+        turnBudget: { maxTurns: null, usedTurns: 0, exhausted: false },
       };
+      recordRef.current = record;
       if (record.title) {
         session.setSessionName(record.title);
       }
@@ -488,12 +760,28 @@ export const createPiSdkHost = () => {
     async listAgents(cwd) {
       const normalizedCwd = normalizeString(cwd) || process.cwd();
       const agents = await discoverAgents(normalizedCwd);
-      return agents.map(({ name, mode, description, source }) => ({
+      return agents.map(({ name, mode, description, displayName, source, sourceScope, model, thinking, steps, permission, enabled }) => ({
         name,
         mode,
         description,
         source,
+        scope: sourceScope,
+        ...(displayName ? { displayName } : {}),
+        ...(model ? { model } : {}),
+        ...(thinking ? { thinking } : {}),
+        ...(steps ? { steps } : {}),
+        ...(permission ? { permission } : {}),
+        ...(enabled === false ? { enabled } : {}),
       }));
+    },
+    async listCommands(options = {}) {
+      try {
+        return await listCommandsForCwd(options.cwd);
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.warn('Failed to list Pi commands:', error);
+        throw new Error('Failed to list Pi commands');
+      }
     },
     getSession(sessionId) {
       const record = sessions.get(sessionId);
@@ -519,12 +807,21 @@ export const createPiSdkHost = () => {
       });
       return buildSessionSnapshot(record);
     },
-    async prompt(sessionId, { text, model } = {}) {
+    async prompt(sessionId, { text, model, agent, images } = {}) {
       const record = sessions.get(sessionId);
       if (!record) {
         throw new Error(`Unknown Pi session: ${sessionId}`);
       }
       const promptText = normalizeString(text);
+      const promptImages = Array.isArray(images)
+        ? images
+            .filter((image) => image && image.type === 'image' && typeof image.data === 'string' && typeof image.mimeType === 'string')
+            .map((image) => ({
+              type: 'image',
+              data: image.data,
+              mimeType: image.mimeType,
+            }))
+        : [];
       if (!promptText) {
         throw new Error('Prompt text is required');
       }
@@ -532,17 +829,16 @@ export const createPiSdkHost = () => {
       record.status = 'streaming';
       emitSystemStatus(record, 'streaming');
       try {
-        const selectedModel = await resolveSessionModel(record.session, model);
-        if (
-          selectedModel &&
-          (!record.session.model ||
-            record.session.model.provider !== selectedModel.provider ||
-            record.session.model.id !== selectedModel.id)
-        ) {
-          await record.session.setModel(selectedModel);
-        }
-
-        await record.session.prompt(promptText, { source: 'interactive' });
+        await applySessionAgentSelection(record, agent ?? record.selectedAgentName, model);
+        record.turnBudget = {
+          maxTurns: normalizePositiveInteger(record.selectedAgentConfig?.steps),
+          usedTurns: 0,
+          exhausted: false,
+        };
+        await record.session.prompt(promptText, {
+          source: 'interactive',
+          ...(promptImages.length > 0 ? { images: promptImages } : {}),
+        });
       } catch (error) {
         record.lastError = error instanceof Error ? error.message : String(error);
         record.status = 'error';

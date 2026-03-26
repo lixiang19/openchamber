@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import { opencodeClient } from '@/lib/opencode/client';
+import { runtimeClient } from '@/lib/runtime/client';
 import { listProjectWorktrees } from '@/lib/worktrees/worktreeManager';
 import { useDirectoryStore } from './useDirectoryStore';
 import { useProjectsStore } from './useProjectsStore';
@@ -121,7 +121,7 @@ const startsWithDirectory = (candidate: string, root: string): boolean => {
 };
 
 const resolveCanonicalDirectory = async (
-  apiClient: ReturnType<typeof opencodeClient.getApiClient>,
+  apiClient: ReturnType<typeof runtimeClient.getApiClient>,
   directory: string
 ): Promise<string> => {
   const normalized = normalize(directory);
@@ -138,7 +138,7 @@ const resolveCanonicalDirectory = async (
 };
 
 const listSessionsForDirectory = async (
-  apiClient: ReturnType<typeof opencodeClient.getApiClient>,
+  apiClient: ReturnType<typeof runtimeClient.getApiClient>,
   directory: string
 ): Promise<Session[]> => {
   const normalized = normalize(directory);
@@ -224,7 +224,7 @@ const buildWorktreeMetadataByPath = async (group: AgentGroup, projectDirectory: 
 };
 
 const collectDeleteCandidates = async (params: {
-  apiClient: ReturnType<typeof opencodeClient.getApiClient>;
+  apiClient: ReturnType<typeof runtimeClient.getApiClient>;
   group: AgentGroup;
   projectDirectory: string;
   worktreePaths: string[];
@@ -277,7 +277,7 @@ const deleteGroupWorktreeSessions = async (params: {
   projectDirectory: string;
   worktreePaths: string[];
 }) => {
-  const apiClient = opencodeClient.getApiClient();
+  const apiClient = runtimeClient.getApiClient();
   const candidates = await collectDeleteCandidates({
     apiClient,
     group: params.group,
@@ -395,7 +395,7 @@ export const useAgentGroupsStore = create<AgentGroupsStore>()(
         set({ isLoading: true, error: null });
 
         try {
-          const apiClient = opencodeClient.getApiClient();
+          const apiClient = runtimeClient.getApiClient();
           const canonicalProject = await resolveCanonicalDirectory(apiClient, normalizedProject);
           const canonicalRef = canonicalProject && canonicalProject !== normalizedProject
             ? { ...projectRef, path: canonicalProject }

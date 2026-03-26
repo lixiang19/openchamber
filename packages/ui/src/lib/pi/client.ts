@@ -1,4 +1,4 @@
-import type { PiAgentInfo, PiServerEvent, PiSessionViewState } from './types';
+import type { PiAgentInfo, PiServerEvent, PiSessionViewState, PiSlashCommandInfo } from './types';
 
 const API_BASE = '/api/pi';
 
@@ -24,6 +24,15 @@ export const piClient = {
     const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
     return parseResponse<PiAgentInfo[]>(response);
   },
+  async listCommands(cwd?: string): Promise<PiSlashCommandInfo[]> {
+    const url = new URL(`${API_BASE}/commands`, window.location.origin);
+    if (cwd) {
+      url.searchParams.set('cwd', cwd);
+    }
+    const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+    const payload = await parseResponse<{ commands?: PiSlashCommandInfo[] }>(response);
+    return Array.isArray(payload?.commands) ? payload.commands : [];
+  },
   async createSession(payload?: { cwd?: string; title?: string }): Promise<PiSessionViewState> {
     const response = await fetch(`${API_BASE}/sessions`, {
       method: 'POST',
@@ -41,14 +50,14 @@ export const piClient = {
     });
     return parseResponse<PiSessionViewState>(response);
   },
-  async prompt(sessionId: string, text: string): Promise<void> {
+  async prompt(sessionId: string, text: string, options?: { agent?: string }): Promise<void> {
     const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/prompt`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, agent: options?.agent }),
     });
     await parseResponse<void>(response);
   },

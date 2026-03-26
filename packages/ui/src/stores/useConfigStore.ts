@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { StoreApi, UseBoundStore } from "zustand";
 import { devtools, persist, createJSONStorage } from "zustand/middleware";
 import type { Provider, Agent } from "@opencode-ai/sdk/v2";
-import { opencodeClient } from "@/lib/opencode/client";
+import { runtimeClient } from "@/lib/runtime/client";
 import { scopeMatches, subscribeToConfigChanges } from "@/lib/configSync";
 import type { ModelMetadata } from "@/types";
 import { getSafeStorage } from "./utils/safeStorage";
@@ -391,7 +391,7 @@ const resolveInitialDirectoryKey = (): string => {
         return DIRECTORY_KEY_GLOBAL;
     }
 
-    const directory = opencodeClient.getDirectory() ?? useDirectoryStore.getState().currentDirectory;
+    const directory = runtimeClient.getDirectory() ?? useDirectoryStore.getState().currentDirectory;
     return toDirectoryKey(directory);
 };
 
@@ -703,9 +703,9 @@ export const useConfigStore = create<ConfigStore>()(
                                 () => get().modelsMetadata,
                                 (metadata) => set({ modelsMetadata: metadata }),
                             );
-                            const apiResult = await opencodeClient.withDirectory(
+                            const apiResult = await runtimeClient.withDirectory(
                                 fromDirectoryKey(directoryKey),
-                                () => opencodeClient.getProviders()
+                                () => runtimeClient.getProviders()
                             );
                             const providers = Array.isArray(apiResult?.providers) ? apiResult.providers : [];
                             const defaults = apiResult?.default || {};
@@ -1058,7 +1058,7 @@ export const useConfigStore = create<ConfigStore>()(
                         try {
                             // Fetch agents and OpenChamber settings in parallel
                             const [agents, openChamberDefaults] = await Promise.all([
-                                opencodeClient.withDirectory(fromDirectoryKey(directoryKey), () => opencodeClient.listAgents()),
+                                runtimeClient.withDirectory(fromDirectoryKey(directoryKey), () => runtimeClient.listAgents()),
                                 fetchOpenChamberDefaults(),
                             ]);
 
@@ -1671,7 +1671,7 @@ export const useConfigStore = create<ConfigStore>()(
 
                     while (attempt < maxAttempts) {
                         try {
-                            const isHealthy = await opencodeClient.checkHealth();
+                            const isHealthy = await runtimeClient.checkHealth();
                             set({ isConnected: isHealthy });
                             return isHealthy;
                         } catch (error) {
@@ -1704,7 +1704,7 @@ export const useConfigStore = create<ConfigStore>()(
                         }
 
                         if (debug) console.log("Initializing app...");
-                        await opencodeClient.initApp();
+                        await runtimeClient.initApp();
 
                         if (debug) console.log("Loading providers...");
                         await get().loadProviders();

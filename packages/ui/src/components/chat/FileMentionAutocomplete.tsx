@@ -7,7 +7,7 @@ import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useFilesViewTabsStore } from '@/stores/useFilesViewTabsStore';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useChatSearchDirectory } from '@/hooks/useChatSearchDirectory';
-import type { ProjectFileSearchHit } from '@/lib/opencode/client';
+import type { ProjectFileSearchHit } from '@/lib/runtime/client';
 import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
 import { useDirectoryShowHidden } from '@/lib/directoryShowHidden';
 import { useFilesViewShowGitignored } from '@/lib/filesViewShowGitignored';
@@ -15,8 +15,10 @@ import { useFilesViewShowGitignored } from '@/lib/filesViewShowGitignored';
 type FileInfo = ProjectFileSearchHit;
 type AgentInfo = {
   name: string;
+  displayName?: string;
   description?: string;
   mode?: string | null;
+  scope?: 'user' | 'project';
 };
 
 export interface FileMentionHandle {
@@ -64,7 +66,7 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
       [projectRoot],
     ),
   );
-  const { getVisibleAgents } = useConfigStore();
+  const { getVisibleAgents, loadAgents } = useConfigStore();
   const searchFiles = useFileSearchStore((state) => state.searchFiles);
   const debouncedQuery = useDebouncedValue(searchQuery, 180);
   const showHidden = useDirectoryShowHidden();
@@ -82,7 +84,7 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const ignoreTabClickRef = React.useRef(false);
   const normalizedSearchQuery = (searchQuery ?? '').trim();
-  const visibleAgents = normalizedSearchQuery.length > 0 ? agents : agents.slice(0, 2);
+  const visibleAgents = agents;
 
   const recentFiles = React.useMemo(() => {
     if (!projectRoot || !projectTabs) {
@@ -193,22 +195,40 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
 
   React.useEffect(() => {
     const visibleAgents = getVisibleAgents();
+    if (visibleAgents.length === 0) {
+      void loadAgents();
+    }
+  }, [getVisibleAgents, loadAgents]);
+
+  React.useEffect(() => {
+    const visibleAgents = getVisibleAgents();
     const normalizedQuery = (searchQuery ?? '').trim().toLowerCase();
     const filtered = visibleAgents
-      .filter((agent) => agent.mode && agent.mode !== 'primary')
+      .filter((agent) => Boolean(agent.mode))
       .filter((agent) => {
         if (!normalizedQuery) return true;
-        const haystack = `${agent.name} ${agent.description ?? ''}`.toLowerCase();
+        const extended = agent as typeof agent & { displayName?: string; scope?: 'user' | 'project' };
+        const haystack = [
+          agent.name,
+          extended.displayName ?? '',
+          agent.description ?? '',
+          extended.scope ?? '',
+        ].join(' ').toLowerCase();
         return haystack.includes(normalizedQuery);
       })
-      .map((agent) => ({
-        name: agent.name,
-        description: agent.description,
-        mode: agent.mode,
-      }))
+      .map((agent) => {
+        const extended = agent as typeof agent & { displayName?: string; scope?: 'user' | 'project' };
+        return {
+          name: agent.name,
+          displayName: extended.displayName,
+          description: agent.description,
+          mode: agent.mode,
+          scope: extended.scope,
+        } satisfies AgentInfo;
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
     setAgents(filtered);
-  }, [getVisibleAgents, searchQuery]);
+  }, [getVisibleAgents, loadAgents, searchQuery]);
 
   React.useEffect(() => {
     setSelectedIndex(0);
@@ -419,6 +439,8 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
           <div className="pb-2">
             {visibleAgents.map((agent, index) => {
               const isSelected = selectedIndex === index;
+              const isProjectAgent = agent.scope === 'project';
+              const displayName = agent.displayName?.trim() || agent.name;
               return (
                 <div
                   key={`agent-${agent.name}`}
@@ -431,19 +453,30 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
                   onMouseEnter={() => setSelectedIndex(index)}
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="font-semibold truncate">@{agent.name}</div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="font-semibold truncate">@{displayName}</div>
+                      {agent.scope ? (
+                        <span
+                          className={cn(
+                            'text-[10px] leading-none uppercase font-bold tracking-tight px-1.5 py-1 rounded border flex-shrink-0',
+                            isProjectAgent
+                              ? 'bg-[var(--status-info-background)] text-[var(--status-info)] border-[var(--status-info-border)]'
+                              : 'bg-[var(--status-success-background)] text-[var(--status-success)] border-[var(--status-success-border)]'
+                          )}
+                        >
+                          {agent.scope}
+                        </span>
+                      ) : null}
+                    </div>
                     {agent.description ? (
                       <div className="typography-meta text-muted-foreground truncate">{agent.description}</div>
+                    ) : agent.displayName && agent.displayName !== agent.name ? (
+                      <div className="typography-meta text-muted-foreground truncate">{agent.name}</div>
                     ) : null}
                   </div>
                 </div>
               );
             })}
-            {visibleAgents.length === 2 && normalizedSearchQuery.length === 0 && agents.length > 2 && (
-              <div className="px-3 py-1 typography-meta text-muted-foreground">
-                Type to search more agents
-              </div>
-            )}
             {visibleAgents.length > 0 && (recentFiles.length > 0 || files.length > 0) && (
               <div className="my-1 border-t border-border/60" />
             )}

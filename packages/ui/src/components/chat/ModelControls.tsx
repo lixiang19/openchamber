@@ -1306,6 +1306,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
         const editPermissionSummary = summarizePermission('edit');
         const bashPermissionSummary = summarizePermission('bash');
         const webfetchPermissionSummary = summarizePermission('webfetch');
+        const currentAgentScope = (currentAgent as { scope?: 'user' | 'project' }).scope;
 
         return (
             <MobileOverlayPanel
@@ -1328,6 +1329,13 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                             {currentAgent.mode === 'primary' ? 'Primary' : currentAgent.mode === 'subagent' ? 'Subagent' : currentAgent.mode === 'all' ? 'All' : '—'}
                         </div>
                     </div>
+
+                    {currentAgentScope && (
+                        <div className="rounded-xl border border-border/40 bg-sidebar/30 px-2 py-1.5">
+                            <div className="typography-micro text-muted-foreground mb-0.5">Source</div>
+                            <div className="typography-meta text-foreground font-medium">{currentAgentScope}</div>
+                        </div>
+                    )}
 
                     {}
                     {(hasModelConfig || hasTemperatureOrTopP) && (
@@ -2422,6 +2430,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
         const editPermissionSummary = summarizePermission('edit');
         const bashPermissionSummary = summarizePermission('bash');
         const webfetchPermissionSummary = summarizePermission('webfetch');
+        const currentAgentScope = (currentAgent as { scope?: 'user' | 'project' }).scope;
 
         return (
             <TooltipContent align="start" sideOffset={8} className="max-w-[280px]">
@@ -2441,6 +2450,13 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                             {currentAgent.mode === 'primary' ? 'Primary' : currentAgent.mode === 'subagent' ? 'Subagent' : currentAgent.mode === 'all' ? 'All' : '—'}
                         </span>
                     </div>
+
+                    {currentAgentScope && (
+                        <div className="flex flex-col gap-1">
+                            <span className="typography-meta font-semibold uppercase tracking-wide text-muted-foreground/90">Source</span>
+                            <span className="typography-meta text-foreground">{currentAgentScope}</span>
+                        </div>
+                    )}
 
                     {(hasModelConfig || hasTemperatureOrTopP) && (
                         <div className="flex flex-col gap-1">
@@ -2680,28 +2696,36 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                                                 No agents found
                                             </div>
                                         ) : (
-                                            sortedAndFilteredAgents.map((agent) => (
-                                                <DropdownMenuItem
-                                                    key={agent.name}
-                                                    className="typography-meta"
-                                                    onSelect={() => handleAgentChange(agent.name)}
-                                                >
-                                                    <div className="flex flex-col gap-0.5">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <div className={cn(
-                                                                'h-1 w-1 rounded-full agent-dot',
-                                                                getAgentColor(agent.name).class
-                                                            )} />
-                                                            <span className="font-medium">{capitalizeAgentName(agent.name)}</span>
+                                            sortedAndFilteredAgents.map((agent) => {
+                                                const agentScope = (agent as { scope?: 'user' | 'project' }).scope;
+                                                return (
+                                                    <DropdownMenuItem
+                                                        key={agent.name}
+                                                        className="typography-meta"
+                                                        onSelect={() => handleAgentChange(agent.name)}
+                                                    >
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <div className={cn(
+                                                                    'h-1 w-1 rounded-full agent-dot',
+                                                                    getAgentColor(agent.name).class
+                                                                )} />
+                                                                <span className="font-medium">{capitalizeAgentName(agent.name)}</span>
+                                                                {agentScope && (
+                                                                    <span className="rounded border border-border/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                                                        {agentScope}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {agent.description && (
+                                                                <span className="typography-meta text-muted-foreground max-w-[200px] ml-2.5 break-words">
+                                                                    {agent.description}
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                        {agent.description && (
-                                                            <span className="typography-meta text-muted-foreground max-w-[200px] ml-2.5 break-words">
-                                                                {agent.description}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </DropdownMenuItem>
-                                            ))
+                                                    </DropdownMenuItem>
+                                                );
+                                            })
                                         )}
                                     </div>
                                 </ScrollableOverlay>

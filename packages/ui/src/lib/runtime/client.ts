@@ -14,10 +14,9 @@ import type {
 } from "@opencode-ai/sdk/v2/client";
 import type { PermissionRequest } from "@/types/permission";
 import type { QuestionRequest } from "@/types/question";
-import type { PiInteractiveRequestViewState, PiServerEvent, PiSessionViewState } from "@/lib/pi/types";
+import type { PiAgentInfo, PiInteractiveRequestViewState, PiServerEvent, PiSessionViewState } from "@/lib/pi/types";
 import {
   extractPiQuestionResponseValue,
-  getPiUiAgents,
   piSessionStatusToUiStatus,
   toUiMessageEntries,
   toUiQuestionRequest,
@@ -133,7 +132,7 @@ const getDesktopFilesApi = (): FilesAPI | null => {
   return null;
 };
 
-class OpencodeService {
+class RuntimeService {
   private client: OpencodeClient;
   private baseUrl: string;
   private scopedClients: Map<string, OpencodeClient> = new Map();
@@ -305,6 +304,49 @@ class OpencodeService {
     }
 
     return response.json() as Promise<T>;
+  }
+
+  private toPiAgentModel(agent: PiAgentInfo): Agent['model'] | undefined {
+    const candidate = typeof agent.model === 'string' ? agent.model.trim() : '';
+    if (!candidate || !candidate.includes('/')) {
+      return undefined;
+    }
+
+    const [providerID, modelID, ...rest] = candidate.split('/');
+    if (!providerID || !modelID || rest.length > 0) {
+      return undefined;
+    }
+
+    return { providerID, modelID } as Agent['model'];
+  }
+
+  private toPiUiAgent(agent: PiAgentInfo): Agent {
+    const mapped = {
+      name: agent.name,
+      description: agent.description,
+      mode: agent.mode,
+      permission: Object.entries(agent.permission || {}).map(([permission, action]) => ({ permission, pattern: '*', action })),
+      ...(agent.scope ? { scope: agent.scope } : {}),
+      ...(agent.source ? { source: agent.source } : {}),
+      ...(agent.displayName ? { displayName: agent.displayName } : {}),
+      ...(agent.thinking ? { thinking: agent.thinking } : {}),
+      ...(typeof agent.steps === 'number' ? { steps: agent.steps } : {}),
+      ...(agent.enabled === false ? { enabled: false } : {}),
+    } as Agent & {
+      scope?: PiAgentInfo['scope'];
+      source?: string;
+      displayName?: string;
+      thinking?: string;
+      steps?: number;
+      enabled?: boolean;
+    };
+
+    const model = this.toPiAgentModel(agent);
+    if (model) {
+      mapped.model = model;
+    }
+
+    return mapped;
   }
 
   private async listPiSessions(): Promise<PiSessionViewState[]> {
@@ -820,6 +862,7 @@ class OpencodeService {
           providerID: params.providerID,
           modelID: params.modelID,
         },
+        agent: params.agent,
       }),
     });
 
@@ -1124,7 +1167,12 @@ class OpencodeService {
 
   // Agent Management
   async listAgents(): Promise<Agent[]> {
-    return getPiUiAgents();
+    const directory = typeof this.currentDirectory === 'string' && this.currentDirectory.trim().length > 0
+      ? this.currentDirectory.trim()
+      : '';
+    const query = directory ? `?cwd=${encodeURIComponent(directory)}` : '';
+    const agents = await this.fetchPi<PiAgentInfo[]>(`/agents${query}`);
+    return agents.map((agent) => this.toPiUiAgent(agent));
   }
 
   private mapPiEventToRoutedEvent(raw: PiServerEvent): RoutedOpencodeEvent | null {
@@ -1593,7 +1641,7 @@ class OpencodeService {
 }
 
 // Exported singleton instance
-export const opencodeClient = new OpencodeService();
+export const runtimeClient = new RuntimeService();
 
 // Exported types
 export type { Session, Message, Part, Provider, Config, Model };

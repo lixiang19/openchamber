@@ -27,7 +27,7 @@ import { useMessageStore } from '@/stores/messageStore';
 import { useContextStore } from '@/stores/contextStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { useGitHubAuthStore } from '@/stores/useGitHubAuthStore';
-import { opencodeClient } from '@/lib/opencode/client';
+import { runtimeClient } from '@/lib/runtime/client';
 import { createWorktreeSessionForNewBranch } from '@/lib/worktreeSessionCreator';
 import { generateBranchSlug } from '@/lib/git/branchNameGenerator';
 import type { GitHubIssue, GitHubIssueComment, GitHubIssuesListResult, GitHubIssueSummary } from '@/lib/api/types';
@@ -487,7 +487,7 @@ Question/Support:
 Do not implement changes until I confirm; end with: “Next actions: <1 sentence>”.`;
       const contextText = buildIssueContextText({ repo: issueRes.repo, issue, comments });
 
-      void opencodeClient.sendMessage({
+      void runtimeClient.sendMessage({
         id: sessionId,
         providerID,
         modelID,

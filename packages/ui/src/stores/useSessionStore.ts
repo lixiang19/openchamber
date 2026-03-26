@@ -12,7 +12,7 @@ import { useFileStore } from "./fileStore";
 import { useContextStore } from "./contextStore";
 import { usePermissionStore } from "./permissionStore";
 import { useQuestionStore } from "./questionStore";
-import { opencodeClient } from "@/lib/opencode/client";
+import { runtimeClient } from "@/lib/runtime/client";
 import { useDirectoryStore } from "./useDirectoryStore";
 import { useConfigStore } from "./useConfigStore";
 import { useProjectsStore } from "./useProjectsStore";
@@ -411,7 +411,7 @@ export const useSessionStore = create<SessionStore>()(
                         return;
                     }
 
-                    await opencodeClient.sendMessage({
+                    await runtimeClient.sendMessage({
                         id: session.id,
                         providerID,
                         modelID,
@@ -439,11 +439,11 @@ export const useSessionStore = create<SessionStore>()(
                         id,
                         useSessionManagementStore.getState().getWorktreeMetadata
                     );
-                    const fallbackDirectory = opencodeClient.getDirectory() ?? useDirectoryStore.getState().currentDirectory ?? null;
+                    const fallbackDirectory = runtimeClient.getDirectory() ?? useDirectoryStore.getState().currentDirectory ?? null;
                     const resolvedDirectory = sessionDirectory ?? fallbackDirectory;
 
                     try {
-                        opencodeClient.setDirectory(resolvedDirectory ?? undefined);
+                        runtimeClient.setDirectory(resolvedDirectory ?? undefined);
                     } catch (error) {
                         console.warn("Failed to set OpenCode directory for session switch:", error);
                     }
@@ -814,7 +814,7 @@ export const useSessionStore = create<SessionStore>()(
                     }
 
                     // Call revert API
-                    const updatedSession = await opencodeClient.revertSession(sessionId, messageId);
+                    const updatedSession = await runtimeClient.revertSession(sessionId, messageId);
 
                     // Update session in store (this stores the revert.messageID)
                     useSessionManagementStore.getState().updateSession(updatedSession);
@@ -915,7 +915,7 @@ export const useSessionStore = create<SessionStore>()(
                         toast.success(`Redid to: ${preview}`);
                     } else {
                         // Full unrevert: restore all
-                        const session = await opencodeClient.unrevertSession(sessionId);
+                        const session = await runtimeClient.unrevertSession(sessionId);
                         await useSessionManagementStore.getState().updateSession(session);
                         await get().loadMessages(sessionId);
 
@@ -931,7 +931,7 @@ export const useSessionStore = create<SessionStore>()(
 
                     try {
                         // 1. Call SDK fork - backend copies all messages up to messageId
-                        const result = await opencodeClient.forkSession(sessionId, messageId);
+                        const result = await runtimeClient.forkSession(sessionId, messageId);
 
                         if (!result || !result.id) {
                             const { toast } = await import('sonner');

@@ -40,12 +40,6 @@ self.addEventListener('push', (event) => {
       return;
     }
 
-    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const hasVisibleClient = clients.some((client) => client.visibilityState === 'visible' || client.focused);
-    if (hasVisibleClient) {
-      return;
-    }
-
     const title = payload.title || 'OpenChamber';
     const body = payload.body ?? '';
     const icon = payload.icon ?? '/apple-touch-icon-180x180.png';

@@ -28,14 +28,14 @@ export const parseAgentMentions = (rawText: string, agents: Agent[]): ParsedAgen
     return { sanitizedText: rawText, mention: null };
   }
 
-  const nonPrimaryAgents = agents.filter((agent) => agent.mode && agent.mode !== "primary");
-  if (nonPrimaryAgents.length === 0 || !rawText.includes("@")) {
+  const mentionableAgents = agents.filter((agent) => Boolean(agent.mode));
+  if (mentionableAgents.length === 0 || !rawText.includes("@")) {
     return { sanitizedText: rawText, mention: null };
   }
 
   let firstMention: ParsedAgentMention | null = null;
 
-  for (const agent of nonPrimaryAgents) {
+  for (const agent of mentionableAgents) {
     const escapedAgentName = agent.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const pattern = new RegExp(`@${escapedAgentName}\\b`, "gi");
     let match: RegExpExecArray | null;

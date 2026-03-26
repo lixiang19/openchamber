@@ -49,6 +49,7 @@ import {
 import webPush from 'web-push';
 import { createPiProvidersService } from './lib/pi/providers.js';
 import { createPiSdkHost } from './lib/pi/sdk-host.js';
+import { createWechatBridgeService } from './lib/wechat-bridge/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -65,6 +66,7 @@ const OPEN_CODE_READY_GRACE_MS = 12000;
 const LONG_REQUEST_TIMEOUT_MS = 4 * 60 * 1000;
 const PI_SDK_HOST = createPiSdkHost();
 const PI_PROVIDERS_SERVICE = createPiProvidersService();
+const WECHAT_BRIDGE = createWechatBridgeService({ piHost: PI_SDK_HOST });
 const TUNNEL_BOOTSTRAP_TTL_DEFAULT_MS = 30 * 60 * 1000;
 const TUNNEL_BOOTSTRAP_TTL_MIN_MS = 60 * 1000;
 const TUNNEL_BOOTSTRAP_TTL_MAX_MS = 24 * 60 * 60 * 1000;
@@ -2988,8 +2990,7 @@ const sendPushToSubscription = async (sub, payload) => {
   }
 };
 
-const sendPushToAllUiSessions = async (payload, options = {}) => {
-  const requireNoSse = options.requireNoSse === true;
+const sendPushToAllUiSessions = async (payload) => {
   const store = await readPushSubscriptionsFromDisk();
   const sessions = store.subscriptionsBySession || {};
   const subscriptionsByEndpoint = new Map();
@@ -3006,32 +3007,11 @@ const sendPushToAllUiSessions = async (payload, options = {}) => {
   }
 
   await Promise.all(Array.from(subscriptionsByEndpoint.entries()).map(async ([endpoint, sub]) => {
-    if (requireNoSse && isAnyUiVisible()) {
-      return;
-    }
     await sendPushToSubscription(sub, payload);
   }));
 };
 
 let pushInitialized = false;
-
-
-
-const uiVisibilityByToken = new Map();
-let globalVisibilityState = false;
-
-const updateUiVisibility = (token, visible) => {
-  if (!token) return;
-  const now = Date.now();
-  const nextVisible = Boolean(visible);
-  uiVisibilityByToken.set(token, { visible: nextVisible, updatedAt: now });
-  globalVisibilityState = nextVisible;
-
-};
-
-const isAnyUiVisible = () => globalVisibilityState === true;
-
-const isUiVisible = (token) => uiVisibilityByToken.get(token)?.visible === true;
 
 // Session activity tracking (mirrors desktop session_activity.rs)
 const sessionActivityPhases = new Map(); // sessionId -> { phase: 'idle'|'busy'|'cooldown', updatedAt: number }
@@ -5083,7 +5063,6 @@ const maybeSendPushForTrigger = async (payload) => {
             type: 'ready',
           }
         },
-        { requireNoSse: true }
       );
     }
 
@@ -5145,7 +5124,6 @@ const maybeSendPushForTrigger = async (payload) => {
             type: 'error',
           }
         },
-        { requireNoSse: true }
       );
     }
 
@@ -5234,7 +5212,6 @@ const maybeSendPushForTrigger = async (payload) => {
             type: 'question',
           }
         },
-        { requireNoSse: true }
       );
     }, PUSH_QUESTION_DEBOUNCE_MS);
 
@@ -5330,7 +5307,6 @@ const maybeSendPushForTrigger = async (payload) => {
             type: 'permission',
           }
         },
-        { requireNoSse: true }
       );
     }, PUSH_PERMISSION_DEBOUNCE_MS);
 
@@ -5878,6 +5854,11 @@ async function gracefulShutdown(options = {}) {
     }
   }
 
+  try {
+    await WECHAT_BRIDGE.dispose();
+  } catch {
+  }
+
   // Only stop OpenCode if we started it ourselves (not when using external server)
   if (!ENV_SKIP_OPENCODE_START && !isExternalOpenCode) {
     const portToKill = openCodePort;
@@ -6014,6 +5995,10 @@ async function main(options = {}) {
   app.post('/api/system/shutdown', async (req, res) => {
     res.json({ ok: true });
     try {
+      await WECHAT_BRIDGE.dispose();
+    } catch {
+    }
+    try {
       await PI_SDK_HOST.dispose();
     } catch {
     }
@@ -6038,12 +6023,71 @@ async function main(options = {}) {
     res.json(PI_SDK_HOST.listSessions());
   });
 
+  app.post('/api/wechat-bridge/start', async (_req, res) => {
+    try {
+      const status = await WECHAT_BRIDGE.start();
+      res.json(status);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to start WeChat bridge' });
+    }
+  });
+
+  app.post('/api/wechat-bridge/stop', async (_req, res) => {
+    try {
+      const status = await WECHAT_BRIDGE.stop();
+      res.json(status);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to stop WeChat bridge' });
+    }
+  });
+
+  app.get('/api/wechat-bridge/status', (_req, res) => {
+    res.json(WECHAT_BRIDGE.getStatus());
+  });
+
+  app.post('/api/wechat-bridge/bind', async (req, res) => {
+    try {
+      const status = await WECHAT_BRIDGE.bindWechatUser({
+        userId: req.body?.userId,
+        sessionId: req.body?.sessionId,
+        cwd: req.body?.cwd,
+      });
+      res.json(status);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to bind WeChat user' });
+    }
+  });
+
+  app.post('/api/wechat-bridge/default-target', async (req, res) => {
+    try {
+      const status = await WECHAT_BRIDGE.setDefaultTarget({
+        sessionId: req.body?.sessionId,
+        cwd: req.body?.cwd,
+        rebindExisting: req.body?.rebindExisting === true,
+      });
+      res.json(status);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to update WeChat default target' });
+    }
+  });
+
   app.get('/api/pi/agents', async (req, res) => {
     try {
       const agents = await PI_SDK_HOST.listAgents(req.query?.cwd);
       res.json(agents);
     } catch (error) {
       res.status(500).json({ error: error?.message || 'Failed to list agents' });
+    }
+  });
+
+  app.get('/api/pi/commands', async (req, res) => {
+    try {
+      const cwd = typeof req.query.cwd === 'string' ? req.query.cwd : undefined;
+      const commands = await PI_SDK_HOST.listCommands({ cwd });
+      res.json({ commands });
+    } catch (error) {
+      const message = error?.message || 'Failed to list Pi commands';
+      res.status(500).json({ error: message });
     }
   });
 
@@ -6070,6 +6114,8 @@ async function main(options = {}) {
       await PI_SDK_HOST.prompt(req.params.sessionId, {
         text: req.body?.text,
         model: req.body?.model,
+        agent: req.body?.agent,
+        images: req.body?.images,
       });
       res.status(204).end();
     } catch (error) {
@@ -6355,31 +6401,6 @@ async function main(options = {}) {
 
     await removePushSubscription(uiToken, parsed.endpoint);
     res.json({ ok: true });
-  });
-
-  app.post('/api/push/visibility', async (req, res) => {
-    const uiToken = uiAuthController?.ensureSessionToken
-      ? await uiAuthController.ensureSessionToken(req, res)
-      : getUiSessionTokenFromRequest(req);
-    if (!uiToken) {
-      return res.status(401).json({ error: 'UI session missing' });
-    }
-
-    const visible = req.body && typeof req.body === 'object' ? req.body.visible : null;
-    updateUiVisibility(uiToken, visible === true);
-    res.json({ ok: true });
-  });
-
-  app.get('/api/push/visibility', (req, res) => {
-    const uiToken = getUiSessionTokenFromRequest(req);
-    if (!uiToken) {
-      return res.status(401).json({ error: 'UI session missing' });
-    }
-
-    res.json({
-      ok: true,
-      visible: isUiVisible(uiToken),
-    });
   });
 
   // Session activity status endpoint - returns tracked activity phases for all sessions

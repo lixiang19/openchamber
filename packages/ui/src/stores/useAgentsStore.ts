@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { StoreApi, UseBoundStore } from "zustand";
 import { devtools, persist, createJSONStorage } from "zustand/middleware";
 import type { Agent, PermissionConfig } from "@opencode-ai/sdk/v2";
-import { opencodeClient } from "@/lib/opencode/client";
+import { runtimeClient } from "@/lib/runtime/client";
 import { emitConfigChange, scopeMatches, subscribeToConfigChanges, type ConfigChangeScope } from "@/lib/configSync";
 import {
   startConfigUpdate,
@@ -17,10 +17,10 @@ import { useSkillsCatalogStore } from "@/stores/useSkillsCatalogStore";
 import { useSkillsStore } from "@/stores/useSkillsStore";
 
 // Note: useDirectoryStore cannot be imported at top level to avoid circular dependency
-// useDirectoryStore -> useAgentsStore (for refreshAfterOpenCodeRestart)
+// useDirectoryStore -> useAgentsStore (for refreshAfterRuntimeRestart)
 // useAgentsStore -> useDirectoryStore (for currentDirectory)
 const getCurrentDirectory = (): string | null => {
-  const opencodeDirectory = opencodeClient.getDirectory();
+  const opencodeDirectory = runtimeClient.getDirectory();
   if (typeof opencodeDirectory === 'string' && opencodeDirectory.trim().length > 0) {
     return opencodeDirectory;
   }
@@ -48,8 +48,8 @@ const getConfigDirectory = (): string | null => {
       return activeProject.path.trim();
     }
 
-    // 2. Fallback: current OpenCode directory (session / runtime)
-    const clientDir = opencodeClient.getDirectory();
+    // 2. Fallback: current runtime directory (session / runtime)
+    const clientDir = runtimeClient.getDirectory();
     if (clientDir?.trim()) {
       return clientDir.trim();
     }
@@ -91,13 +91,13 @@ export interface AgentConfig {
   name: string;
   description?: string;
   model?: string | null;
-  temperature?: number;
-  top_p?: number;
+  thinking?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+  steps?: number;
   prompt?: string;
   mode?: "primary" | "subagent" | "all";
   permission?: PermissionConfig | null;
-
-  disable?: boolean;
+  enabled?: boolean;
+  display_name?: string;
   scope?: AgentScope;
 }
 
@@ -112,8 +112,8 @@ export type AgentWithExtras = Agent & {
 };
 
 /** Parse the subfolder group name from an agent file path.
- *  e.g. "~/.config/opencode/agents/business/ceo.md" → "business"
- *  e.g. "~/.config/opencode/agents/ceo.md"          → undefined
+ *  e.g. "~/.pi/agent/agents/business/ceo.md" → "business"
+ *  e.g. "~/.pi/agent/agents/ceo.md"          → undefined
  */
 function parseAgentGroup(path: string | null | undefined): string | undefined {
   if (!path) return undefined;
@@ -133,7 +133,7 @@ export const isAgentBuiltIn = (agent: Agent): boolean => {
 };
 
 // Helper to check if agent is hidden (internal agents like title, compaction, summary)
-// Checks both top-level hidden and options.hidden (OpenCode API inconsistency workaround)
+// Checks both top-level hidden and options.hidden (runtime API inconsistency workaround)
 export const isAgentHidden = (agent: Agent): boolean => {
   const extended = agent as AgentWithExtras;
   return extended.hidden === true || extended.options?.hidden === true;
@@ -157,12 +157,13 @@ export interface AgentDraft {
   scope: AgentScope;
   description?: string;
   model?: string | null;
-  temperature?: number;
-  top_p?: number;
+  thinking?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+  steps?: number;
   prompt?: string;
   mode?: "primary" | "subagent" | "all";
   permission?: PermissionConfig;
-  disable?: boolean;
+  enabled?: boolean;
+  display_name?: string;
 }
 
 interface AgentsStore {
@@ -233,7 +234,7 @@ export const useAgentsStore = create<AgentsStore>()(
                 const queryParams = configDirectory ? `?directory=${encodeURIComponent(configDirectory)}` : '';
 
                 // Ensure we list agents using the correct project context
-                const agents = await opencodeClient.withDirectory(configDirectory, () => opencodeClient.listAgents());
+                const agents = await runtimeClient.withDirectory(configDirectory, () => runtimeClient.listAgents());
 
                 const agentsWithScope = await Promise.all(
                   agents.map(async (agent) => {
@@ -316,11 +317,12 @@ export const useAgentsStore = create<AgentsStore>()(
 
             if (config.description) agentConfig.description = config.description;
             if (config.model) agentConfig.model = config.model;
-            if (config.temperature !== undefined) agentConfig.temperature = config.temperature;
-            if (config.top_p !== undefined) agentConfig.top_p = config.top_p;
+            if (config.thinking !== undefined) agentConfig.thinking = config.thinking;
+            if (config.steps !== undefined) agentConfig.steps = config.steps;
             if (config.prompt) agentConfig.prompt = config.prompt;
             if (config.permission) agentConfig.permission = config.permission;
-            if (config.disable !== undefined) agentConfig.disable = config.disable;
+            if (config.enabled !== undefined) agentConfig.enabled = config.enabled;
+            if (config.display_name !== undefined) agentConfig.display_name = config.display_name;
             if (config.scope) agentConfig.scope = config.scope;
 
             console.log('[AgentsStore] Agent config to save:', agentConfig);
@@ -346,7 +348,7 @@ export const useAgentsStore = create<AgentsStore>()(
             const needsReload = payload?.requiresReload ?? true;
             if (needsReload) {
               requiresReload = true;
-              await refreshAfterOpenCodeRestart({
+              await refreshAfterRuntimeRestart({
                 message: payload?.message,
                 delayMs: payload?.reloadDelayMs,
                 scopes: ["agents"],
@@ -379,11 +381,12 @@ export const useAgentsStore = create<AgentsStore>()(
             if (config.mode !== undefined) agentConfig.mode = config.mode;
             if (config.description !== undefined) agentConfig.description = config.description;
             if (config.model !== undefined) agentConfig.model = config.model;
-            if (config.temperature !== undefined) agentConfig.temperature = config.temperature;
-            if (config.top_p !== undefined) agentConfig.top_p = config.top_p;
+            if (config.thinking !== undefined) agentConfig.thinking = config.thinking;
+            if (config.steps !== undefined) agentConfig.steps = config.steps;
             if (config.prompt !== undefined) agentConfig.prompt = config.prompt;
             if (config.permission !== undefined) agentConfig.permission = config.permission;
-            if (config.disable !== undefined) agentConfig.disable = config.disable;
+            if (config.enabled !== undefined) agentConfig.enabled = config.enabled;
+            if (config.display_name !== undefined) agentConfig.display_name = config.display_name;
 
             // Use active project root for project-level agent support.
             const configDirectory = getConfigDirectory();
@@ -407,7 +410,7 @@ export const useAgentsStore = create<AgentsStore>()(
             const needsReload = payload?.requiresReload ?? true;
             if (needsReload) {
               requiresReload = true;
-              await refreshAfterOpenCodeRestart({
+              await refreshAfterRuntimeRestart({
                 message: payload?.message,
                 delayMs: payload?.reloadDelayMs,
                 scopes: ["agents"],
@@ -453,7 +456,7 @@ export const useAgentsStore = create<AgentsStore>()(
             const needsReload = payload?.requiresReload ?? true;
             if (needsReload) {
               requiresReload = true;
-              await refreshAfterOpenCodeRestart({
+              await refreshAfterRuntimeRestart({
                 message: payload?.message,
                 delayMs: payload?.reloadDelayMs,
                 scopes: ["agents"],
@@ -509,7 +512,7 @@ if (typeof window !== "undefined") {
   window.__zustand_agents_store__ = useAgentsStore;
 }
 
-async function waitForOpenCodeConnection(delayMs?: number) {
+async function waitForRuntimeConnection(delayMs?: number) {
   const initialPause = typeof delayMs === "number" && delayMs > 0
     ? Math.min(delayMs, FAST_HEALTH_POLL_INTERVAL_MS)
     : 0;
@@ -524,14 +527,14 @@ async function waitForOpenCodeConnection(delayMs?: number) {
 
   while (Date.now() - start < MAX_HEALTH_WAIT_MS) {
     attempt += 1;
-    updateConfigUpdateMessage(`Waiting for OpenCode… (attempt ${attempt})`);
+    updateConfigUpdateMessage(`Waiting for runtime… (attempt ${attempt})`);
 
     try {
-      const isHealthy = await opencodeClient.checkHealth();
+      const isHealthy = await runtimeClient.checkHealth();
       if (isHealthy) {
         return;
       }
-      lastError = new Error("OpenCode health check reported not ready");
+      lastError = new Error("Runtime health check reported not ready");
     } catch (error) {
       lastError = error;
     }
@@ -550,7 +553,7 @@ async function waitForOpenCodeConnection(delayMs?: number) {
     await sleep(waitMs);
   }
 
-  throw lastError || new Error("OpenCode did not become ready in time");
+  throw lastError || new Error("Runtime did not become ready in time");
 }
 
 type ConfigRefreshMode = "active" | "projects";
@@ -585,7 +588,7 @@ async function performConfigRefresh(options: {
   }
 
   try {
-    await waitForOpenCodeConnection(delayMs);
+    await waitForRuntimeConnection(delayMs);
 
     const configStore = useConfigStore.getState();
     const agentConfigStore = useAgentsStore.getState();
@@ -637,14 +640,14 @@ async function performConfigRefresh(options: {
     updateConfigUpdateMessage("Refreshing configuration…");
     await Promise.all([...sdkRefreshTasks, ...uiRefreshTasks]);
   } catch {
-    updateConfigUpdateMessage("OpenCode refresh failed. Please retry.");
+    updateConfigUpdateMessage("Runtime refresh failed. Please retry.");
     await sleep(1500);
   } finally {
     finishConfigUpdate();
   }
 }
 
-export async function refreshAfterOpenCodeRestart(options?: {
+export async function refreshAfterRuntimeRestart(options?: {
   message?: string;
   delayMs?: number;
   scopes?: ConfigChangeScope[];
@@ -653,13 +656,13 @@ export async function refreshAfterOpenCodeRestart(options?: {
   await performConfigRefresh(options);
 }
 
-export async function reloadOpenCodeConfiguration(options?: {
+export async function reloadRuntimeConfiguration(options?: {
   message?: string;
   delayMs?: number;
   scopes?: ConfigChangeScope[];
   mode?: ConfigRefreshMode;
 }) {
-  startConfigUpdate(options?.message || "Reloading OpenCode configuration…");
+  startConfigUpdate(options?.message || "Reloading runtime configuration…");
 
   try {
 
@@ -682,16 +685,16 @@ export async function reloadOpenCodeConfiguration(options?: {
     };
 
     if (payload?.requiresReload) {
-      await refreshAfterOpenCodeRestart({
+      await refreshAfterRuntimeRestart({
         ...refreshOptions,
         message: payload.message,
         delayMs: payload.reloadDelayMs,
       });
     } else {
-      await refreshAfterOpenCodeRestart(refreshOptions);
+      await refreshAfterRuntimeRestart(refreshOptions);
     }
   } catch (error) {
-    console.error('[reloadOpenCodeConfiguration] Failed:', error);
+    console.error('[reloadRuntimeConfiguration] Failed:', error);
     updateConfigUpdateMessage('Failed to reload configuration. Please try again.');
     await sleep(2000);
     finishConfigUpdate();

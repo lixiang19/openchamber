@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { devtools, persist, createJSONStorage } from "zustand/middleware";
-import { opencodeClient } from "@/lib/opencode/client";
+import { runtimeClient } from "@/lib/runtime/client";
 import type { Session } from "@opencode-ai/sdk/v2/client";
 import type { PermissionRequest, PermissionResponse } from "@/types/permission";
 import {
@@ -52,7 +52,7 @@ const executeWithPermissionDirectory = async <T>(sessionId: string, operation: (
         const sessionStore = useSessionStore.getState();
         const directory = sessionStore.getDirectoryForSession(sessionId);
         if (directory) {
-            return opencodeClient.withDirectory(directory, operation);
+            return runtimeClient.withDirectory(directory, operation);
         }
     } catch (error) {
         console.warn('Failed to resolve session directory for permission handling:', error);
@@ -112,7 +112,7 @@ const collectPermissionDirectories = (fallbackDirectory?: string | null): string
         dirs.add(fallback);
     }
 
-    const currentDirectory = normalizeDirectory(opencodeClient.getDirectory());
+    const currentDirectory = normalizeDirectory(runtimeClient.getDirectory());
     if (currentDirectory) {
         dirs.add(currentDirectory);
     }
@@ -136,7 +136,7 @@ const reconcilePendingAutoAccept = async (
         return;
     }
 
-    const pending = await opencodeClient.listPendingPermissions({ directories });
+    const pending = await runtimeClient.listPendingPermissions({ directories });
     if (pending.length === 0) {
         return;
     }
@@ -149,7 +149,7 @@ const reconcilePendingAutoAccept = async (
             continue;
         }
         try {
-            await executeWithPermissionDirectory(request.sessionID, () => opencodeClient.replyToPermission(request.id, 'once'));
+            await executeWithPermissionDirectory(request.sessionID, () => runtimeClient.replyToPermission(request.id, 'once'));
         } catch {
             // ignored
         }
@@ -191,7 +191,7 @@ export const usePermissionStore = create<PermissionStore>()(
                 },
 
                 respondToPermission: async (sessionId: string, requestId: string, response: PermissionResponse) => {
-                    await executeWithPermissionDirectory(sessionId, () => opencodeClient.replyToPermission(requestId, response));
+                    await executeWithPermissionDirectory(sessionId, () => runtimeClient.replyToPermission(requestId, response));
 
                     if (response === 'reject') {
                         const messageStore = useMessageStore.getState();

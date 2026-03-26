@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Session } from '@opencode-ai/sdk/v2';
-import { opencodeClient } from '@/lib/opencode/client';
+import { runtimeClient } from '@/lib/runtime/client';
 import { normalizePath } from '../utils';
 
 type ProjectLike = { path: string };
@@ -46,7 +46,7 @@ export const useDirectoryStatusProbe = ({
         return;
       }
       checkingDirectories.current.add(directory);
-      opencodeClient
+      runtimeClient
         .listLocalDirectory(directory)
         .then(() => {
           setDirectoryStatus((prev) => {
@@ -65,7 +65,7 @@ export const useDirectoryStatusProbe = ({
             directory.includes('/.local/share/opencode/worktree/');
 
           if (looksLikeSdkWorktree) {
-            const ok = await opencodeClient.probeDirectory(directory).catch(() => false);
+            const ok = await runtimeClient.probeDirectory(directory).catch(() => false);
             if (ok) {
               setDirectoryStatus((prev) => {
                 const next = new Map(prev);

@@ -6,12 +6,9 @@ export {
 } from './bridge-schema.js';
 
 export {
-  AGENT_RUNTIME_OPENCODE,
   AGENT_RUNTIME_PI,
   buildPromptTextFromParts,
-  createPiRuntime,
   mapPiUiRequestToQuestionRequest,
-  resolveAgentRuntimeMode,
   translateOpenCodeMessagesToSseEvents,
   translatePiEnvelopeToSseEvents,
   translatePiMessagesToOpenCodeMessages,

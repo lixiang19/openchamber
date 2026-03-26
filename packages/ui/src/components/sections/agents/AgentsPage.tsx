@@ -1,20 +1,11 @@
 import React from 'react';
+import type { Agent } from '@opencode-ai/sdk/v2';
+import { RiFolderLine, RiInformationLine, RiRobot2Line, RiUser3Line } from '@remixicon/react';
+
+import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
-import { Textarea } from '@/components/ui/textarea';
-import { toast } from '@/components/ui';
-import { useAgentsStore, type AgentConfig, type AgentScope } from '@/stores/useAgentsStore';
-import { useConfigStore } from '@/stores/useConfigStore';
-import { usePermissionStore } from '@/stores/permissionStore';
-import { useDirectoryStore } from '@/stores/useDirectoryStore';
-import { useDeviceInfo } from '@/lib/device';
-import { opencodeClient } from '@/lib/opencode/client';
-import { RiCloseLine, RiInformationLine, RiRobot2Line, RiSubtractLine, RiUser3Line, RiFolderLine } from '@remixicon/react';
-import { cn } from '@/lib/utils';
-import { ModelSelector } from './ModelSelector';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
 import {
   Select,
   SelectContent,
@@ -22,486 +13,218 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { toast } from '@/components/ui';
+import { useAvailableTools } from '@/hooks/useAvailableTools';
+import { cn } from '@/lib/utils';
+import { useAgentsStore, type AgentConfig, type AgentScope } from '@/stores/useAgentsStore';
+import { ModelSelector } from './ModelSelector';
 
-type PermissionAction = 'allow' | 'ask' | 'deny';
-type PermissionRule = { permission: string; pattern: string; action: PermissionAction };
-type PermissionConfigValue = PermissionAction | Record<string, PermissionAction>;
-type PermissionRuleKey = `${string}::${string}`;
+type ThinkingLevel = NonNullable<AgentConfig['thinking']>;
+type AgentPermissionRule = { permission: string; pattern: string; action: string };
 
-const STANDARD_PERMISSION_KEYS = [
-  '*',
+type AgentWithPiFields = Agent & {
+  scope?: AgentScope;
+  displayName?: string;
+  thinking?: ThinkingLevel;
+  steps?: number;
+  enabled?: boolean;
+};
+
+type AgentFormState = {
+  draftName: string;
+  draftScope: AgentScope;
+  description: string;
+  displayName: string;
+  mode: NonNullable<AgentConfig['mode']>;
+  model: string;
+  thinking?: ThinkingLevel;
+  steps?: number;
+  enabled: boolean;
+  prompt: string;
+  deniedTools: string[];
+};
+
+const DEFAULT_TOOL_ORDER = [
   'read',
   'edit',
-  'glob',
-  'grep',
-  'list',
+  'write',
   'bash',
-  'task',
-  'skill',
-  'lsp',
-  'todoread',
-  'todowrite',
-  'webfetch',
-  'websearch',
-  'codesearch',
-  'external_directory',
-  'doom_loop',
+  'grep',
+  'find',
+  'ls',
   'question',
-  'plan_enter',
-  'plan_exit',
-] as const;
+  'subagent',
+];
 
-const isPermissionAction = (value: unknown): value is PermissionAction =>
-  value === 'allow' || value === 'ask' || value === 'deny';
+const THINKING_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '__inherit__', label: 'Inherit' },
+  { value: 'off', label: 'off' },
+  { value: 'minimal', label: 'minimal' },
+  { value: 'low', label: 'low' },
+  { value: 'medium', label: 'medium' },
+  { value: 'high', label: 'high' },
+  { value: 'xhigh', label: 'xhigh' },
+];
 
-const buildRuleKey = (permission: string, pattern: string): PermissionRuleKey =>
-  `${permission}::${pattern}`;
+const normalizeToolName = (value: string): string => value.trim().toLowerCase();
 
-const normalizeRuleset = (ruleset: PermissionRule[]): PermissionRule[] => {
-  const map = new Map<PermissionRuleKey, PermissionRule>();
-  for (const rule of ruleset) {
-    if (!rule.permission || rule.permission === 'invalid') {
-      continue;
+const sortToolNames = (toolNames: Iterable<string>): string[] => {
+  const unique = Array.from(new Set(Array.from(toolNames).map(normalizeToolName).filter(Boolean)));
+  return unique.sort((left, right) => {
+    const leftIndex = DEFAULT_TOOL_ORDER.indexOf(left);
+    const rightIndex = DEFAULT_TOOL_ORDER.indexOf(right);
+    if (leftIndex !== -1 || rightIndex !== -1) {
+      if (leftIndex === -1) return 1;
+      if (rightIndex === -1) return -1;
+      return leftIndex - rightIndex;
     }
-    if (!rule.pattern) {
-      continue;
-    }
-    if (!isPermissionAction(rule.action)) {
-      continue;
-    }
-    map.set(buildRuleKey(rule.permission, rule.pattern), {
-      permission: rule.permission,
-      pattern: rule.pattern,
-      action: rule.action,
-    });
-  }
-  return Array.from(map.values());
-};
-
-const buildRuleMap = (ruleset: PermissionRule[]): Map<PermissionRuleKey, PermissionRule> => {
-  const map = new Map<PermissionRuleKey, PermissionRule>();
-  for (const rule of normalizeRuleset(ruleset)) {
-    map.set(buildRuleKey(rule.permission, rule.pattern), rule);
-  }
-  return map;
-};
-
-const sortRules = (ruleset: PermissionRule[]): PermissionRule[] =>
-  [...ruleset].sort((a, b) => {
-    const permissionCompare = a.permission.localeCompare(b.permission);
-    if (permissionCompare !== 0) return permissionCompare;
-    return a.pattern.localeCompare(b.pattern);
-  });
-
-const areRulesEqual = (a: PermissionRule[], b: PermissionRule[]): boolean => {
-  const sortedA = sortRules(normalizeRuleset(a));
-  const sortedB = sortRules(normalizeRuleset(b));
-  if (sortedA.length !== sortedB.length) {
-    return false;
-  }
-  return sortedA.every((rule, index) => {
-    const other = sortedB[index];
-    return rule.permission === other.permission
-      && rule.pattern === other.pattern
-      && rule.action === other.action;
+    return left.localeCompare(right);
   });
 };
 
-const getGlobalWildcardAction = (ruleset: PermissionRule[]): PermissionAction => {
-  const globalRule = ruleset.find((rule) => rule.permission === '*' && rule.pattern === '*');
-  return globalRule?.action ?? 'allow';
+const formatToolLabel = (toolName: string): string => {
+  if (toolName === 'ls') return 'LS';
+  return toolName
+    .split(/[_-]+/g)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
 };
 
-const filterRulesAgainstGlobal = (ruleset: PermissionRule[], globalAction: PermissionAction): PermissionRule[] => (
-  normalizeRuleset(ruleset)
-    .filter((rule) => !(rule.permission === '*' && rule.pattern === '*'))
-    // Keep wildcard overrides only when they differ from global.
-    .filter((rule) => rule.pattern !== '*' || rule.action !== globalAction)
-);
-
-const permissionConfigToRuleset = (value: unknown): PermissionRule[] => {
-  if (isPermissionAction(value)) {
-    return [{ permission: '*', pattern: '*', action: value }];
+const getDeniedToolsFromAgent = (agent: Agent | null, draftPermission: AgentConfig['permission'] | undefined): string[] => {
+  if (draftPermission && typeof draftPermission === 'object' && !Array.isArray(draftPermission)) {
+    return sortToolNames(
+      Object.entries(draftPermission)
+        .filter(([, action]) => action === 'deny')
+        .map(([toolName]) => toolName)
+    );
   }
 
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return [];
-  }
-
-  const rules: PermissionRule[] = [];
-  for (const [permissionName, configValue] of Object.entries(value as Record<string, unknown>)) {
-    if (permissionName === '__originalKeys') {
-      continue;
-    }
-    if (isPermissionAction(configValue)) {
-      rules.push({ permission: permissionName, pattern: '*', action: configValue });
-      continue;
-    }
-    if (configValue && typeof configValue === 'object' && !Array.isArray(configValue)) {
-      for (const [pattern, action] of Object.entries(configValue as Record<string, unknown>)) {
-        if (isPermissionAction(action)) {
-          rules.push({ permission: permissionName, pattern, action });
-        }
-      }
-    }
-  }
-
-  return rules;
+  const rules = Array.isArray(agent?.permission) ? (agent.permission as AgentPermissionRule[]) : [];
+  return sortToolNames(
+    rules
+      .filter((rule) => rule.pattern === '*' && rule.action === 'deny')
+      .map((rule) => rule.permission)
+  );
 };
 
-const buildPermissionConfigWithGlobal = (
-  globalAction: PermissionAction,
-  ruleset: PermissionRule[],
-): AgentConfig['permission'] => {
-  const normalized = normalizeRuleset(ruleset);
-  const grouped: Record<string, Record<string, PermissionAction>> = {};
+const buildFormState = (params: {
+  isNewAgent: boolean;
+  agentDraft: ReturnType<typeof useAgentsStore.getState>['agentDraft'];
+  selectedAgent: Agent | null;
+}): AgentFormState | null => {
+  const { isNewAgent, agentDraft, selectedAgent } = params;
 
-  for (const rule of normalized) {
-    (grouped[rule.permission] ||= {})[rule.pattern] = rule.action;
+  if (isNewAgent && agentDraft) {
+    return {
+      draftName: agentDraft.name || '',
+      draftScope: agentDraft.scope || 'user',
+      description: agentDraft.description || '',
+      displayName: agentDraft.display_name || '',
+      mode: agentDraft.mode || 'subagent',
+      model: agentDraft.model || '',
+      thinking: agentDraft.thinking,
+      steps: agentDraft.steps,
+      enabled: agentDraft.enabled ?? true,
+      prompt: agentDraft.prompt || '',
+      deniedTools: getDeniedToolsFromAgent(null, agentDraft.permission),
+    };
   }
 
-  const result: Record<string, PermissionConfigValue> = {
-    '*': globalAction,
+  if (!selectedAgent) {
+    return null;
+  }
+
+  const extended = selectedAgent as AgentWithPiFields;
+  return {
+    draftName: '',
+    draftScope: 'user',
+    description: selectedAgent.description || '',
+    displayName: extended.displayName || '',
+    mode: selectedAgent.mode || 'subagent',
+    model: selectedAgent.model?.providerID && selectedAgent.model?.modelID
+      ? `${selectedAgent.model.providerID}/${selectedAgent.model.modelID}`
+      : '',
+    thinking: extended.thinking,
+    steps: extended.steps,
+    enabled: extended.enabled ?? true,
+    prompt: selectedAgent.prompt || '',
+    deniedTools: getDeniedToolsFromAgent(selectedAgent, undefined),
   };
-
-  for (const [permissionName, patterns] of Object.entries(grouped)) {
-    if (permissionName === '*') {
-      continue;
-    }
-
-    if (Object.keys(patterns).length === 1 && patterns['*']) {
-      result[permissionName] = patterns['*'];
-      continue;
-    }
-
-    result[permissionName] = patterns;
-  }
-
-  return result as AgentConfig['permission'];
 };
 
+const areStringArraysEqual = (left: string[], right: string[]) => {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+};
+
+const buildPermissionConfig = (deniedTools: string[]): AgentConfig['permission'] => {
+  if (deniedTools.length === 0) {
+    return undefined;
+  }
+
+  return Object.fromEntries(deniedTools.map((toolName) => [toolName, 'deny'])) as NonNullable<AgentConfig['permission']>;
+};
 
 export const AgentsPage: React.FC = () => {
-  const { isMobile } = useDeviceInfo();
-  const { selectedAgentName, getAgentByName, createAgent, updateAgent, agents, agentDraft, setAgentDraft } = useAgentsStore();
-  useConfigStore();
+  const {
+    selectedAgentName,
+    getAgentByName,
+    createAgent,
+    updateAgent,
+    agents,
+    agentDraft,
+    setAgentDraft,
+  } = useAgentsStore();
+  const { tools: availableTools, isLoading: toolsLoading } = useAvailableTools();
 
-  const selectedAgent = selectedAgentName ? getAgentByName(selectedAgentName) : null;
+  const selectedAgent = selectedAgentName ? (getAgentByName(selectedAgentName) ?? null) : null;
   const isNewAgent = Boolean(agentDraft && agentDraft.name === selectedAgentName && !selectedAgent);
 
   const [draftName, setDraftName] = React.useState('');
   const [draftScope, setDraftScope] = React.useState<AgentScope>('user');
   const [description, setDescription] = React.useState('');
-  const [mode, setMode] = React.useState<'primary' | 'subagent' | 'all'>('subagent');
+  const [displayName, setDisplayName] = React.useState('');
+  const [mode, setMode] = React.useState<NonNullable<AgentConfig['mode']>>('subagent');
   const [model, setModel] = React.useState('');
-  const [temperature, setTemperature] = React.useState<number | undefined>(undefined);
-  const [topP, setTopP] = React.useState<number | undefined>(undefined);
+  const [thinking, setThinking] = React.useState<ThinkingLevel | undefined>(undefined);
+  const [steps, setSteps] = React.useState<number | undefined>(undefined);
+  const [enabled, setEnabled] = React.useState(true);
   const [prompt, setPrompt] = React.useState('');
-  const [globalPermission, setGlobalPermission] = React.useState<PermissionAction>('allow');
-  const [permissionBaseline, setPermissionBaseline] = React.useState<PermissionRule[]>([]);
-  const [permissionRules, setPermissionRules] = React.useState<PermissionRule[]>([]);
-  const [pendingRuleName, setPendingRuleName] = React.useState('');
-  const [pendingRulePattern, setPendingRulePattern] = React.useState('*');
-  const [showPermissionEditor, setShowPermissionEditor] = React.useState(false);
+  const [deniedTools, setDeniedTools] = React.useState<string[]>([]);
   const [isSaving, setIsSaving] = React.useState(false);
-  const initialStateRef = React.useRef<{
-    draftName: string;
-    draftScope: AgentScope;
-    description: string;
-    mode: 'primary' | 'subagent' | 'all';
-    model: string;
-    temperature: number | undefined;
-    topP: number | undefined;
-    prompt: string;
-    globalPermission: PermissionAction;
-    permissionRules: PermissionRule[];
-  } | null>(null);
+  const initialStateRef = React.useRef<AgentFormState | null>(null);
 
-  const currentDirectory = useDirectoryStore((state) => state.currentDirectory ?? null);
-  const [toolIds, setToolIds] = React.useState<string[]>([]);
-
-  const permissionsBySession = usePermissionStore((state) => state.permissions);
+  const toolOptions = React.useMemo(() => {
+    return sortToolNames([
+      ...DEFAULT_TOOL_ORDER,
+      ...availableTools,
+      ...deniedTools,
+    ]);
+  }, [availableTools, deniedTools]);
 
   React.useEffect(() => {
-    let cancelled = false;
-
-    const fetchToolIds = async () => {
-      const ids = await opencodeClient.listToolIds({ directory: currentDirectory });
-      if (cancelled) {
-        return;
-      }
-
-      // OpenCode permissions are keyed by tool name, but some tools are grouped
-      // under a single permission key. E.g. `edit` covers `write`, `patch`, and `multiedit`.
-      const editCoveredToolIds = new Set(['write', 'patch', 'multiedit']);
-
-      const normalized = ids
-        .map((id) => (typeof id === 'string' ? id.trim() : ''))
-        .filter(Boolean)
-        .filter((id) => id !== '*')
-        .filter((id) => id !== 'invalid')
-        .filter((id) => !editCoveredToolIds.has(id));
-
-      setToolIds(Array.from(new Set(normalized)).sort((a, b) => a.localeCompare(b)));
-    };
-
-    void fetchToolIds();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentDirectory]);
-
-  const knownPermissionNames = React.useMemo(() => {
-    const names = new Set<string>();
-
-    for (const agent of agents) {
-      const rules = normalizeRuleset(Array.isArray(agent.permission) ? agent.permission as PermissionRule[] : []);
-      for (const rule of rules) {
-        if (rule.permission && rule.permission !== '*' && rule.permission !== 'invalid') {
-          names.add(rule.permission);
-        }
-      }
-    }
-
-    for (const permissions of permissionsBySession.values()) {
-      for (const request of permissions) {
-        const permissionName = request.permission?.trim();
-        if (permissionName && permissionName !== 'invalid') {
-          names.add(permissionName);
-        }
-      }
-    }
-
-    for (const toolId of toolIds) {
-      names.add(toolId);
-    }
-
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [agents, permissionsBySession, toolIds]);
-
-  const baselineRuleMap = React.useMemo(() => buildRuleMap(permissionBaseline), [permissionBaseline]);
-  const currentRuleMap = React.useMemo(() => buildRuleMap(permissionRules), [permissionRules]);
-
-  const getWildcardOverride = React.useCallback((permissionName: string): PermissionAction | undefined => (
-    currentRuleMap.get(buildRuleKey(permissionName, '*'))?.action
-  ), [currentRuleMap]);
-
-
-  const getPatternRules = React.useCallback((permissionName: string): PermissionRule[] => (
-    permissionRules
-      .filter((rule) => rule.permission === permissionName && rule.pattern !== '*')
-      .sort((a, b) => a.pattern.localeCompare(b.pattern))
-  ), [permissionRules]);
-
-  const summaryPermissionNames = React.useMemo(() => {
-    const names = new Set<string>();
-    for (const key of STANDARD_PERMISSION_KEYS) {
-      names.add(key);
-    }
-    for (const key of knownPermissionNames) {
-      names.add(key);
-    }
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [knownPermissionNames]);
-
-
-  const getPermissionSummary = React.useCallback((permissionName: string) => {
-    const defaultAction = permissionName === '*'
-      ? globalPermission
-      : (getWildcardOverride(permissionName) ?? globalPermission);
-    const patternRules = getPatternRules(permissionName);
-    const hasDefaultHint = false;
-    const patternCounts = patternRules.reduce<Record<PermissionAction, number>>((acc, rule) => {
-      acc[rule.action] = (acc[rule.action] ?? 0) + 1;
-      return acc;
-    }, { allow: 0, ask: 0, deny: 0 });
-    const patternSummary = (['allow', 'ask', 'deny'] as const)
-      .filter((action) => patternCounts[action] > 0)
-      .map((action) => `${patternCounts[action]} ${action}`)
-      .join(', ');
-    return {
-      defaultAction,
-      patternRulesCount: patternRules.length,
-      patternSummary,
-      hasDefaultHint,
-    };
-  }, [getPatternRules, getWildcardOverride, globalPermission]);
-
-  const availablePermissionNames = React.useMemo(() => {
-    const names = new Set<string>();
-
-    for (const key of STANDARD_PERMISSION_KEYS) {
-      names.add(key);
-    }
-
-    for (const key of knownPermissionNames) {
-      names.add(key);
-    }
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [knownPermissionNames]);
-
-  const upsertRule = React.useCallback((permissionName: string, pattern: string, action: PermissionAction) => {
-    setPermissionRules((prev) => {
-      const map = buildRuleMap(prev);
-      map.set(buildRuleKey(permissionName, pattern), { permission: permissionName, pattern, action });
-      return Array.from(map.values());
-    });
-  }, []);
-
-  const removeRule = React.useCallback((permissionName: string, pattern: string) => {
-    setPermissionRules((prev) => {
-      const map = buildRuleMap(prev);
-      map.delete(buildRuleKey(permissionName, pattern));
-      return Array.from(map.values());
-    });
-  }, []);
-
-  const revertRule = React.useCallback((permissionName: string, pattern: string) => {
-    const baseline = baselineRuleMap.get(buildRuleKey(permissionName, pattern));
-    if (baseline) {
-      upsertRule(permissionName, pattern, baseline.action);
-      return;
-    }
-    removeRule(permissionName, pattern);
-  }, [baselineRuleMap, removeRule, upsertRule]);
-
-  const setRuleAction = React.useCallback((permissionName: string, pattern: string, action: PermissionAction) => {
-    upsertRule(permissionName, pattern, action);
-  }, [upsertRule]);
-
-  const setGlobalPermissionAndPrune = React.useCallback((next: PermissionAction) => {
-    setGlobalPermission(next);
-    setPermissionRules((prev) => prev.filter((rule) => !(rule.pattern === '*' && rule.action === next)));
-  }, []);
-
-  const applyPendingRule = React.useCallback((action: PermissionAction) => {
-    const name = pendingRuleName.trim();
-    if (!name) {
-      toast.error('Permission name is required');
+    const nextState = buildFormState({ isNewAgent, agentDraft, selectedAgent });
+    if (!nextState) {
+      initialStateRef.current = null;
       return;
     }
 
-    const pattern = pendingRulePattern.trim() || '*';
-    if (name === '*' && pattern === '*') {
-      setGlobalPermissionAndPrune(action);
-      setPendingRuleName('');
-      setPendingRulePattern('*');
-      return;
-    }
-    if (pattern === '*' && name !== '*' && action === globalPermission) {
-      removeRule(name, '*');
-    } else {
-      upsertRule(name, pattern, action);
-    }
-    setPendingRuleName('');
-    setPendingRulePattern('*');
-  }, [globalPermission, pendingRuleName, pendingRulePattern, removeRule, setGlobalPermissionAndPrune, upsertRule]);
-
-  const formatPermissionLabel = React.useCallback((permissionName: string): string => {
-    if (permissionName === '*') return 'Default';
-    if (permissionName === 'webfetch') return 'WebFetch';
-    if (permissionName === 'websearch') return 'WebSearch';
-    if (permissionName === 'codesearch') return 'CodeSearch';
-    if (permissionName === 'doom_loop') return 'Doom Loop';
-    if (permissionName === 'external_directory') return 'External Directory';
-    if (permissionName === 'todowrite') return 'TodoWrite';
-    if (permissionName === 'todoread') return 'TodoRead';
-
-    return permissionName
-      .split(/[_-]+/g)
-      .filter(Boolean)
-      .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-      .join(' ');
-  }, []);
-
-  React.useEffect(() => {
-    setPendingRuleName('');
-    setPendingRulePattern('*');
-
-    const applyPermissionState = (rules: PermissionRule[]) => {
-      const normalized = normalizeRuleset(rules);
-      const nextGlobal = getGlobalWildcardAction(normalized);
-      const filtered = filterRulesAgainstGlobal(normalized, nextGlobal);
-      setGlobalPermission(nextGlobal);
-      setPermissionBaseline(filtered);
-      setPermissionRules(filtered);
-      return { global: nextGlobal, rules: filtered };
-    };
-
-    if (isNewAgent && agentDraft) {
-      const draftNameValue = agentDraft.name || '';
-      const draftScopeValue = agentDraft.scope || 'user';
-      const descriptionValue = agentDraft.description || '';
-      const modeValue = agentDraft.mode || 'subagent';
-      const modelValue = agentDraft.model || '';
-      const temperatureValue = agentDraft.temperature;
-      const topPValue = agentDraft.top_p;
-      const promptValue = agentDraft.prompt || '';
-
-      setDraftName(draftNameValue);
-      setDraftScope(draftScopeValue);
-      setDescription(descriptionValue);
-      setMode(modeValue);
-      setModel(modelValue);
-      setTemperature(temperatureValue);
-      setTopP(topPValue);
-      setPrompt(promptValue);
-
-      const parsedRules = permissionConfigToRuleset(agentDraft.permission);
-      const permissionState = applyPermissionState(parsedRules);
-
-      initialStateRef.current = {
-        draftName: draftNameValue,
-        draftScope: draftScopeValue,
-        description: descriptionValue,
-        mode: modeValue,
-        model: modelValue,
-        temperature: temperatureValue,
-        topP: topPValue,
-        prompt: promptValue,
-        globalPermission: permissionState.global,
-        permissionRules: permissionState.rules,
-      };
-      return;
-    }
-
-    if (selectedAgent && selectedAgentName === selectedAgent.name) {
-      const descriptionValue = selectedAgent.description || '';
-      const modeValue = selectedAgent.mode || 'subagent';
-      const modelValue = selectedAgent.model?.providerID && selectedAgent.model?.modelID
-        ? `${selectedAgent.model.providerID}/${selectedAgent.model.modelID}`
-        : '';
-      const temperatureValue = selectedAgent.temperature;
-      const topPValue = selectedAgent.topP;
-      const promptValue = selectedAgent.prompt || '';
-
-      setDescription(descriptionValue);
-      setMode(modeValue);
-
-      setModel(modelValue);
-      setTemperature(temperatureValue);
-      setTopP(topPValue);
-      setPrompt(promptValue);
-
-      const permissionState = applyPermissionState(
-        Array.isArray(selectedAgent.permission) ? selectedAgent.permission as PermissionRule[] : [],
-      );
-
-      initialStateRef.current = {
-        draftName: '',
-        draftScope: 'user',
-        description: descriptionValue,
-        mode: modeValue,
-        model: modelValue,
-        temperature: temperatureValue,
-        topP: topPValue,
-        prompt: promptValue,
-        globalPermission: permissionState.global,
-        permissionRules: permissionState.rules,
-      };
-    }
-  }, [agentDraft, isNewAgent, selectedAgent, selectedAgentName]);
+    setDraftName(nextState.draftName);
+    setDraftScope(nextState.draftScope);
+    setDescription(nextState.description);
+    setDisplayName(nextState.displayName);
+    setMode(nextState.mode);
+    setModel(nextState.model);
+    setThinking(nextState.thinking);
+    setSteps(nextState.steps);
+    setEnabled(nextState.enabled);
+    setPrompt(nextState.prompt);
+    setDeniedTools(nextState.deniedTools);
+    initialStateRef.current = nextState;
+  }, [agentDraft, isNewAgent, selectedAgent]);
 
   const isDirty = React.useMemo(() => {
     const initial = initialStateRef.current;
@@ -515,16 +238,29 @@ export const AgentsPage: React.FC = () => {
     }
 
     if (description !== initial.description) return true;
+    if (displayName !== initial.displayName) return true;
     if (mode !== initial.mode) return true;
     if (model !== initial.model) return true;
-    if (temperature !== initial.temperature) return true;
-    if (topP !== initial.topP) return true;
+    if (thinking !== initial.thinking) return true;
+    if (steps !== initial.steps) return true;
+    if (enabled !== initial.enabled) return true;
     if (prompt !== initial.prompt) return true;
-    if (globalPermission !== initial.globalPermission) return true;
-    if (!areRulesEqual(permissionRules, initial.permissionRules)) return true;
-
+    if (!areStringArraysEqual(deniedTools, initial.deniedTools)) return true;
     return false;
-  }, [description, draftName, draftScope, globalPermission, isNewAgent, mode, model, permissionRules, prompt, temperature, topP]);
+  }, [deniedTools, description, displayName, draftName, draftScope, enabled, isNewAgent, mode, model, prompt, steps, thinking]);
+
+  const toggleDeniedTool = React.useCallback((toolName: string) => {
+    const normalized = normalizeToolName(toolName);
+    setDeniedTools((current) => {
+      const next = new Set(current);
+      if (next.has(normalized)) {
+        next.delete(normalized);
+      } else {
+        next.add(normalized);
+      }
+      return sortToolNames(next);
+    });
+  }, []);
 
   const handleSave = async () => {
     const agentName = isNewAgent ? draftName.trim().replace(/\s+/g, '-') : selectedAgentName?.trim();
@@ -534,8 +270,12 @@ export const AgentsPage: React.FC = () => {
       return;
     }
 
-    // Check for duplicate name when creating new agent
-    if (isNewAgent && agents.some((a) => a.name === agentName)) {
+    if (!description.trim()) {
+      toast.error('Description is required');
+      return;
+    }
+
+    if (isNewAgent && agents.some((agent) => agent.name === agentName)) {
       toast.error('An agent with this name already exists');
       return;
     }
@@ -544,30 +284,28 @@ export const AgentsPage: React.FC = () => {
 
     try {
       const trimmedModel = model.trim();
-      const permissionConfig = buildPermissionConfigWithGlobal(globalPermission, permissionRules);
       const config: AgentConfig = {
         name: agentName,
-        description: description.trim() || undefined,
+        description: description.trim(),
+        display_name: displayName.trim() || undefined,
         mode,
         model: trimmedModel === '' ? null : trimmedModel,
-        temperature,
-        top_p: topP,
+        thinking,
+        steps,
+        enabled,
         prompt: prompt.trim() || undefined,
-        permission: permissionConfig,
+        permission: buildPermissionConfig(deniedTools),
         scope: isNewAgent ? draftScope : undefined,
       };
 
-      let success: boolean;
-      if (isNewAgent) {
-        success = await createAgent(config);
-        if (success) {
-          setAgentDraft(null); // Clear draft after successful creation
-        }
-      } else {
-        success = await updateAgent(agentName, config);
-      }
+      const success = isNewAgent
+        ? await createAgent(config)
+        : await updateAgent(agentName, config);
 
       if (success) {
+        if (isNewAgent) {
+          setAgentDraft(null);
+        }
         toast.success(isNewAgent ? 'Agent created successfully' : 'Agent updated successfully');
       } else {
         toast.error(isNewAgent ? 'Failed to create agent' : 'Failed to update agent');
@@ -580,7 +318,6 @@ export const AgentsPage: React.FC = () => {
       setIsSaving(false);
     }
   };
-
 
   if (!selectedAgentName) {
     return (
@@ -597,31 +334,24 @@ export const AgentsPage: React.FC = () => {
   return (
     <ScrollableOverlay keyboardAvoid outerClassName="h-full" className="w-full">
       <div className="mx-auto w-full max-w-3xl p-3 sm:p-6 sm:pt-8">
-
-        {/* Header & Actions */}
         <div className="mb-4 flex items-center justify-between gap-4">
           <div className="min-w-0">
             <h2 className="typography-ui-header font-semibold text-foreground truncate">
-              {isNewAgent ? 'New Agent' : selectedAgentName}
+              {isNewAgent ? 'New Pi Agent' : selectedAgentName}
             </h2>
             <p className="typography-meta text-muted-foreground truncate">
-              {isNewAgent ? 'Configure a new assistant persona' : 'Edit agent settings'}
+              {isNewAgent ? 'Create a Pi-native agent configuration' : 'Edit Pi-native agent settings'}
             </p>
           </div>
         </div>
 
-        {/* Identity & Role */}
         <div className="mb-8">
           <div className="mb-1 px-1">
-            <h3 className="typography-ui-header font-medium text-foreground">
-              Identity & Role
-            </h3>
+            <h3 className="typography-ui-header font-medium text-foreground">Identity</h3>
           </div>
-
-          <section className="px-2 pb-2 pt-0 space-y-0">
-
+          <section className="px-2 pb-2 pt-0 space-y-4">
             {isNewAgent && (
-              <div className="flex flex-col gap-2 py-1.5 sm:flex-row sm:items-center sm:gap-8">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-8">
                 <div className="flex min-w-0 flex-col sm:w-56 shrink-0">
                   <span className="typography-ui-label text-foreground">Agent Name</span>
                 </div>
@@ -630,13 +360,13 @@ export const AgentsPage: React.FC = () => {
                     <span className="typography-ui-label text-muted-foreground mr-1">@</span>
                     <Input
                       value={draftName}
-                      onChange={(e) => setDraftName(e.target.value)}
+                      onChange={(event) => setDraftName(event.target.value)}
                       placeholder="agent-name"
-                      className="h-7 w-40 px-2"
+                      className="h-7 w-48 px-2"
                     />
                   </div>
-                  <Select value={draftScope} onValueChange={(v) => setDraftScope(v as AgentScope)}>
-                    <SelectTrigger className="w-fit min-w-[100px]">
+                  <Select value={draftScope} onValueChange={(value) => setDraftScope(value as AgentScope)}>
+                    <SelectTrigger className="w-fit min-w-[110px]">
                       <SelectValue placeholder="Scope" />
                     </SelectTrigger>
                     <SelectContent align="end">
@@ -663,11 +393,42 @@ export const AgentsPage: React.FC = () => {
               <div className="mt-1.5">
                 <Textarea
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(event) => setDescription(event.target.value)}
                   placeholder="What does this agent do?"
                   rows={2}
                   className="w-full resize-none min-h-[60px] bg-transparent"
                 />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-8">
+              <div className="flex min-w-0 flex-col sm:w-56 shrink-0">
+                <span className="typography-ui-label text-foreground">Display Name</span>
+              </div>
+              <div className="flex min-w-0 flex-1 items-center gap-2 sm:w-fit sm:flex-initial">
+                <Input
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  placeholder="Optional UI label"
+                  className="h-7 w-56 px-2"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-8">
+              <div className="flex min-w-0 flex-col sm:w-56 shrink-0">
+                <span className="typography-ui-label text-foreground">Enabled</span>
+              </div>
+              <div className="flex min-w-0 flex-1 items-center gap-2 sm:w-fit sm:flex-initial">
+                <Select value={enabled ? 'true' : 'false'} onValueChange={(value) => setEnabled(value === 'true')}>
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">Enabled</SelectItem>
+                    <SelectItem value="false">Disabled</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -680,68 +441,39 @@ export const AgentsPage: React.FC = () => {
                       <RiInformationLine className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent sideOffset={8} className="max-w-xs">
-                      Primary vs Subagent visibility
+                      Controls whether the agent is selectable as a main agent, callable as a subagent, or both.
                     </TooltipContent>
                   </Tooltip>
                 </div>
                 <div className="flex flex-wrap items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={() => setMode('primary')}
-                  className={cn(
-                    '!font-normal',
-                    mode === 'primary'
-                      ? 'border-[var(--primary-base)] text-[var(--primary-base)] bg-[var(--primary-base)]/10 hover:text-[var(--primary-base)]'
-                      : 'text-foreground'
-                  )}
-                >
-                  Primary
-                </Button>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={() => setMode('subagent')}
-                  className={cn(
-                    '!font-normal',
-                    mode === 'subagent'
-                      ? 'border-[var(--primary-base)] text-[var(--primary-base)] bg-[var(--primary-base)]/10 hover:text-[var(--primary-base)]'
-                      : 'text-foreground'
-                  )}
-                >
-                  Subagent
-                </Button>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={() => setMode('all')}
-                  className={cn(
-                    '!font-normal',
-                    mode === 'all'
-                      ? 'border-[var(--primary-base)] text-[var(--primary-base)] bg-[var(--primary-base)]/10 hover:text-[var(--primary-base)]'
-                      : 'text-foreground'
-                  )}
-                >
-                  All
-                </Button>
+                  {(['primary', 'subagent', 'all'] as const).map((candidateMode) => (
+                    <Button
+                      key={candidateMode}
+                      variant="outline"
+                      size="xs"
+                      onClick={() => setMode(candidateMode)}
+                      className={cn(
+                        '!font-normal',
+                        mode === candidateMode
+                          ? 'border-[var(--primary-base)] text-[var(--primary-base)] bg-[var(--primary-base)]/10 hover:text-[var(--primary-base)]'
+                          : 'text-foreground'
+                      )}
+                    >
+                      {candidateMode === 'primary' ? 'Primary' : candidateMode === 'subagent' ? 'Subagent' : 'All'}
+                    </Button>
+                  ))}
                 </div>
               </div>
             </div>
-
           </section>
         </div>
 
-        {/* Model & Parameters */}
         <div className="mb-8">
           <div className="mb-1 px-1">
-            <h3 className="typography-ui-header font-medium text-foreground">
-              Model & Parameters
-            </h3>
+            <h3 className="typography-ui-header font-medium text-foreground">Runtime</h3>
           </div>
-
-          <section className="px-2 pb-2 pt-0 space-y-0">
-
-            <div className="flex flex-col gap-2 py-1.5 sm:flex-row sm:items-center sm:gap-8">
+          <section className="px-2 pb-2 pt-0 space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-8">
               <div className="flex min-w-0 flex-col sm:w-56 shrink-0">
                 <span className="typography-ui-label text-foreground">Override Model</span>
               </div>
@@ -760,326 +492,110 @@ export const AgentsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className={cn("py-1.5", isMobile ? "flex flex-col gap-3" : "flex items-center gap-8")}>
-              <div className={cn("flex min-w-0 flex-col", isMobile ? "w-full" : "sm:w-56 shrink-0")}>
-                <div className="flex items-center gap-1.5">
-                  <span className="typography-ui-label text-foreground">Temperature</span>
-                  <Tooltip delayDuration={1000}>
-                    <TooltipTrigger asChild>
-                      <RiInformationLine className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent sideOffset={8} className="max-w-xs">
-                      Controls randomness. Higher = creative, Lower = focused.
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <span className="typography-meta text-muted-foreground">0.0 to 2.0</span>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-8">
+              <div className="flex min-w-0 flex-col sm:w-56 shrink-0">
+                <span className="typography-ui-label text-foreground">Thinking</span>
+                <span className="typography-meta text-muted-foreground">Optional override</span>
               </div>
-              <div className={cn("flex items-center gap-2", isMobile ? "w-full" : "w-fit")}>
-                <NumberInput
-                  value={temperature}
-                  fallbackValue={0.7}
-                  onValueChange={setTemperature}
-                  onClear={() => setTemperature(undefined)}
-                  min={0}
-                  max={2}
-                  step={0.1}
-                  inputMode="decimal"
-                  placeholder="—"
-                  emptyLabel="—"
-                  className="w-16"
-                />
-                {temperature !== undefined && (
-                  <Button size="sm"
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setTemperature(undefined)}
-                    className="h-7 w-7 px-0 text-muted-foreground hover:text-foreground"
-                    aria-label="Clear temperature override"
-                    title="Clear"
-                  >
-                    <RiCloseLine className="h-3.5 w-3.5" />
-                  </Button>
-                )}
+              <div className="flex min-w-0 flex-1 items-center gap-2 sm:w-fit sm:flex-initial">
+                <Select value={thinking ?? '__inherit__'} onValueChange={(value) => setThinking(value === '__inherit__' ? undefined : value as ThinkingLevel)}>
+                  <SelectTrigger className="w-[160px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {THINKING_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            <div className={cn("py-1.5", isMobile ? "flex flex-col gap-3" : "flex items-center gap-8")}>
-              <div className={cn("flex min-w-0 flex-col", isMobile ? "w-full" : "sm:w-56 shrink-0")}>
-                <div className="flex items-center gap-1.5">
-                  <span className="typography-ui-label text-foreground">Top P</span>
-                  <Tooltip delayDuration={1000}>
-                    <TooltipTrigger asChild>
-                      <RiInformationLine className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent sideOffset={8} className="max-w-xs">
-                      Nucleus sampling diversity. Lower = likely tokens only.
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <span className="typography-meta text-muted-foreground">0.0 to 1.0</span>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-8">
+              <div className="flex min-w-0 flex-col sm:w-56 shrink-0">
+                <span className="typography-ui-label text-foreground">Steps</span>
+                <span className="typography-meta text-muted-foreground">Empty means unlimited</span>
               </div>
-              <div className={cn("flex items-center gap-2", isMobile ? "w-full" : "w-fit")}>
+              <div className="flex min-w-0 flex-1 items-center gap-2 sm:w-fit sm:flex-initial">
                 <NumberInput
-                  value={topP}
-                  fallbackValue={0.9}
-                  onValueChange={setTopP}
-                  onClear={() => setTopP(undefined)}
-                  min={0}
-                  max={1}
-                  step={0.1}
-                  inputMode="decimal"
+                  value={steps}
+                  fallbackValue={8}
+                  onValueChange={setSteps}
+                  onClear={() => setSteps(undefined)}
+                  min={1}
+                  step={1}
+                  inputMode="numeric"
                   placeholder="—"
                   emptyLabel="—"
-                  className="w-16"
+                  className="w-20"
                 />
-                {topP !== undefined && (
-                  <Button size="sm"
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setTopP(undefined)}
-                    className="h-7 w-7 px-0 text-muted-foreground hover:text-foreground"
-                    aria-label="Clear top p override"
-                    title="Clear"
-                  >
-                    <RiCloseLine className="h-3.5 w-3.5" />
-                  </Button>
-                )}
               </div>
             </div>
-
           </section>
         </div>
 
-        {/* System Prompt */}
         <div className="mb-8">
           <div className="mb-1 px-1">
-            <h3 className="typography-ui-header font-medium text-foreground">
-              System Prompt
-            </h3>
+            <h3 className="typography-ui-header font-medium text-foreground">Prompt</h3>
           </div>
-
           <section className="px-2 pb-2 pt-0">
             <Textarea
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={(event) => setPrompt(event.target.value)}
               placeholder="You are an expert coding assistant..."
-              rows={8}
-              className="w-full font-mono typography-meta min-h-[120px] max-h-[60vh] bg-transparent resize-y"
+              rows={10}
+              className="w-full font-mono typography-meta min-h-[160px] max-h-[60vh] bg-transparent resize-y"
             />
           </section>
         </div>
 
-        {/* Tool Permissions */}
-        <div className="mb-2">
-          <div className="mb-1 px-1 flex items-center justify-between gap-4">
-            <h3 className="typography-ui-header font-medium text-foreground">
-              Tool Permissions
-            </h3>
-            <Button
-              variant="outline"
-              size="xs"
-              className="!font-normal"
-              onClick={() => setShowPermissionEditor((prev) => !prev)}
-            >
-              {showPermissionEditor ? 'Hide Editor' : 'Advanced Editor'}
-            </Button>
+        <div className="mb-8">
+          <div className="mb-1 px-1">
+            <h3 className="typography-ui-header font-medium text-foreground">Permission</h3>
+            <p className="typography-meta text-muted-foreground mt-1">
+              First version: tools are enabled by default. Turn a tool off by marking it as denied.
+            </p>
           </div>
-
-          {!showPermissionEditor ? (
-            <section className="px-2 pb-2 pt-0 space-y-0">
-              {summaryPermissionNames.map((permissionName, index) => {
-                const { defaultAction, patternRulesCount, patternSummary, hasDefaultHint } = getPermissionSummary(permissionName);
-                const label = formatPermissionLabel(permissionName);
-                const summary = hasDefaultHint ? `${defaultAction} (env blocked)` : defaultAction;
-                return (
-                  <div key={permissionName} className={cn("flex flex-col gap-1 py-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-8", index > 0 && "border-t border-[var(--surface-subtle)]")}>
-                    <div className="flex items-center gap-2">
-                      <span className="typography-ui-label text-foreground">{label}</span>
-                      <span className="typography-micro text-muted-foreground/70 font-mono hidden sm:inline-block">{permissionName}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {patternRulesCount > 0 ? (
-                        <span className="typography-micro text-muted-foreground bg-[var(--surface-muted)] px-1.5 py-0.5 rounded">Global: {summary}</span>
-                      ) : (
-                        <span className={cn("typography-micro capitalize px-1.5 py-0.5 rounded", summary === 'allow' ? "text-[var(--status-success)] bg-[var(--status-success)]/10" : summary === 'deny' ? "text-[var(--status-error)] bg-[var(--status-error)]/10" : "text-[var(--status-warning)] bg-[var(--status-warning)]/10")}>{summary}</span>
-                      )}
-                      {patternRulesCount > 0 && (
-                        <span className="typography-micro text-muted-foreground bg-[var(--surface-muted)] px-1.5 py-0.5 rounded">Rules: {patternSummary}</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </section>
-          ) : (
-            <div className="space-y-6 px-2">
-              <div className="flex items-center justify-between gap-4 py-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="typography-ui-label text-foreground">Global Default</span>
-                  <span className="typography-micro text-muted-foreground/70 font-mono">*</span>
-                </div>
-                <Select
-                  value={globalPermission}
-                  onValueChange={(value) => setGlobalPermissionAndPrune(value as PermissionAction)}
+          <section className="px-2 pb-2 pt-0 space-y-0">
+            {toolOptions.map((toolName, index) => {
+              const denied = deniedTools.includes(toolName);
+              return (
+                <div
+                  key={toolName}
+                  className={cn(
+                    'flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-8',
+                    index > 0 && 'border-t border-[var(--surface-subtle)]'
+                  )}
                 >
-                  <SelectTrigger className="w-[100px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="allow">Allow</SelectItem>
-                    <SelectItem value="ask">Ask</SelectItem>
-                    <SelectItem value="deny">Deny</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-4">
-                {summaryPermissionNames.filter((name) => name !== '*').map((permissionName) => {
-                  const label = formatPermissionLabel(permissionName);
-                  const { defaultAction, patternRulesCount } = getPermissionSummary(permissionName);
-                  const wildcardOverride = getWildcardOverride(permissionName);
-                  const wildcardValue: string = wildcardOverride ?? 'global';
-                  const patternRules = getPatternRules(permissionName);
-                  const wildcardOptions = (['allow', 'ask', 'deny'] as const).filter((action) => action !== globalPermission);
-
-                  return (
-                    <div key={permissionName} className="border-t border-[var(--surface-subtle)] pt-2">
-                      <div className="flex items-center justify-between py-1">
-                        <div className="flex items-center gap-2">
-                          <span className="typography-ui-label text-foreground">{label}</span>
-                          <span className="typography-micro text-muted-foreground/70 font-mono">{permissionName}</span>
-                        </div>
-                        <div className="typography-micro text-muted-foreground">
-                          {patternRulesCount > 0 ? `Global: ${defaultAction}` : defaultAction}
-                        </div>
-                      </div>
-
-                      <div className="space-y-1 pl-2 mt-1">
-                        <div className="flex flex-wrap items-center justify-between gap-2 py-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="typography-micro text-muted-foreground">Pattern</span>
-                            <span className="typography-micro font-mono text-foreground bg-[var(--surface-muted)] px-1 rounded">*</span>
-                            {wildcardOverride && (
-                              <Button size="sm"
-                                variant="ghost"
-                                onClick={() => revertRule(permissionName, '*')}
-                                className="px-1.5 py-0 h-5"
-                              >
-                                <RiSubtractLine className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                              </Button>
-                            )}
-                          </div>
-                          <Select
-                            value={wildcardValue}
-                            onValueChange={(value) => {
-                              if (value === 'global') {
-                                removeRule(permissionName, '*');
-                                return;
-                              }
-                              upsertRule(permissionName, '*', value as PermissionAction);
-                            }}
-                          >
-                            <SelectTrigger className="w-[90px]">
-                               <SelectValue />
-                             </SelectTrigger>
-                             <SelectContent>
-                               <SelectItem value="global">Global</SelectItem>
-                              {wildcardOptions.map((action) => (
-                                <SelectItem key={action} value={action} className="capitalize">
-                                  {action}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {patternRules.map((rule) => {
-                          const ruleKey = buildRuleKey(rule.permission, rule.pattern);
-                          const baselineRule = baselineRuleMap.get(ruleKey);
-                          const isAdded = !baselineRule;
-                          const isModified = Boolean(baselineRule && baselineRule.action !== rule.action);
-
-                          return (
-                            <div key={ruleKey} className="flex flex-wrap items-center justify-between gap-2 py-0.5 border-t border-[var(--surface-subtle)]">
-                              <div className="flex items-center gap-2">
-                                <span className="typography-micro text-muted-foreground">Pattern</span>
-                                <span className="typography-micro font-mono text-foreground bg-[var(--surface-muted)] px-1 rounded">{rule.pattern}</span>
-                                {isAdded && <span className="typography-micro text-[var(--status-success)]">New</span>}
-                                {isModified && <span className="typography-micro text-[var(--status-warning)]">Modified</span>}
-                                {(isAdded || isModified) && (
-                                  <Button size="sm"
-                                    variant="ghost"
-                                    onClick={() => isAdded ? removeRule(rule.permission, rule.pattern) : revertRule(rule.permission, rule.pattern)}
-                                    className="px-1.5 py-0 h-5"
-                                  >
-                                    <RiSubtractLine className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                                  </Button>
-                                )}
-                              </div>
-                              <Select
-                                value={rule.action}
-                                onValueChange={(value) => setRuleAction(rule.permission, rule.pattern, value as PermissionAction)}
-                              >
-                                 <SelectTrigger className="w-[90px]">
-                                   <SelectValue />
-                                 </SelectTrigger>
-                                 <SelectContent>
-                                   <SelectItem value="allow">Allow</SelectItem>
-                                  <SelectItem value="ask">Ask</SelectItem>
-                                  <SelectItem value="deny">Deny</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="border-t border-[var(--surface-subtle)] pt-3">
-                <h4 className="typography-ui-label text-foreground mb-2">Add Custom Rule</h4>
-                <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
-                  <Select value={pendingRuleName} onValueChange={setPendingRuleName}>
-                    <SelectTrigger className="w-full sm:w-[160px]">
-                      {pendingRuleName ? (
-                        <span className="truncate">{formatPermissionLabel(pendingRuleName)}</span>
-                      ) : (
-                        <span className="text-muted-foreground">Permission...</span>
-                      )}
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availablePermissionNames.map((name) => (
-                        <SelectItem key={name} value={name}>
-                          <div className="flex items-center justify-between gap-2 w-full">
-                            <span>{formatPermissionLabel(name)}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <Input
-                    value={pendingRulePattern}
-                    onChange={(e) => setPendingRulePattern(e.target.value)}
-                    placeholder="Pattern (e.g. *)"
-                    className="h-7 flex-1 font-mono text-xs"
-                  />
-
-                  <div className="flex gap-1">
-                    <Button variant="outline" size="xs" className="!font-normal" onClick={() => applyPendingRule('allow')}>Allow</Button>
-                    <Button variant="outline" size="xs" className="!font-normal" onClick={() => applyPendingRule('ask')}>Ask</Button>
-                    <Button variant="outline" size="xs" className="!font-normal" onClick={() => applyPendingRule('deny')}>Deny</Button>
+                  <div className="flex items-center gap-2">
+                    <span className="typography-ui-label text-foreground">{formatToolLabel(toolName)}</span>
+                    <span className="typography-micro text-muted-foreground/70 font-mono">{toolName}</span>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    className={cn(
+                      '!font-normal min-w-[110px]',
+                      denied
+                        ? 'border-[var(--status-error)] text-[var(--status-error)] bg-[var(--status-error)]/10 hover:text-[var(--status-error)]'
+                        : 'border-[var(--status-success)] text-[var(--status-success)] bg-[var(--status-success)]/10 hover:text-[var(--status-success)]'
+                    )}
+                    onClick={() => toggleDeniedTool(toolName)}
+                  >
+                    {denied ? 'Denied' : 'Enabled'}
+                  </Button>
                 </div>
+              );
+            })}
+            {toolOptions.length === 0 && (
+              <div className="py-3 typography-meta text-muted-foreground">
+                {toolsLoading ? 'Loading tools…' : 'No tools available'}
               </div>
-            </div>
-          )}
+            )}
+          </section>
         </div>
 
-        {/* Save action */}
         <div className="px-2 py-1">
           <Button
             onClick={handleSave}
@@ -1090,7 +606,6 @@ export const AgentsPage: React.FC = () => {
             {isSaving ? 'Saving...' : 'Save Changes'}
           </Button>
         </div>
-
       </div>
     </ScrollableOverlay>
   );

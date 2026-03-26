@@ -1,3 +1,30 @@
+import { Type } from '@sinclair/typebox';
+
+const QuestionItemSchema = Type.Object({
+  header: Type.Optional(Type.String({ description: 'Header or topic of the question' })),
+  question: Type.String({ description: 'The question text to ask the user' }),
+  options: Type.Optional(Type.Array(Type.String(), { description: 'Optional list of choices for the user' })),
+  multiple: Type.Optional(Type.Boolean({ description: 'Whether the user can select multiple options' })),
+});
+
+const QuestionParamsSchema = Type.Object({
+  questions: Type.Array(QuestionItemSchema, { description: 'A list of questions to ask the user.' }),
+});
+
+const buildQuestionOutput = (questions, response) => {
+  const answers = Array.isArray(response) ? response : [response];
+  let output = 'User has answered your questions:\n';
+
+  questions.forEach((question, index) => {
+    const fallback = answers[0] || 'No answer';
+    const answerText = answers[index] !== undefined ? answers[index] : fallback;
+    output += `"${question.question}"="${answerText}"\n`;
+  });
+
+  output += 'You can now proceed.';
+  return output;
+};
+
 export function createQuestionToolDefinition(createInteractiveRequest) {
   return {
     name: 'question',
@@ -7,83 +34,50 @@ export function createQuestionToolDefinition(createInteractiveRequest) {
     promptGuidelines: [
       'Use the question tool when you cannot proceed without user input.',
       'Ask clear, concise questions.',
-      'Group multiple related questions into a single tool call when possible.'
+      'Group multiple related questions into a single tool call when possible.',
     ],
-    parameters: {
-      type: 'object',
-      properties: {
-        questions: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              header: { type: 'string', description: 'Header or topic of the question' },
-              question: { type: 'string', description: 'The question text to ask the user' },
-              options: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Optional list of choices for the user'
-              },
-              multiple: { type: 'boolean', description: 'Whether the user can select multiple options' }
-            },
-            required: ['question']
-          },
-          description: 'A list of questions to ask the user.'
-        }
-      },
-      required: ['questions']
-    },
+    parameters: QuestionParamsSchema,
 
-    async execute(params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, params) {
       if (!Array.isArray(params.questions) || params.questions.length === 0) {
         return {
-          output: '',
+          content: [{ type: 'text', text: 'Error: No questions provided.' }],
+          details: { questions: [], answer: null },
           isError: true,
-          errorMessage: 'No questions provided.',
         };
       }
 
-      // We use createInteractiveRequest which will be passed down to link to the SDK host's request system
       try {
         const response = await createInteractiveRequest('question', {
           title: params.questions[0].header || 'Input Needed',
           message: params.questions[0].question,
           questions: params.questions,
-          bridgeKind: 'question'
+          options: Array.isArray(params.questions[0].options) ? params.questions[0].options : [],
+          bridgeKind: 'question',
         });
 
         if (response === undefined || response === null) {
           return {
-            output: 'User cancelled or dismissed the question.',
+            content: [{ type: 'text', text: 'User cancelled or dismissed the question.' }],
+            details: { questions: params.questions, answer: null, cancelled: true },
             isError: true,
-            errorMessage: 'Question was rejected by the user.'
           };
         }
 
-        // Output matches the format expected by ToolPart.tsx parsing:
-        // "User has answered your questions: "Q1"="A1", "Q2"="A2". You can now..."
-        const answers = Array.isArray(response) ? response : [response];
-        let outputString = 'User has answered your questions:\n';
-
-        params.questions.forEach((q, i) => {
-           // Provide answers in order if they're grouped together
-           const answerText = answers[i] !== undefined ? answers[i] : (answers[0] || 'No answer');
-           // Format: "question"="answer"
-           outputString += `"${q.question}"="${answerText}"\n`;
-        });
-        outputString += 'You can now proceed.';
-
         return {
-          output: outputString,
-          isError: false,
+          content: [{ type: 'text', text: buildQuestionOutput(params.questions, response) }],
+          details: {
+            questions: params.questions,
+            answer: response,
+          },
         };
-      } catch (err) {
+      } catch (error) {
         return {
-          output: '',
+          content: [{ type: 'text', text: error instanceof Error ? error.message : 'Failed to ask question.' }],
+          details: { questions: params.questions, answer: null },
           isError: true,
-          errorMessage: err.message || 'Failed to ask question.'
         };
       }
-    }
+    },
   };
 }

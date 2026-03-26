@@ -19,8 +19,7 @@ export interface AgentMentionAutocompleteHandle {
 type AutocompleteTab = 'commands' | 'agents' | 'files';
 
 const isMentionableAgentMode = (mode?: string | null): boolean => {
-  if (!mode) return false;
-  return mode !== 'primary';
+  return Boolean(mode);
 };
 
 interface AgentMentionAutocompleteProps {

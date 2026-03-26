@@ -15,7 +15,6 @@ import { useServerSessionStatus } from '@/hooks/useServerSessionStatus';
 import { useSessionAutoCleanup } from '@/hooks/useSessionAutoCleanup';
 import { useQueuedMessageAutoSend } from '@/hooks/useQueuedMessageAutoSend';
 import { useRouter } from '@/hooks/useRouter';
-import { usePushVisibilityBeacon } from '@/hooks/usePushVisibilityBeacon';
 import { usePwaManifestSync } from '@/hooks/usePwaManifestSync';
 import { usePwaInstallPrompt } from '@/hooks/usePwaInstallPrompt';
 import { useWindowTitle } from '@/hooks/useWindowTitle';
@@ -25,7 +24,7 @@ import { useConfigStore } from '@/stores/useConfigStore';
 import { hasModifier } from '@/lib/utils';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
-import { opencodeClient } from '@/lib/opencode/client';
+import { runtimeClient } from '@/lib/runtime/client';
 import { useFontPreferences } from '@/hooks/useFontPreferences';
 import { isDesktopShell } from '@/lib/desktop';
 import { CODE_FONT_OPTION_MAP, DEFAULT_MONO_FONT, DEFAULT_UI_FONT, UI_FONT_OPTION_MAP } from '@/lib/fontOptions';
@@ -253,7 +252,7 @@ function App({ apis }: AppProps) {
       if (!isConnected) {
         return;
       }
-      opencodeClient.setDirectory(currentDirectory);
+      runtimeClient.setDirectory(currentDirectory);
 
       await loadSessions();
     };
@@ -365,7 +364,6 @@ function App({ apis }: AppProps) {
   // Replaces SSE-dependent status updates with reliable HTTP polling
   useServerSessionStatus({ enabled: embeddedBackgroundWorkEnabled });
 
-  usePushVisibilityBeacon({ enabled: embeddedBackgroundWorkEnabled });
   usePwaManifestSync();
   usePwaInstallPrompt();
 

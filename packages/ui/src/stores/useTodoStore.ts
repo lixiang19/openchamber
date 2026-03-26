@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 
-import { opencodeClient } from "@/lib/opencode/client";
+import { runtimeClient } from "@/lib/runtime/client";
 import { useSessionStore } from "./useSessionStore";
 
 export type TodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
@@ -49,8 +49,8 @@ export const useTodoStore = create<TodoStore>()(
         try {
           const directory = useSessionStore.getState().getDirectoryForSession(sessionId);
           const rawTodos = directory
-            ? await opencodeClient.withDirectory(directory, () => opencodeClient.getSessionTodos(sessionId))
-            : await opencodeClient.getSessionTodos(sessionId);
+            ? await runtimeClient.withDirectory(directory, () => runtimeClient.getSessionTodos(sessionId))
+            : await runtimeClient.getSessionTodos(sessionId);
           const todos = rawTodos.map(normalizeTodo);
 
           set((state) => {

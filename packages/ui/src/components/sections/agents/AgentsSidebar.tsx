@@ -29,73 +29,25 @@ interface AgentsSidebarProps {
   onItemSelect?: () => void;
 }
 
-type PermissionAction = 'allow' | 'ask' | 'deny';
-type PermissionRule = { permission: string; pattern: string; action: PermissionAction };
-
-type PermissionConfigValue = PermissionAction | Record<string, PermissionAction>;
-
-const toPermissionRuleset = (ruleset: unknown): PermissionRule[] => {
-  if (!Array.isArray(ruleset)) {
-    return [];
-  }
-
-  const parsed: PermissionRule[] = [];
-  for (const entry of ruleset) {
-    if (!entry || typeof entry !== 'object') {
-      continue;
-    }
-    const candidate = entry as Partial<PermissionRule>;
-    if (typeof candidate.permission !== 'string' || typeof candidate.pattern !== 'string' || typeof candidate.action !== 'string') {
-      continue;
-    }
-    if (candidate.action !== 'allow' && candidate.action !== 'ask' && candidate.action !== 'deny') {
-      continue;
-    }
-    parsed.push({ permission: candidate.permission, pattern: candidate.pattern, action: candidate.action });
-  }
-
-  return parsed;
-};
-
-const normalizeRuleset = (ruleset: PermissionRule[]): PermissionRule[] => {
-  const map = new Map<string, PermissionRule>();
-  for (const rule of ruleset) {
-    if (!rule.permission || rule.permission === 'invalid') {
-      continue;
-    }
-    if (!rule.pattern) {
-      continue;
-    }
-    map.set(`${rule.permission}::${rule.pattern}`, rule);
-  }
-  return Array.from(map.values());
-};
+type PermissionRule = { permission: string; pattern: string; action: string };
 
 const rulesetToPermissionConfig = (ruleset: unknown): AgentDraft['permission'] => {
-  const parsed = normalizeRuleset(toPermissionRuleset(ruleset));
-  if (parsed.length === 0) {
+  if (!Array.isArray(ruleset)) {
     return undefined;
   }
 
-  const byPermission: Record<string, Record<string, PermissionAction>> = {};
-  for (const rule of parsed) {
-    if (!rule.permission) {
-      continue;
-    }
-    (byPermission[rule.permission] ||= {})[rule.pattern] = rule.action;
+  const deniedEntries = ruleset
+    .filter((entry): entry is PermissionRule => Boolean(entry) && typeof entry === 'object')
+    .filter((entry) => typeof entry.permission === 'string' && typeof entry.pattern === 'string' && typeof entry.action === 'string')
+    .filter((entry) => entry.pattern === '*' && entry.action === 'deny')
+    .map((entry) => entry.permission.trim().toLowerCase())
+    .filter((permission) => permission.length > 0 && permission !== 'invalid' && permission !== '*');
+
+  if (deniedEntries.length === 0) {
+    return undefined;
   }
 
-  const result: Record<string, PermissionConfigValue> = {};
-  for (const [permissionName, map] of Object.entries(byPermission)) {
-    const patterns = Object.keys(map);
-    if (patterns.length === 1 && patterns[0] === '*') {
-      result[permissionName] = map['*'];
-      continue;
-    }
-    result[permissionName] = map;
-  }
-
-  return Object.keys(result).length > 0 ? (result as AgentDraft['permission']) : undefined;
+  return Object.fromEntries(Array.from(new Set(deniedEntries)).map((permission) => [permission, 'deny'])) as AgentDraft['permission'];
 };
 
 export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) => {
@@ -202,18 +154,19 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
     const modelStr = agent.model?.providerID && agent.model?.modelID
       ? `${agent.model.providerID}/${agent.model.modelID}`
       : null;
-    const draftAgent = agent as Agent & { disable?: boolean };
+    const draftAgent = agent as Agent & { thinking?: string; steps?: number; enabled?: boolean; displayName?: string };
     setAgentDraft({
       name: newName,
       scope: extAgent.scope || 'user',
       description: agent.description,
       model: modelStr,
-      temperature: agent.temperature,
-      top_p: agent.topP,
+      thinking: draftAgent.thinking as AgentDraft['thinking'],
+      steps: draftAgent.steps,
       prompt: agent.prompt,
       mode: agent.mode,
       permission: rulesetToPermissionConfig(agent.permission),
-      disable: draftAgent.disable,
+      enabled: draftAgent.enabled,
+      display_name: draftAgent.displayName,
     });
     setSelectedAgent(newName);
 
@@ -249,17 +202,24 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
     const renameModelStr = renameDialogAgent.model?.providerID && renameDialogAgent.model?.modelID
       ? `${renameDialogAgent.model.providerID}/${renameDialogAgent.model.modelID}`
       : null;
-    const renameExt = renameDialogAgent as Agent & { scope?: AgentScope; disable?: boolean };
+    const renameExt = renameDialogAgent as Agent & {
+      scope?: AgentScope;
+      thinking?: AgentDraft['thinking'];
+      steps?: number;
+      enabled?: boolean;
+      displayName?: string;
+    };
     const success = await createAgent({
       name: sanitizedName,
       description: renameDialogAgent.description,
       model: renameModelStr,
-      temperature: renameDialogAgent.temperature,
-      top_p: renameDialogAgent.topP,
+      thinking: renameExt.thinking,
+      steps: renameExt.steps,
       prompt: renameDialogAgent.prompt,
       mode: renameDialogAgent.mode,
       permission: rulesetToPermissionConfig(renameDialogAgent.permission),
-      disable: renameExt.disable,
+      enabled: renameExt.enabled,
+      display_name: renameExt.displayName,
       scope: renameExt.scope,
     });
 
@@ -345,7 +305,7 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
             {builtInAgents.length > 0 && (
               <>
                 <div className="px-2 pb-1.5 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Built-in Agents
+                  Pi Built-ins
                 </div>
                 {builtInAgents.map((agent) => (
                   <AgentListItem

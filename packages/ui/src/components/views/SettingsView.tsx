@@ -54,7 +54,7 @@ import { OpenChamberPage } from '@/components/sections/openchamber/OpenChamberPa
 import { McpIcon } from '@/components/icons/McpIcon';
 import { useDeviceInfo } from '@/lib/device';
 import { isDesktopShell, isVSCodeRuntime, isWebRuntime } from '@/lib/desktop';
-import { reloadOpenCodeConfiguration } from '@/stores/useAgentsStore';
+import { reloadRuntimeConfiguration } from '@/stores/useAgentsStore';
 import {
   SETTINGS_PAGE_METADATA,
   getSettingsPageMeta,
@@ -228,6 +228,7 @@ const SettingsHome: React.FC<{ onOpen: (slug: SettingsPageSlug) => void }> = ({ 
             <div className="typography-ui-label text-foreground">Usage</div>
             <div className="typography-micro text-muted-foreground/70">Quota + spend visibility</div>
           </button>
+
         </div>
       </div>
     </div>
@@ -555,14 +556,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
                       'text-sm font-semibold text-sidebar-foreground/90',
                       'hover:text-sidebar-foreground hover:bg-interactive-hover',
                     )}
-                    onClick={() => void reloadOpenCodeConfiguration({ message: 'Restarting OpenCode…', mode: 'projects', scopes: ['all'] })}
+                    onClick={() => void reloadRuntimeConfiguration({ message: 'Restarting runtime…', mode: 'projects', scopes: ['all'] })}
                   >
                     <RiRestartLine className="h-4 w-4 shrink-0" />
-                    <span>Reload OpenCode</span>
+                    <span>Reload Runtime</span>
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Restart OpenCode and reload its configuration.
+                  Restart the runtime and reload configuration.
                 </TooltipContent>
               </Tooltip>
             )}

@@ -43,7 +43,7 @@ import { withWorktreeUpstreamDefaults } from '@/lib/worktrees/worktreeCreate';
 import { getWorktreeSetupCommands } from '@/lib/openchamberConfig';
 import { getRootBranch } from '@/lib/worktrees/worktreeStatus';
 import { generateBranchSlug } from '@/lib/git/branchNameGenerator';
-import { opencodeClient } from '@/lib/opencode/client';
+import { runtimeClient } from '@/lib/runtime/client';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { useGitBranches, useGitStore } from '@/stores/useGitStore';
 import { GitHubIntegrationDialog } from './GitHubIntegrationDialog';
@@ -477,7 +477,7 @@ Do not implement changes until I confirm; end with: "Next actions: <1 sentence>"
         comments: commentsRes.comments ?? [],
       });
 
-      await opencodeClient.sendMessage({
+      await runtimeClient.sendMessage({
         id: args.sessionId,
         providerID,
         modelID,
@@ -553,7 +553,7 @@ Nice-to-have:
 - None`;
       const contextText = buildPullRequestContextText(prContext);
 
-      await opencodeClient.sendMessage({
+      await runtimeClient.sendMessage({
         id: args.sessionId,
         providerID,
         modelID,

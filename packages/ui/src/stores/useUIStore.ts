@@ -729,7 +729,7 @@ export const useUIStore = create<UIStore>()(
         eventStreamStatus: 'idle',
         eventStreamHint: null,
         showReasoningTraces: true,
-        chatRenderMode: 'sorted',
+        chatRenderMode: 'live',
         activityRenderMode: 'summary',
         showDeletionDialog: true,
         autoDeleteEnabled: false,
@@ -1742,12 +1742,16 @@ export const useUIStore = create<UIStore>()(
       {
         name: 'ui-store',
         storage: createJSONStorage(() => getSafeStorage()),
-        version: 10,
+        version: 11,
         migrate: (persistedState, version) => {
           if (!persistedState || typeof persistedState !== 'object') {
             return persistedState;
           }
           const state = persistedState as Record<string, unknown>;
+
+          if (version < 11 || typeof state.chatRenderMode !== 'string') {
+            state.chatRenderMode = 'live';
+          }
 
           // v0 -> v1: reset legacy notification templates
           if (version < 1) {

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { devtools, persist, createJSONStorage } from "zustand/middleware";
-import { opencodeClient } from "@/lib/opencode/client";
+import { runtimeClient } from "@/lib/runtime/client";
 import type { QuestionRequest } from "@/types/question";
 import { getSafeStorage } from "./utils/safeStorage";
 import { useSessionStore } from "./sessionStore";
@@ -43,7 +43,7 @@ const executeWithQuestionDirectory = async <T>(sessionId: string, operation: () 
     const sessionStore = useSessionStore.getState();
     const directory = sessionStore.getDirectoryForSession(sessionId);
     if (directory) {
-      return opencodeClient.withDirectory(directory, operation);
+      return runtimeClient.withDirectory(directory, operation);
     }
   } catch (error) {
     console.warn("Failed to resolve session directory for question handling:", error);
@@ -91,12 +91,12 @@ export const useQuestionStore = create<QuestionStore>()(
         },
 
         respondToQuestion: async (sessionId: string, requestId: string, answers: string[] | string[][]) => {
-          await executeWithQuestionDirectory(sessionId, () => opencodeClient.replyToQuestion(requestId, answers));
+          await executeWithQuestionDirectory(sessionId, () => runtimeClient.replyToQuestion(requestId, answers));
           get().dismissQuestion(sessionId, requestId);
         },
 
         rejectQuestion: async (sessionId: string, requestId: string) => {
-          await executeWithQuestionDirectory(sessionId, () => opencodeClient.rejectQuestion(requestId));
+          await executeWithQuestionDirectory(sessionId, () => runtimeClient.rejectQuestion(requestId));
           get().dismissQuestion(sessionId, requestId);
         },
       }),

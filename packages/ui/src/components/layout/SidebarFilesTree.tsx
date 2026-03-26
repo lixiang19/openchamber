@@ -46,7 +46,7 @@ import { useFilesViewShowGitignored } from '@/lib/filesViewShowGitignored';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { setChatInputFileReferenceOnDataTransfer, type ChatInputFileReferencePayload } from '@/lib/chatInputDragDrop';
 import { cn } from '@/lib/utils';
-import { opencodeClient } from '@/lib/opencode/client';
+import { runtimeClient } from '@/lib/runtime/client';
 import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
 import { getContextFileOpenFailureMessage, validateContextFileOpen } from '@/lib/contextFileOpenGuard';
 
@@ -415,7 +415,7 @@ export const SidebarFilesTree: React.FC = () => {
         path: entry.path,
         isDirectory: entry.isDirectory,
       })))
-      : opencodeClient.listLocalDirectory(normalizedDir, { respectGitignore }).then((result) => result.map((entry) => ({
+      : runtimeClient.listLocalDirectory(normalizedDir, { respectGitignore }).then((result) => result.map((entry) => ({
         name: entry.name,
         path: entry.path,
         isDirectory: entry.isDirectory,

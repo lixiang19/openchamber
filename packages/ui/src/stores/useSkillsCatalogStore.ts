@@ -14,7 +14,7 @@ import type {
 } from '@/lib/api/types';
 
 import { refreshSkillsAfterOpenCodeRestart, useSkillsStore } from '@/stores/useSkillsStore';
-import { opencodeClient } from '@/lib/opencode/client';
+import { runtimeClient } from '@/lib/runtime/client';
 import { startConfigUpdate, finishConfigUpdate, updateConfigUpdateMessage } from '@/lib/configUpdate';
 
 const FALLBACK_SOURCES: SkillsCatalogSource[] = [
@@ -45,7 +45,7 @@ const getSkillsCatalogCacheKey = (directory: string | null): string => {
 };
 
 const getCurrentDirectory = (): string | null => {
-  const opencodeDirectory = opencodeClient.getDirectory();
+  const opencodeDirectory = runtimeClient.getDirectory();
   if (typeof opencodeDirectory === 'string' && opencodeDirectory.trim().length > 0) {
     return opencodeDirectory;
   }

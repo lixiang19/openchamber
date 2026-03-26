@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { StoreApi, UseBoundStore } from "zustand";
 import { devtools, persist, createJSONStorage } from "zustand/middleware";
-import { opencodeClient } from "@/lib/opencode/client";
+import { runtimeClient } from "@/lib/runtime/client";
 import {
   startConfigUpdate,
   finishConfigUpdate,
@@ -69,7 +69,7 @@ const getRequestDirectory = (): string | null => {
     }
 
     // 2. Fallback: current OpenCode directory (session / runtime)
-    const clientDir = opencodeClient.getDirectory();
+    const clientDir = runtimeClient.getDirectory();
     if (clientDir?.trim()) {
       return clientDir.trim();
     }
@@ -163,9 +163,9 @@ export const useCommandsStore = create<CommandsStore>()(
                 const queryParams = directory ? `?directory=${encodeURIComponent(directory)}` : '';
 
                 // Ensure the list is scoped to the same directory we use for config source detection.
-                const commands = await opencodeClient.withDirectory(
+                const commands = await runtimeClient.withDirectory(
                   directory,
-                  () => opencodeClient.listCommandsWithDetails()
+                  () => runtimeClient.listCommandsWithDetails()
                 );
 
                 const commandsWithScope = await Promise.all(
@@ -451,7 +451,7 @@ async function waitForOpenCodeConnection(delayMs?: number) {
     updateConfigUpdateMessage(`Waiting for OpenCode… (attempt ${attempt})`);
 
     try {
-      const isHealthy = await opencodeClient.checkHealth();
+      const isHealthy = await runtimeClient.checkHealth();
       if (isHealthy) {
         return;
       }

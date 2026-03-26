@@ -5,9 +5,9 @@ import {
   startConfigUpdate,
   finishConfigUpdate,
 } from '@/lib/configUpdate';
-import { refreshAfterOpenCodeRestart } from '@/stores/useAgentsStore';
+import { refreshAfterRuntimeRestart } from '@/stores/useAgentsStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
-import { opencodeClient } from '@/lib/opencode/client';
+import { runtimeClient } from '@/lib/runtime/client';
 
 export type McpScope = 'user' | 'project';
 
@@ -19,7 +19,7 @@ const getConfigDirectory = (): string | null => {
       return activeProject.path.trim();
     }
 
-    const clientDir = opencodeClient.getDirectory();
+    const clientDir = runtimeClient.getDirectory();
     if (clientDir?.trim()) {
       return clientDir.trim();
     }
@@ -179,7 +179,7 @@ export const useMcpConfigStore = create<McpConfigStore>()(
 
             if (payload?.requiresReload) {
               requiresReload = true;
-              await refreshAfterOpenCodeRestart({
+              await refreshAfterRuntimeRestart({
                 message: payload.message,
                 delayMs: payload.reloadDelayMs ?? CLIENT_RELOAD_DELAY_MS,
                 scopes: ['all'],
@@ -220,7 +220,7 @@ export const useMcpConfigStore = create<McpConfigStore>()(
 
             if (payload?.requiresReload) {
               requiresReload = true;
-              await refreshAfterOpenCodeRestart({
+              await refreshAfterRuntimeRestart({
                 message: payload.message,
                 delayMs: payload.reloadDelayMs ?? CLIENT_RELOAD_DELAY_MS,
                 scopes: ['all'],
@@ -256,7 +256,7 @@ export const useMcpConfigStore = create<McpConfigStore>()(
 
             if (payload?.requiresReload) {
               requiresReload = true;
-              await refreshAfterOpenCodeRestart({
+              await refreshAfterRuntimeRestart({
                 message: payload.message,
                 delayMs: payload.reloadDelayMs ?? CLIENT_RELOAD_DELAY_MS,
                 scopes: ['all'],

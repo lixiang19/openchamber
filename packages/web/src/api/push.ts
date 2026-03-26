@@ -44,16 +44,5 @@ export const createWebPushAPI = (): PushAPI => ({
       },
       body: JSON.stringify(payload),
     });
-  },
-
-  async setVisibility(payload: { visible: boolean }) {
-    return fetchJson<{ ok: true }>('/api/push/visibility', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-      keepalive: true,
-    });
-  },
+  }
 });

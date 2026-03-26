@@ -329,18 +329,29 @@ export const toUiMessageEntries = (session: PiClientSessionState | PiSessionView
 export const toUiQuestionRequest = (request: PiInteractiveRequestViewState): QuestionRequest => ({
   id: request.id,
   sessionID: request.sessionId,
-  questions: [{
-    header: request.title || 'Input needed',
-    question: request.message || request.placeholder || 'Agent is waiting for your input',
-    options: request.method === 'confirm'
-      ? [{ label: 'Confirm', description: 'Confirm and continue' }]
-      : request.options.map((option) => ({ label: option, description: '' })),
-    multiple: false,
-  }],
+  questions: Array.isArray(request.questions) && request.questions.length > 0
+    ? request.questions.map((question) => ({
+        header: question.header || request.title || 'Input needed',
+        question: question.question,
+        options: Array.isArray(question.options)
+          ? question.options.map((option) => ({ label: option, description: '' }))
+          : [],
+        multiple: question.multiple === true,
+      }))
+    : [{
+        header: request.title || 'Input needed',
+        question: request.message || request.placeholder || 'Agent is waiting for your input',
+        options: request.method === 'confirm'
+          ? [{ label: 'Confirm', description: 'Confirm and continue' }]
+          : request.options.map((option) => ({ label: option, description: '' })),
+        multiple: false,
+      }],
   metadata: {
     bridgeMethod: request.method,
     placeholder: request.placeholder,
     prefill: request.prefill,
+    bridgeKind: request.bridgeKind,
+    webSupport: request.webSupport,
   },
 });
 

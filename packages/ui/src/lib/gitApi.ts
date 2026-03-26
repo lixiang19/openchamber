@@ -2,7 +2,7 @@
 
 import type { RuntimeAPIs } from './api/types';
 import * as gitHttp from './gitApiHttp';
-import { opencodeClient } from './opencode/client';
+import { runtimeClient } from './runtime/client';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useContextStore } from '@/stores/contextStore';
 import { useConfigStore } from '@/stores/useConfigStore';
@@ -390,8 +390,8 @@ const runStructuredGenerationInActiveSession = async ({
     promptParts.push({ type: 'text', text: prompt, synthetic: false });
   }
 
-  const response = await opencodeClient.withDirectory(directory, async () => {
-    return opencodeClient.getApiClient().session.prompt({
+  const response = await runtimeClient.withDirectory(directory, async () => {
+    return runtimeClient.getApiClient().session.prompt({
       sessionID: generationSession.sessionId,
       ...(trimmedDirectory.length > 0 ? { directory: trimmedDirectory } : {}),
       model: {

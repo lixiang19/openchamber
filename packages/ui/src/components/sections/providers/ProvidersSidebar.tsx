@@ -7,7 +7,7 @@ import { useProjectsStore } from '@/stores/useProjectsStore';
 import { RiAddLine, RiStackLine } from '@remixicon/react';
 import { cn } from '@/lib/utils';
 import { SettingsProjectSelector } from '@/components/sections/shared/SettingsProjectSelector';
-import { opencodeClient } from '@/lib/opencode/client';
+import { runtimeClient } from '@/lib/runtime/client';
 
 const ADD_PROVIDER_ID = '__add_provider__';
 
@@ -24,7 +24,7 @@ interface ProviderSources {
 }
 
 const getCurrentDirectory = (): string | null => {
-  const dir = opencodeClient.getDirectory();
+  const dir = runtimeClient.getDirectory();
   if (typeof dir === 'string' && dir.trim().length > 0) {
     return dir.trim();
   }
@@ -130,7 +130,7 @@ export const ProvidersSidebar: React.FC<ProvidersSidebarProps> = ({ onItemSelect
           <div className="py-12 px-4 text-center text-muted-foreground">
             <RiStackLine className="mx-auto mb-3 h-10 w-10 opacity-50" />
             <p className="typography-ui-label font-medium">No providers found</p>
-            <p className="typography-meta mt-1 opacity-75">Check your OpenCode configuration</p>
+            <p className="typography-meta mt-1 opacity-75">Check your runtime configuration</p>
           </div>
         ) : (
           <>

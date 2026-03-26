@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { devtools, persist, createJSONStorage } from "zustand/middleware";
 import type { Session } from "@opencode-ai/sdk/v2";
-import { opencodeClient } from "@/lib/opencode/client";
+import { runtimeClient } from "@/lib/runtime/client";
 import { piClient } from "@/lib/pi/client";
 import { toUiSession } from "@/lib/pi/ui-mappers";
 import { getSafeStorage } from "./utils/safeStorage";
@@ -309,7 +309,7 @@ export const useSessionStore = create<SessionStore>()(
                             const vscodeWorkspaceDirectory = readVSCodeWorkspaceDirectory();
                             const activeProject = projectsStore.projects.find((project) => project.id === projectsStore.activeProjectId) ?? null;
                             const activeProjectRoot = normalizePath(activeProject?.path ?? null);
-                            const activeDirectory = normalizePath(vscodeWorkspaceDirectory ?? directoryStore.currentDirectory ?? opencodeClient.getDirectory() ?? activeProjectRoot);
+                            const activeDirectory = normalizePath(vscodeWorkspaceDirectory ?? directoryStore.currentDirectory ?? runtimeClient.getDirectory() ?? activeProjectRoot);
 
                             const snapshots = await piClient.listSessions();
                             if (!isLatestRequest()) {
@@ -334,7 +334,7 @@ export const useSessionStore = create<SessionStore>()(
                                 : activeDirectory;
 
                             try {
-                                opencodeClient.setDirectory(resolvedDirectoryForCurrent ?? activeDirectory ?? undefined);
+                                runtimeClient.setDirectory(resolvedDirectoryForCurrent ?? activeDirectory ?? undefined);
                             } catch (error) {
                                 console.warn('Failed to sync Pi directory after session load:', error);
                             }
@@ -388,7 +388,7 @@ export const useSessionStore = create<SessionStore>()(
                     const directoryStore = useDirectoryStore.getState();
                     const fallbackDirectory = normalizePath(directoryStore.currentDirectory);
                     const vscodeWorkspaceDirectory = readVSCodeWorkspaceDirectory();
-                    const targetDirectory = vscodeWorkspaceDirectory ?? normalizePath(directoryOverride ?? opencodeClient.getDirectory() ?? fallbackDirectory);
+                    const targetDirectory = vscodeWorkspaceDirectory ?? normalizePath(directoryOverride ?? runtimeClient.getDirectory() ?? fallbackDirectory);
                     vscodeDebugLog("createSession:start", { title, parentID, targetDirectory, vscodeWorkspaceDirectory });
 
                     const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -427,7 +427,7 @@ export const useSessionStore = create<SessionStore>()(
 
                     if (targetDirectory) {
                         try {
-                            opencodeClient.setDirectory(targetDirectory);
+                            runtimeClient.setDirectory(targetDirectory);
                         } catch (error) {
                             console.warn("Failed to sync OpenCode directory after session creation:", error);
                         }
@@ -462,9 +462,9 @@ export const useSessionStore = create<SessionStore>()(
                     };
 
                     try {
-                        const createRequest = () => opencodeClient.createSession({ title, parentID: parentID ?? undefined });
+                        const createRequest = () => runtimeClient.createSession({ title, parentID: parentID ?? undefined });
                         const session = targetDirectory
-                            ? await opencodeClient.withDirectory(targetDirectory, createRequest)
+                            ? await runtimeClient.withDirectory(targetDirectory, createRequest)
                             : await createRequest();
 
                         replaceOptimistic(session);
@@ -493,7 +493,7 @@ export const useSessionStore = create<SessionStore>()(
                     const sessionDirectory = getSessionDirectory([...snapshot.sessions, ...snapshot.archivedSessions], id);
                     const requestDirectory = normalizePath(metadataProjectDirectory)
                         ?? normalizePath(sessionDirectory)
-                        ?? normalizePath(opencodeClient.getDirectory() ?? null)
+                        ?? normalizePath(runtimeClient.getDirectory() ?? null)
                         ?? null;
 
                     let archiveSucceeded = false;
@@ -554,7 +554,7 @@ export const useSessionStore = create<SessionStore>()(
                         });
 
                         const directoryToStore = normalizePath(sessionDirectory)
-                            ?? normalizePath(opencodeClient.getDirectory() ?? null)
+                            ?? normalizePath(runtimeClient.getDirectory() ?? null)
                             ?? null;
                         storeSessionForDirectory(directoryToStore, nextCurrentId);
 
@@ -593,7 +593,7 @@ export const useSessionStore = create<SessionStore>()(
                             const sessionDirectory = getSessionDirectory([...get().sessions, ...get().archivedSessions], id);
                             const requestDirectory = normalizePath(metadata?.projectDirectory ?? null)
                                 ?? normalizePath(sessionDirectory)
-                                ?? normalizePath(opencodeClient.getDirectory() ?? null)
+                                ?? normalizePath(runtimeClient.getDirectory() ?? null)
                                 ?? null;
 
                             if (metadata && options?.archiveWorktree) {
@@ -707,7 +707,7 @@ export const useSessionStore = create<SessionStore>()(
                         };
                     });
 
-                    const directory = opencodeClient.getDirectory() ?? null;
+                    const directory = runtimeClient.getDirectory() ?? null;
                     storeSessionForDirectory(directory, nextCurrentId);
 
                     return { deletedIds, failedIds };
@@ -738,7 +738,7 @@ export const useSessionStore = create<SessionStore>()(
                             const sessionDirectory = getSessionDirectory([...get().sessions, ...get().archivedSessions], id);
                             const requestDirectory = normalizePath(metadata?.projectDirectory ?? null)
                                 ?? normalizePath(sessionDirectory)
-                                ?? normalizePath(opencodeClient.getDirectory() ?? null)
+                                ?? normalizePath(runtimeClient.getDirectory() ?? null)
                                 ?? null;
                             const archived = await setSessionArchivedOnServer(id, Date.now(), requestDirectory);
                             if (!archived) {
@@ -799,10 +799,10 @@ export const useSessionStore = create<SessionStore>()(
                     try {
                         const sessionDirectory = getSessionDirectory(get().sessions, id);
                         const metadata = get().worktreeMetadata.get(id);
-                        const updateRequest = () => opencodeClient.updateSession(id, title);
+                        const updateRequest = () => runtimeClient.updateSession(id, title);
                         const overrideDirectory = metadata?.path ?? sessionDirectory;
                         const updatedSession = overrideDirectory
-                            ? await opencodeClient.withDirectory(overrideDirectory, updateRequest)
+                            ? await runtimeClient.withDirectory(overrideDirectory, updateRequest)
                             : await updateRequest();
                         set((state) => {
                             const sessions = state.sessions.map((s) => (s.id === id ? updatedSession : s));
@@ -848,7 +848,7 @@ export const useSessionStore = create<SessionStore>()(
                     // This prevents stale state when switching sessions
                     triggerSessionStatusPoll();
 
-                    const directory = opencodeClient.getDirectory() ?? null;
+                    const directory = runtimeClient.getDirectory() ?? null;
                     storeSessionForDirectory(directory, id);
                 },
 

@@ -13,17 +13,41 @@ export interface PiAgentInfo {
   mode: 'primary' | 'subagent' | 'all';
   description: string;
   source: string;
+  scope?: 'user' | 'project';
+  displayName?: string;
+  model?: string;
+  thinking?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+  steps?: number;
+  enabled?: boolean;
+  permission?: Record<string, 'allow' | 'deny'>;
+}
+
+export type PiSlashCommandSource = 'extension' | 'prompt' | 'skill';
+
+export interface PiSlashCommandInfo {
+  name: string;
+  description?: string;
+  source: PiSlashCommandSource;
+  sourceInfo?: unknown;
 }
 
 export interface PiInteractiveRequestViewState {
   id: string;
   sessionId: string;
-  method: 'input' | 'select' | 'confirm' | 'editor';
+  method: 'input' | 'select' | 'confirm' | 'editor' | 'question';
   title: string;
   message: string;
   placeholder: string;
   options: string[];
   prefill: string;
+  questions?: Array<{
+    header?: string;
+    question: string;
+    options?: string[];
+    multiple?: boolean;
+  }>;
+  bridgeKind?: string;
+  webSupport?: string;
   createdAt: number;
 }
 

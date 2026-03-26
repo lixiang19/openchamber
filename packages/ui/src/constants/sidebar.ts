@@ -23,13 +23,13 @@ export const SIDEBAR_SECTIONS: SidebarSectionConfig[] = [
     {
         id: 'agents',
         label: 'Agents',
-        description: 'Configure OpenCode agents, prompts, and permissions.',
+        description: 'Configure Pi-native agents, prompts, and tool permissions.',
         icon: RiBrainAi3Line,
     },
     {
         id: 'commands',
         label: 'Commands',
-        description: 'Create and maintain custom slash commands for OpenCode.',
+        description: 'Create and maintain custom slash commands for the runtime.',
         icon: RiCommandLine,
     },
     {

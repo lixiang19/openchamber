@@ -2,7 +2,7 @@
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
-import { opencodeClient } from '@/lib/opencode/client';
+import { runtimeClient } from '@/lib/runtime/client';
 import { checkIsGitRepository } from '@/lib/gitApi';
 import { streamDebugEnabled } from '@/stores/utils/streamDebug';
 import { copyTextToClipboard as copyPlainTextToClipboard } from '@/lib/clipboard';
@@ -180,7 +180,7 @@ export const debugUtils = {
     const sessionState = useSessionStore.getState();
     const projectsState = useProjectsStore.getState();
     const currentDirectory = directoryState.currentDirectory || null;
-    const opencodeDirectory = opencodeClient.getDirectory() ?? null;
+    const opencodeDirectory = runtimeClient.getDirectory() ?? null;
 
     const sessions = sessionState.sessions || [];
     const sessionDirectories = new Set<string>();

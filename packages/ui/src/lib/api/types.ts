@@ -638,7 +638,6 @@ export interface PushAPI {
   getVapidPublicKey(): Promise<{ publicKey: string } | null>;
   subscribe(payload: PushSubscribePayload): Promise<{ ok: true } | null>;
   unsubscribe(payload: PushUnsubscribePayload): Promise<{ ok: true } | null>;
-  setVisibility(payload: { visible: boolean }): Promise<{ ok: true } | null>;
 }
 
 export type GitHubUserSummary = {

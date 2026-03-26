@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import { devtools, persist, createJSONStorage } from "zustand/middleware";
 import type { Message, Part } from "@opencode-ai/sdk/v2";
-import { opencodeClient } from "@/lib/opencode/client";
+import { runtimeClient } from "@/lib/runtime/client";
 import { piClient } from '@/lib/pi/client';
 import { toUiMessageEntries } from '@/lib/pi/ui-mappers';
 import { isExecutionForkMetaText } from "@/lib/messages/executionMeta";
@@ -704,7 +704,7 @@ const getSessionRevertMessageId = (sessionId: string | null | undefined): string
 const executeWithSessionDirectory = async <T>(sessionId: string | null | undefined, operation: () => Promise<T>): Promise<T> => {
     const directoryOverride = await resolveSessionDirectory(sessionId);
     if (directoryOverride) {
-        return opencodeClient.withDirectory(directoryOverride, operation);
+        return runtimeClient.withDirectory(directoryOverride, operation);
     }
     return operation();
 };
@@ -1162,10 +1162,10 @@ export const useMessageStore = create<MessageStore>()(
                                     })),
                                 }));
 
-                                const directory = opencodeClient.getDirectory();
+                                const directory = runtimeClient.getDirectory();
 
                                 if (shellPayload || slashShellPayload) {
-                                    await opencodeClient.sendMessage({
+                                    await runtimeClient.sendMessage({
                                         id: sessionId,
                                         providerID,
                                         modelID,
@@ -1174,7 +1174,7 @@ export const useMessageStore = create<MessageStore>()(
                                         variant,
                                     });
                                 } else if (commandPayload && commandPayload.command.toLowerCase() === 'compact') {
-                                    await opencodeClient.sendMessage({
+                                    await runtimeClient.sendMessage({
                                         id: sessionId,
                                         providerID,
                                         modelID,
@@ -1183,7 +1183,7 @@ export const useMessageStore = create<MessageStore>()(
                                         variant,
                                     });
                                 } else if (commandPayload) {
-                                    await opencodeClient.sendCommand({
+                                    await runtimeClient.sendCommand({
                                         id: sessionId,
                                         providerID,
                                         modelID,
@@ -1205,7 +1205,7 @@ export const useMessageStore = create<MessageStore>()(
                                             formatType: format.type,
                                         });
                                     }
-                                    await opencodeClient.sendMessage({
+                                    await runtimeClient.sendMessage({
                                         id: sessionId,
                                         providerID,
                                         modelID,
@@ -1449,7 +1449,7 @@ export const useMessageStore = create<MessageStore>()(
                         };
                     });
 
-                    void opencodeClient.abortSession(currentSessionId).catch((error) => {
+                    void runtimeClient.abortSession(currentSessionId).catch((error) => {
                         console.warn('Abort request failed:', error);
                     });
                 },
@@ -1822,7 +1822,7 @@ export const useMessageStore = create<MessageStore>()(
                             const providerID = state.lastUsedProvider?.providerID || "";
                             const modelID = state.lastUsedProvider?.modelID || "";
                             const now = Date.now();
-                            const cwd = opencodeClient.getDirectory() ?? "/";
+                            const cwd = runtimeClient.getDirectory() ?? "/";
                             const contextStore = useContextStore.getState();
                             const sessionAgent = contextStore.getSessionAgentSelection(sessionId)
                                 ?? contextStore.getCurrentAgent(sessionId);

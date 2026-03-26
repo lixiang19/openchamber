@@ -14,7 +14,7 @@ import {
 import { toast } from '@/components/ui';
 import { RiStackLine, RiToolsLine, RiBrainAi3Line, RiFileImageLine, RiArrowDownSLine, RiCheckLine, RiSearchLine, RiInformationLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { reloadOpenCodeConfiguration } from '@/stores/useAgentsStore';
+import { reloadRuntimeConfiguration } from '@/stores/useAgentsStore';
 import { cn } from '@/lib/utils';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { openExternalUrl } from '@/lib/url';
@@ -348,7 +348,7 @@ export const ProvidersPage: React.FC = () => {
 
       toast.success('API key saved');
       setApiKeyInputs((prev) => ({ ...prev, [providerId]: '' }));
-      await reloadOpenCodeConfiguration({ scopes: ["providers"], mode: "active" });
+      await reloadRuntimeConfiguration({ scopes: ["providers"], mode: "active" });
       setSelectedProvider(providerId);
     } catch (error) {
       console.error('Failed to save API key:', error);
@@ -447,7 +447,7 @@ export const ProvidersPage: React.FC = () => {
       toast.success('OAuth connection completed');
       setOauthCodes((prev) => ({ ...prev, [codeKey]: '' }));
       setPendingOAuth(null);
-      await reloadOpenCodeConfiguration({ scopes: ["providers"], mode: "active" });
+      await reloadRuntimeConfiguration({ scopes: ["providers"], mode: "active" });
       setSelectedProvider(providerId);
     } catch (error) {
       console.error('Failed to complete OAuth flow:', error);
@@ -494,7 +494,7 @@ export const ProvidersPage: React.FC = () => {
       }
 
       toast.success('Provider disconnected');
-      await reloadOpenCodeConfiguration({ scopes: ["providers"], mode: "active" });
+      await reloadRuntimeConfiguration({ scopes: ["providers"], mode: "active" });
     } catch (error) {
       console.error('Failed to disconnect provider:', error);
       toast.error('Failed to disconnect provider');
@@ -511,7 +511,7 @@ export const ProvidersPage: React.FC = () => {
         <div className="text-center text-muted-foreground">
           <RiStackLine className="mx-auto mb-3 h-12 w-12 opacity-50" />
           <p className="typography-body">No providers detected</p>
-          <p className="typography-meta mt-1 opacity-75">Check your OpenCode configuration</p>
+          <p className="typography-meta mt-1 opacity-75">Check your runtime configuration</p>
         </div>
       </div>
     );
@@ -637,7 +637,7 @@ export const ProvidersPage: React.FC = () => {
                           <RiInformationLine className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
                         </TooltipTrigger>
                         <TooltipContent sideOffset={8} className="max-w-xs">
-                          Keys are sent directly to OpenCode and never stored by OpenChamber.
+                          Keys are sent directly to the runtime and never stored by OpenChamber.
                         </TooltipContent>
                       </Tooltip>
                     </label>
@@ -840,7 +840,7 @@ export const ProvidersPage: React.FC = () => {
                         <RiInformationLine className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent sideOffset={8} className="max-w-xs">
-                        Keys are sent directly to OpenCode and never stored by OpenChamber.
+                        Keys are sent directly to the runtime and never stored by OpenChamber.
                       </TooltipContent>
                     </Tooltip>
                   </label>

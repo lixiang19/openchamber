@@ -9,10 +9,10 @@ import {
 } from "@/lib/configUpdate";
 import { getSafeStorage } from "./utils/safeStorage";
 
-import { opencodeClient } from '@/lib/opencode/client';
+import { runtimeClient } from '@/lib/runtime/client';
 
 const getCurrentDirectory = (): string | null => {
-  const opencodeDirectory = opencodeClient.getDirectory();
+  const opencodeDirectory = runtimeClient.getDirectory();
   if (typeof opencodeDirectory === 'string' && opencodeDirectory.trim().length > 0) {
     return opencodeDirectory;
   }
@@ -511,7 +511,7 @@ async function waitForOpenCodeConnection(delayMs?: number) {
     updateConfigUpdateMessage(`Waiting for OpenCode… (attempt ${attempt})`);
 
     try {
-      const isHealthy = await opencodeClient.checkHealth();
+      const isHealthy = await runtimeClient.checkHealth();
       if (isHealthy) {
         return;
       }

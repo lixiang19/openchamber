@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import type { McpStatus } from '@opencode-ai/sdk/v2';
-import { opencodeClient } from '@/lib/opencode/client';
+import { runtimeClient } from '@/lib/runtime/client';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 
 export type McpStatusMap = Record<string, McpStatus>;
@@ -28,9 +28,9 @@ const toKey = (directory: string | null | undefined): string => normalizeDirecto
 const getMcpApiClient = (directory: string | null | undefined) => {
   const normalized = normalizeDirectory(directory);
   if (!normalized) {
-    return opencodeClient.getApiClient();
+    return runtimeClient.getApiClient();
   }
-  return opencodeClient.getScopedApiClient(normalized);
+  return runtimeClient.getScopedApiClient(normalized);
 };
 
 export const computeMcpHealth = (status: McpStatusMap | null | undefined): McpHealth => {

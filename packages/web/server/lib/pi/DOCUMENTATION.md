@@ -1,24 +1,29 @@
 # Pi Bridge Module Documentation
 
 ## Purpose
-This module holds the server-side normalization model for Pi RPC output before it is translated into the existing OpenAurora HTTP and SSE contracts.
+This module is the server-side Pi SDK bridge for OpenChamber. It keeps the existing HTTP and SSE contracts stable while the backend runtime is driven directly by `@mariozechner/pi-coding-agent` instead of spawning the external `pi` CLI.
 
 ## Entrypoints and structure
-- `packages/web/server/lib/pi/index.js`: public exports for the Pi bridge helpers.
+- `packages/web/server/lib/pi/index.js`: public exports for bridge schema and message projection helpers.
 - `packages/web/server/lib/pi/bridge-schema.js`: normalized event catalog plus envelope and message normalizers.
-- `packages/web/server/lib/pi/providers.js`: Pi model/provider discovery service built directly on `AuthStorage`, `ModelRegistry`, and `SettingsManager`.
-- `packages/web/server/lib/pi/runtime.js`: in-memory Pi session runtime bridge for session creation, prompt submission, abort, message refresh, and OpenCode-compatible message projection.
+- `packages/web/server/lib/pi/providers.js`: Pi model/provider discovery built directly on `AuthStorage`, `ModelRegistry`, and `SettingsManager`.
+- `packages/web/server/lib/pi/sdk-host.js`: in-memory Pi session host backed by `createAgentSession()`.
+- `packages/web/server/lib/pi/extensions/question.js`: adapts Pi extension UI requests into the existing Web question flow.
+- `packages/web/server/lib/pi/extensions/subagent.js`: SDK-backed subagent tool that creates nested in-memory Pi sessions instead of spawning `pi` subprocesses.
+- `packages/web/server/lib/pi/agents.js`: discovers `.pi/agents/*.md` definitions and parses their frontmatter.
+- `packages/web/server/lib/pi/runtime.js`: pure translation helpers for projecting Pi messages/events into the legacy OpenCode-shaped payloads still used by the Web UI.
 
 ## Public exports
 - `PI_BRIDGE_EVENT_CATALOG`: canonical list of Pi agent events, assistant stream events, message roles, and extension UI methods that the bridge recognizes.
-- `normalizePiRpcEnvelope(value)`: converts a raw Pi RPC line into one of the internal normalized envelopes (`command-response`, `agent-event`, `extension-ui-request`, `unknown`).
+- `normalizePiRpcEnvelope(value)`: normalizes SDK event payloads into bridge envelopes (`agent-event`, `extension-ui-request`, `unknown`).
 - `normalizePiMessage(value)`: normalizes Pi core/custom message roles into a stable server shape.
-- `normalizePiExtensionUiRequest(value)`: normalizes extension UI requests and tags each one with bridge intent (`question`, `status`, `widget`, etc.) plus support level metadata.
-- `resolveAgentRuntimeMode(value)`: runtime switch helper that currently selects between `opencode` and `pi`.
-- `createPiRuntime(options)`: starts an in-memory Pi-backed session manager that drives Pi RPC processes per OpenAurora session.
+- `normalizePiExtensionUiRequest(value)`: tags extension UI requests with bridge intent (`question`, `status`, `widget`, etc.) plus support level metadata.
+- `AGENT_RUNTIME_PI`: runtime marker written into projected assistant messages.
 - `mapPiUiRequestToQuestionRequest(sessionRecord, request)`: maps Pi extension UI requests into the existing `QuestionCard`-compatible request shape.
 - `translatePiMessagesToOpenCodeMessages(sessionRecord, messages)`: projects Pi message history into the OpenCode `info + parts[]` shape consumed by the current Web client.
 - `translateOpenCodeMessagesToSseEvents(sessionRecord, messageRecords, options)`: turns projected OpenCode messages into `session.status`, `message.updated`, and `message.part.updated` SSE payloads.
+- `translatePiEnvelopeToSseEvents(sessionRecord, envelope, options)`: converts normalized Pi event envelopes into Web SSE payloads.
+- `buildPromptTextFromParts(parts)`: converts existing OpenCode-style message parts into a Pi prompt string.
 
 ## Catalog coverage
 - Agent events: `agent_start`, `agent_end`, `turn_start`, `turn_end`, `message_start`, `message_update`, `message_end`, `tool_execution_start`, `tool_execution_update`, `tool_execution_end`.
@@ -36,9 +41,8 @@ This module holds the server-side normalization model for Pi RPC output before i
 - Unsupported for now: `setTitle`, `set_editor_text`.
 
 ## Notes for contributors
-- Set `OPENAURORA_AGENT_RUNTIME=pi` (or `OPENCHAMBER_AGENT_RUNTIME=pi`) to activate the Pi session routes.
-- Set `OPENAURORA_PI_BIN` or `PI_CLI_BIN` when the Pi executable is not available as plain `pi` on `PATH`.
-- The normalized model intentionally excludes plugin/package identity. The current bridge only targets Pi core runtime behavior.
+- The active server routes use `sdk-host.js` and `providers.js`; they do not rely on the external `pi` binary or RPC mode.
 - Model/provider discovery must stay separate from session bootstrap. `providers.js` reads Pi's `ModelRegistry` directly instead of creating throwaway sessions.
-- Unknown RPC lines are preserved as `envelope: unknown` so the caller can log protocol drift instead of dropping data silently.
-- The runtime bridge currently handles session bootstrap, prompt submission, abort, pull-based message refresh, and snapshot-style SSE translation for `session.status`, `message.updated`, and `message.part.updated`.
+- Subagents are also SDK-backed. Agent frontmatter now uses the Pi-native subset: `description`, `mode`, `model`, `thinking`, `steps`, `permission`, `enabled`, `display_name`, plus markdown body prompt. `subagent.js` maps `permission` deny rules into the active Pi tool set and applies `thinking` / `steps` at runtime.
+- Unknown event payloads are preserved as `envelope: unknown` so the caller can log protocol drift instead of dropping data silently.
+- `runtime.js` is intentionally limited to translation helpers. Session lifecycle, prompt execution, and extension binding live in `sdk-host.js`.

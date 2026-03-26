@@ -1,11 +1,11 @@
 import React from 'react';
 import { RiCommandLine, RiFileLine, RiFlashlightLine, RiRefreshLine, RiScissorsLine, RiTerminalBoxLine, RiArrowGoBackLine, RiArrowGoForwardLine, RiTimeLine } from '@remixicon/react';
 import { cn, fuzzyMatch } from '@/lib/utils';
-import { useSessionStore } from '@/stores/useSessionStore';
-import { useCommandsStore } from '@/stores/useCommandsStore';
-import { useSkillsStore } from '@/stores/useSkillsStore';
-import { useShallow } from 'zustand/react/shallow';
 import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
+import { piClient } from '@/lib/pi/client';
+import { useChatSearchDirectory } from '@/hooks/useChatSearchDirectory';
+import { useSessionStore } from '@/stores/useSessionStore';
+import { useShallow } from 'zustand/react/shallow';
 
 interface CommandInfo {
   name: string;
@@ -42,22 +42,12 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
   onTabSelect,
   style,
 }, ref) => {
-  const { hasMessagesInCurrentSession, currentSessionId } = useSessionStore(
-    useShallow((state) => {
-      const sessionId = state.currentSessionId;
-      const messageCount = sessionId ? (state.messages.get(sessionId)?.length ?? 0) : 0;
-      return {
-        hasMessagesInCurrentSession: messageCount > 0,
-        currentSessionId: sessionId,
-      };
-    })
+  const chatSearchDirectory = useChatSearchDirectory();
+  const { currentSessionId } = useSessionStore(
+    useShallow((state) => ({ currentSessionId: state.currentSessionId }))
   );
-  const hasSession = Boolean(currentSessionId);
-
-  const [commands, setCommands] = React.useState<CommandInfo[]>([]);
+  const [catalogCommands, setCatalogCommands] = React.useState<CommandInfo[]>([]);
   const [loading, setLoading] = React.useState(false);
-  const { commands: commandsWithMetadata, loadCommands: refreshCommands } = useCommandsStore();
-  const { skills, loadSkills: refreshSkills } = useSkillsStore();
   const [selectedIndex, setSelectedIndex] = React.useState(0);
   const itemRefs = React.useRef<(HTMLDivElement | null)[]>([]);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
@@ -85,101 +75,89 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
   }, [onClose]);
 
   React.useEffect(() => {
-    // Force refresh to get latest project context when mounting
-    void refreshCommands();
-    void refreshSkills();
-  }, [refreshCommands, refreshSkills]);
+    let cancelled = false;
 
-  React.useEffect(() => {
     const loadCommands = async () => {
+      if (!chatSearchDirectory) {
+        setCatalogCommands([]);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       try {
-        const skillNames = new Set(skills.map((skill) => skill.name));
-        const customCommands: CommandInfo[] = commandsWithMetadata.map(cmd => ({
-          name: cmd.name,
-          description: cmd.description,
-          agent: cmd.agent ?? undefined,
-          model: cmd.model ?? undefined,
-          isBuiltIn: cmd.name === 'init' || cmd.name === 'review',
-          isSkill: skillNames.has(cmd.name),
-          scope: cmd.scope,
-        }));
+        const piCommands = await piClient.listCommands(chatSearchDirectory);
+        if (cancelled) {
+          return;
+        }
 
-        const builtInCommands: CommandInfo[] = [
-          ...(hasSession && !hasMessagesInCurrentSession
-            ? [{ name: 'init', description: 'Create/update AGENTS.md file', isBuiltIn: true }]
-            : []
-          ),
-          ...(hasSession  // Show when session exists, not when hasMessages
-            ? [
-                { name: 'undo', description: 'Undo the last message', isBuiltIn: true },
-                { name: 'redo', description: 'Redo previously undone messages', isBuiltIn: true },
-                { name: 'timeline', description: 'Jump to a specific message', isBuiltIn: true },
-              ]
-            : []
-          ),
-          { name: 'compact', description: 'Compress session history using AI to reduce context size', isBuiltIn: true },
-        ];
+        const mapped = piCommands
+          .map((cmd) => {
+            const name = typeof cmd.name === 'string' ? cmd.name.trim() : '';
+            if (!name) {
+              return null;
+            }
+            return {
+              name,
+              description: typeof cmd.description === 'string' ? cmd.description : undefined,
+              isBuiltIn: false,
+              isSkill: cmd.source === 'skill',
+              scope: cmd.source === 'prompt' || cmd.source === 'extension' ? cmd.source : undefined,
+            } satisfies CommandInfo;
+          })
+          .filter((cmd): cmd is CommandInfo => Boolean(cmd));
 
-        const commandMap = new Map<string, CommandInfo>();
-
-        builtInCommands.forEach(cmd => commandMap.set(cmd.name, cmd));
-
-        customCommands.forEach(cmd => commandMap.set(cmd.name, cmd));
-
-        const allCommands = Array.from(commandMap.values());
-
-        const allowInitCommand = !hasMessagesInCurrentSession;
-        const filtered = (searchQuery
-          ? allCommands.filter(cmd =>
-              fuzzyMatch(cmd.name, searchQuery) ||
-              (cmd.description && fuzzyMatch(cmd.description, searchQuery))
-            )
-          : allCommands).filter(cmd => allowInitCommand || cmd.name !== 'init');
-
-        filtered.sort((a, b) => {
-          const aStartsWith = a.name.toLowerCase().startsWith(searchQuery.toLowerCase());
-          const bStartsWith = b.name.toLowerCase().startsWith(searchQuery.toLowerCase());
-          if (aStartsWith && !bStartsWith) return -1;
-          if (!aStartsWith && bStartsWith) return 1;
-          return a.name.localeCompare(b.name);
-        });
-
-        setCommands(filtered);
+        setCatalogCommands(mapped);
       } catch {
-
-        const allowInitCommand = !hasMessagesInCurrentSession;
-        const builtInCommands: CommandInfo[] = [
-          ...(hasSession && !hasMessagesInCurrentSession
-            ? [{ name: 'init', description: 'Create/update AGENTS.md file', isBuiltIn: true }]
-            : []
-          ),
-          ...(hasSession  // Show when session exists, not when hasMessages
-            ? [
-                { name: 'undo', description: 'Undo the last message', isBuiltIn: true },
-                { name: 'redo', description: 'Redo previously undone messages', isBuiltIn: true },
-                { name: 'timeline', description: 'Jump to a specific message', isBuiltIn: true },
-              ]
-            : []
-          ),
-          { name: 'compact', description: 'Compress session history using AI to reduce context size', isBuiltIn: true },
-        ];
-
-        const filtered = (searchQuery
-          ? builtInCommands.filter(cmd =>
-              fuzzyMatch(cmd.name, searchQuery) ||
-              (cmd.description && fuzzyMatch(cmd.description, searchQuery))
-            )
-          : builtInCommands).filter(cmd => allowInitCommand || cmd.name !== 'init');
-
-        setCommands(filtered);
+        if (!cancelled) {
+          setCatalogCommands([]);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
-    loadCommands();
-  }, [searchQuery, hasMessagesInCurrentSession, hasSession, commandsWithMetadata, skills]);
+    void loadCommands();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatSearchDirectory]);
+
+  const commands = React.useMemo(() => {
+    const commandMap = new Map<string, CommandInfo>();
+
+    [
+      ...catalogCommands,
+      ...(currentSessionId ? [
+        { name: 'undo', description: 'Undo the last message', isBuiltIn: true },
+        { name: 'redo', description: 'Redo previously undone messages', isBuiltIn: true },
+        { name: 'timeline', description: 'Jump to a specific message', isBuiltIn: true },
+      ] : []),
+    ].forEach((command) => {
+      commandMap.set(command.name, command);
+    });
+
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    const filtered = normalizedQuery
+      ? Array.from(commandMap.values()).filter((cmd) =>
+          fuzzyMatch(cmd.name, normalizedQuery) ||
+          (cmd.description && fuzzyMatch(cmd.description, normalizedQuery))
+        )
+      : Array.from(commandMap.values());
+
+    filtered.sort((a, b) => {
+      const aStartsWith = a.name.toLowerCase().startsWith(normalizedQuery);
+      const bStartsWith = b.name.toLowerCase().startsWith(normalizedQuery);
+      if (aStartsWith && !bStartsWith) return -1;
+      if (!aStartsWith && bStartsWith) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return filtered;
+  }, [catalogCommands, currentSessionId, searchQuery]);
 
   React.useEffect(() => {
     setSelectedIndex(0);
@@ -296,116 +274,116 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
         </div>
       ) : null}
       <ScrollableOverlay outerClassName="flex-1 min-h-0" className="px-0 pb-2">
-        {loading ? (
-          <div className="flex items-center justify-center py-4">
-            <RiRefreshLine className="h-4 w-4 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div>
-            {commands.map((command, index) => {
-              const isSystem = command.isBuiltIn;
-              const isProject = command.scope === 'project';
-              
-              return (
-                <div
-                  key={command.name}
-                  ref={(el) => { itemRefs.current[index] = el; }}
-                  className={cn(
-                    "flex items-start gap-2 px-3 py-2 cursor-pointer rounded-lg",
-                    index === selectedIndex && "bg-interactive-selection"
-                  )}
-                  onPointerDown={(event) => {
-                    if (event.pointerType !== 'touch') {
-                      return;
-                    }
-                    pointerStartRef.current = { x: event.clientX, y: event.clientY };
-                    pointerMovedRef.current = false;
-                  }}
-                  onPointerMove={(event) => {
-                    if (event.pointerType !== 'touch' || !pointerStartRef.current) {
-                      return;
-                    }
-                    const dx = event.clientX - pointerStartRef.current.x;
-                    const dy = event.clientY - pointerStartRef.current.y;
-                    if (Math.hypot(dx, dy) > 6) {
-                      pointerMovedRef.current = true;
-                    }
-                  }}
-                  onPointerUp={(event) => {
-                    if (event.pointerType !== 'touch') {
-                      return;
-                    }
-                    const didMove = pointerMovedRef.current;
-                    pointerStartRef.current = null;
-                    pointerMovedRef.current = false;
-                    if (didMove) {
-                      return;
-                    }
-                    event.preventDefault();
-                    event.stopPropagation();
-                    ignoreClickRef.current = true;
-                    onCommandSelect(command, { dismissKeyboard: true });
-                  }}
-                  onPointerCancel={() => {
-                    pointerStartRef.current = null;
-                    pointerMovedRef.current = false;
-                  }}
-                  onClick={() => {
-                    if (ignoreClickRef.current) {
-                      ignoreClickRef.current = false;
-                      return;
-                    }
-                    onCommandSelect(command);
-                  }}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                >
-                  <div className="mt-0.5">
-                    {getCommandIcon(command)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="typography-ui-label font-medium">/{command.name}</span>
-                      {command.isSkill ? (
-                        <span className="text-[10px] leading-none uppercase font-bold tracking-tight bg-[var(--status-info-background)] text-[var(--status-info)] border-[var(--status-info-border)] px-1.5 py-1 rounded border flex-shrink-0">
-                          skill
-                        </span>
-                      ) : null}
-                      {isSystem ? (
-                        <span className="text-[10px] leading-none uppercase font-bold tracking-tight bg-[var(--status-warning-background)] text-[var(--status-warning)] border-[var(--status-warning-border)] px-1.5 py-1 rounded border flex-shrink-0">
-                          system
-                        </span>
-                      ) : command.scope ? (
-                        <span className={cn(
-                          "text-[10px] leading-none uppercase font-bold tracking-tight px-1.5 py-1 rounded border flex-shrink-0",
-                          isProject 
-                            ? "bg-[var(--status-info-background)] text-[var(--status-info)] border-[var(--status-info-border)]"
-                            : "bg-[var(--status-success-background)] text-[var(--status-success)] border-[var(--status-success-border)]"
-                        )}>
-                          {command.scope}
-                        </span>
-                      ) : null}
-                      {command.agent && (
-                        <span className="text-[10px] leading-none font-bold tracking-tight bg-[var(--surface-subtle)] text-[var(--surface-foreground)] border-[var(--interactive-border)] px-1.5 py-1 rounded border flex-shrink-0">
-                          {command.agent}
-                        </span>
-                      )}
-                    </div>
-                    {command.description && (
-                      <div className="typography-meta text-muted-foreground mt-0.5 truncate">
-                        {command.description}
-                      </div>
+        <div>
+          {loading ? (
+            <div className="flex items-center gap-2 px-3 py-2 typography-meta text-muted-foreground">
+              <RiRefreshLine className="h-4 w-4 animate-spin" />
+              Loading Pi commands...
+            </div>
+          ) : null}
+          {commands.map((command, index) => {
+            const isSystem = command.isBuiltIn;
+            const isProject = command.scope === 'project';
+
+            return (
+              <div
+                key={command.name}
+                ref={(el) => { itemRefs.current[index] = el; }}
+                className={cn(
+                  "flex items-start gap-2 px-3 py-2 cursor-pointer rounded-lg",
+                  index === selectedIndex && "bg-interactive-selection"
+                )}
+                onPointerDown={(event) => {
+                  if (event.pointerType !== 'touch') {
+                    return;
+                  }
+                  pointerStartRef.current = { x: event.clientX, y: event.clientY };
+                  pointerMovedRef.current = false;
+                }}
+                onPointerMove={(event) => {
+                  if (event.pointerType !== 'touch' || !pointerStartRef.current) {
+                    return;
+                  }
+                  const dx = event.clientX - pointerStartRef.current.x;
+                  const dy = event.clientY - pointerStartRef.current.y;
+                  if (Math.hypot(dx, dy) > 6) {
+                    pointerMovedRef.current = true;
+                  }
+                }}
+                onPointerUp={(event) => {
+                  if (event.pointerType !== 'touch') {
+                    return;
+                  }
+                  const didMove = pointerMovedRef.current;
+                  pointerStartRef.current = null;
+                  pointerMovedRef.current = false;
+                  if (didMove) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.stopPropagation();
+                  ignoreClickRef.current = true;
+                  onCommandSelect(command, { dismissKeyboard: true });
+                }}
+                onPointerCancel={() => {
+                  pointerStartRef.current = null;
+                  pointerMovedRef.current = false;
+                }}
+                onClick={() => {
+                  if (ignoreClickRef.current) {
+                    ignoreClickRef.current = false;
+                    return;
+                  }
+                  onCommandSelect(command);
+                }}
+                onMouseEnter={() => setSelectedIndex(index)}
+              >
+                <div className="mt-0.5">
+                  {getCommandIcon(command)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="typography-ui-label font-medium">/{command.name}</span>
+                    {command.isSkill ? (
+                      <span className="text-[10px] leading-none uppercase font-bold tracking-tight bg-[var(--status-info-background)] text-[var(--status-info)] border-[var(--status-info-border)] px-1.5 py-1 rounded border flex-shrink-0">
+                        skill
+                      </span>
+                    ) : null}
+                    {isSystem ? (
+                      <span className="text-[10px] leading-none uppercase font-bold tracking-tight bg-[var(--status-warning-background)] text-[var(--status-warning)] border-[var(--status-warning-border)] px-1.5 py-1 rounded border flex-shrink-0">
+                        system
+                      </span>
+                    ) : command.scope ? (
+                      <span className={cn(
+                        "text-[10px] leading-none uppercase font-bold tracking-tight px-1.5 py-1 rounded border flex-shrink-0",
+                        isProject
+                          ? "bg-[var(--status-info-background)] text-[var(--status-info)] border-[var(--status-info-border)]"
+                          : "bg-[var(--status-success-background)] text-[var(--status-success)] border-[var(--status-success-border)]"
+                      )}>
+                        {command.scope}
+                      </span>
+                    ) : null}
+                    {command.agent && (
+                      <span className="text-[10px] leading-none font-bold tracking-tight bg-[var(--surface-subtle)] text-[var(--surface-foreground)] border-[var(--interactive-border)] px-1.5 py-1 rounded border flex-shrink-0">
+                        {command.agent}
+                      </span>
                     )}
                   </div>
+                  {command.description && (
+                    <div className="typography-meta text-muted-foreground mt-0.5 truncate">
+                      {command.description}
+                    </div>
+                  )}
                 </div>
-              );
-            })}
-            {commands.length === 0 && (
-              <div className="px-3 py-2 typography-ui-label text-muted-foreground">
-                No commands found
               </div>
-            )}
-          </div>
-        )}
+            );
+          })}
+          {commands.length === 0 && !loading && (
+            <div className="px-3 py-2 typography-ui-label text-muted-foreground">
+              No commands found
+            </div>
+          )}
+        </div>
       </ScrollableOverlay>
       <div className="px-3 pt-1 pb-1.5 border-t typography-meta text-muted-foreground">
         ↑↓ navigate • Enter select • Esc close
