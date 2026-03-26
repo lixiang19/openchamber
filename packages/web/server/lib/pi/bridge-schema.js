@@ -32,6 +32,12 @@ const PI_MESSAGE_ROLE_CATALOG = Object.freeze({
 });
 
 const PI_EXTENSION_UI_REQUEST_CATALOG = Object.freeze({
+  question: Object.freeze({
+    bridgeKind: 'question',
+    expectedReply: 'value',
+    webSupport: 'priority',
+    milestone: 'm3',
+  }),
   input: Object.freeze({
     bridgeKind: 'question',
     expectedReply: 'value',

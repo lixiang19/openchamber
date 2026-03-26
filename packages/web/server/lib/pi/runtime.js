@@ -835,6 +835,23 @@ export const mapPiUiRequestToQuestionRequest = (sessionRecord, request) => {
     sessionID: sessionRecord.session.id,
   };
 
+  if (request.method === 'question') {
+    return {
+      ...base,
+      questions: Array.isArray(request.questions) ? request.questions : [{
+        header: request.title || 'Input needed',
+        question: request.message || request.title || 'Provide a response',
+        options: Array.isArray(request.options) ? request.options.map(o => ({ label: o, description: '' })) : [],
+        multiple: false,
+      }],
+      metadata: {
+        bridgeMethod: 'question',
+        bridgeKind: request.bridgeKind || 'question',
+        webSupport: request.webSupport || 'supported',
+      },
+    };
+  }
+
   if (request.method === 'input') {
     return {
       ...base,

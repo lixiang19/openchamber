@@ -5,6 +5,7 @@ import { createAgentSession } from '@mariozechner/pi-coding-agent';
 import { discoverAgents } from './agents.js';
 import { normalizePiRpcEnvelope } from './bridge-schema.js';
 import { createSubagentToolDefinition } from './extensions/subagent.js';
+import { createQuestionToolDefinition } from './extensions/question.js';
 
 const EVENT_HISTORY_LIMIT = 200;
 
@@ -437,9 +438,15 @@ export const createPiSdkHost = () => {
         normalizedCwd,
       );
 
+      const recordRef = { current: null };
+      const questionTool = createQuestionToolDefinition((method, payload) => {
+        if (!recordRef.current) throw new Error('Session record not initialized');
+        return createInteractiveRequest(recordRef.current, method, payload);
+      });
+
       const { session } = await createAgentSession({
         cwd: normalizedCwd,
-        customTools: [subagentTool],
+        customTools: [subagentTool, questionTool],
       });
       const id = session.sessionId;
       const record = {
@@ -460,6 +467,7 @@ export const createPiSdkHost = () => {
         workingMessage: null,
         editorText: '',
         eventHistory: [],
+      recordRef.current = record;
       };
       if (record.title) {
         session.setSessionName(record.title);
@@ -569,6 +577,9 @@ export const createPiSdkHost = () => {
         resolve(response === true);
       } else if (request.method === 'select') {
         resolve(typeof response === 'string' ? response : undefined);
+      } else if (request.method === 'question') {
+        // question answers can be array or string
+        resolve(Array.isArray(response) ? response : (typeof response === 'string' ? response : undefined));
       } else {
         resolve(typeof response === 'string' ? response : undefined);
       }
