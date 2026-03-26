@@ -6038,6 +6038,15 @@ async function main(options = {}) {
     res.json(PI_SDK_HOST.listSessions());
   });
 
+  app.get('/api/pi/agents', async (req, res) => {
+    try {
+      const agents = await PI_SDK_HOST.listAgents(req.query?.cwd);
+      res.json(agents);
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to list agents' });
+    }
+  });
+
   app.get('/api/pi/sessions/:sessionId', (req, res) => {
     try {
       res.json(PI_SDK_HOST.getSession(req.params.sessionId));

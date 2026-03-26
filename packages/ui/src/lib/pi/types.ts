@@ -8,6 +8,13 @@ export interface PiToolExecutionViewState {
   isError: boolean;
 }
 
+export interface PiAgentInfo {
+  name: string;
+  mode: 'primary' | 'subagent' | 'all';
+  description: string;
+  source: string;
+}
+
 export interface PiInteractiveRequestViewState {
   id: string;
   sessionId: string;

@@ -1,4 +1,4 @@
-import type { PiServerEvent, PiSessionViewState } from './types';
+import type { PiAgentInfo, PiServerEvent, PiSessionViewState } from './types';
 
 const API_BASE = '/api/pi';
 
@@ -17,6 +17,12 @@ export const piClient = {
   async listSessions(): Promise<PiSessionViewState[]> {
     const response = await fetch(`${API_BASE}/sessions`, { headers: { Accept: 'application/json' } });
     return parseResponse<PiSessionViewState[]>(response);
+  },
+  async listAgents(cwd?: string): Promise<PiAgentInfo[]> {
+    const url = new URL(`${API_BASE}/agents`, window.location.origin);
+    if (cwd) url.searchParams.set('cwd', cwd);
+    const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+    return parseResponse<PiAgentInfo[]>(response);
   },
   async createSession(payload?: { cwd?: string; title?: string }): Promise<PiSessionViewState> {
     const response = await fetch(`${API_BASE}/sessions`, {

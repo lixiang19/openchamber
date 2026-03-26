@@ -2,7 +2,9 @@ import crypto from 'crypto';
 
 import { createAgentSession } from '@mariozechner/pi-coding-agent';
 
+import { discoverAgents } from './agents.js';
 import { normalizePiRpcEnvelope } from './bridge-schema.js';
+import { createSubagentToolDefinition } from './extensions/subagent.js';
 
 const EVENT_HISTORY_LIMIT = 200;
 
@@ -428,7 +430,17 @@ export const createPiSdkHost = () => {
     },
     async createSession({ cwd, title } = {}) {
       const normalizedCwd = normalizeString(cwd) || process.cwd();
-      const { session } = await createAgentSession({ cwd: normalizedCwd });
+
+      // Discover agents and build the subagent tool
+      const subagentTool = createSubagentToolDefinition(
+        () => discoverAgents(normalizedCwd),
+        normalizedCwd,
+      );
+
+      const { session } = await createAgentSession({
+        cwd: normalizedCwd,
+        customTools: [subagentTool],
+      });
       const id = session.sessionId;
       const record = {
         id,
@@ -464,6 +476,16 @@ export const createPiSdkHost = () => {
       return Array.from(sessions.values())
         .sort((a, b) => b.updatedAt - a.updatedAt)
         .map((record) => buildSessionSnapshot(record));
+    },
+    async listAgents(cwd) {
+      const normalizedCwd = normalizeString(cwd) || process.cwd();
+      const agents = await discoverAgents(normalizedCwd);
+      return agents.map(({ name, mode, description, source }) => ({
+        name,
+        mode,
+        description,
+        source,
+      }));
     },
     getSession(sessionId) {
       const record = sessions.get(sessionId);
