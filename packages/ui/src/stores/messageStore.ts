@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { create } from "zustand";
 import { devtools, persist, createJSONStorage } from "zustand/middleware";
-import type { Message, Part } from "@opencode-ai/sdk/v2";
+import type { Message, Part } from "@/lib/runtime/types";
 import { runtimeClient } from "@/lib/runtime/client";
 import { piClient } from '@/lib/pi/client';
-import { toUiMessageEntries } from '@/lib/pi/ui-mappers';
+import { projectPiSessionToRuntimeMessages } from '@/lib/runtime/projections';
 import { isExecutionForkMetaText } from "@/lib/messages/executionMeta";
 import { isLikelyProviderAuthFailure, PROVIDER_AUTH_FAILURE_MESSAGE } from "@/lib/messages/providerAuthError";
 import type { SessionMemoryState, SessionHistoryMeta, MessageStreamLifecycle, AttachedFile } from "./types/sessionTypes";
@@ -826,7 +826,7 @@ export const useMessageStore = create<MessageStore>()(
                             }
 
                             const revertMessageId = getSessionRevertMessageId(sessionId);
-                            const rawMessages = filterMessagesByRevertPoint(toUiMessageEntries(session), revertMessageId)
+                            const rawMessages = filterMessagesByRevertPoint(projectPiSessionToRuntimeMessages(session), revertMessageId)
                                 .sort(compareMessageEntriesChronologically);
                             const messagesToKeep = targetLimit >= rawMessages.length
                                 ? rawMessages

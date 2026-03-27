@@ -19,7 +19,7 @@ export interface PiAgentInfo {
   thinking?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   steps?: number;
   enabled?: boolean;
-  permission?: Record<string, 'allow' | 'deny'>;
+  permission?: Record<string, 'allow' | 'deny' | Record<string, 'allow' | 'deny'>>;
 }
 
 export type PiSlashCommandSource = 'extension' | 'prompt' | 'skill';

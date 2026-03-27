@@ -11,6 +11,7 @@ This module is the server-side Pi SDK bridge for OpenChamber. It keeps the exist
 - `packages/web/server/lib/pi/extensions/question.js`: adapts Pi extension UI requests into the existing Web question flow.
 - `packages/web/server/lib/pi/extensions/subagent.js`: SDK-backed subagent tool that creates nested in-memory Pi sessions instead of spawning `pi` subprocesses.
 - `packages/web/server/lib/pi/agents.js`: discovers `.pi/agents/*.md` definitions and parses their frontmatter.
+- `packages/web/server/lib/pi/permissions.js`: normalizes OpenCode-style permission rules, compiles runtime policies, and provides the shared `tool_call` gate.
 - `packages/web/server/lib/pi/runtime.js`: pure translation helpers for projecting Pi messages/events into the legacy OpenCode-shaped payloads still used by the Web UI.
 
 ## Public exports
@@ -43,6 +44,7 @@ This module is the server-side Pi SDK bridge for OpenChamber. It keeps the exist
 ## Notes for contributors
 - The active server routes use `sdk-host.js` and `providers.js`; they do not rely on the external `pi` binary or RPC mode.
 - Model/provider discovery must stay separate from session bootstrap. `providers.js` reads Pi's `ModelRegistry` directly instead of creating throwaway sessions.
-- Subagents are also SDK-backed. Agent frontmatter now uses the Pi-native subset: `description`, `mode`, `model`, `thinking`, `steps`, `permission`, `enabled`, `display_name`, plus markdown body prompt. `subagent.js` maps `permission` deny rules into the active Pi tool set and applies `thinking` / `steps` at runtime.
+- Subagents are also SDK-backed. Agent frontmatter now uses the Pi-native subset: `description`, `mode`, `model`, `thinking`, `steps`, `permission`, `enabled`, `display_name`, plus markdown body prompt.
+- Agent `permission` now accepts OpenCode-style rule values for `edit` (for example `edit: deny` or `edit: { "*": "deny", "**/*.md": "allow" }`). `permissions.js` compiles those rules into `activeToolNames` plus a shared `tool_call` gate that both `sdk-host.js` and `extensions/subagent.js` inject through `DefaultResourceLoader` extension factories.
 - Unknown event payloads are preserved as `envelope: unknown` so the caller can log protocol drift instead of dropping data silently.
 - `runtime.js` is intentionally limited to translation helpers. Session lifecycle, prompt execution, and extension binding live in `sdk-host.js`.

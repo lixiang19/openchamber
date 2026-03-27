@@ -1,4 +1,4 @@
-import type { Session, Message, Part } from "@opencode-ai/sdk/v2";
+import type { Session, Message, Part } from "@/lib/runtime/types";
 import type { PermissionRequest, PermissionResponse } from "@/types/permission";
 import type { QuestionRequest } from "@/types/question";
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { piClient } from '@/lib/pi/client';
-import { piSessionStatusToUiStatus } from '@/lib/pi/ui-mappers';
+import { projectPiSessionStatusToRuntimeStatus } from '@/lib/runtime/projections';
 import { useSessionStore } from '@/stores/useSessionStore';
 
 type SessionStatusPayload = {
@@ -26,7 +26,7 @@ export const useSessionStatusBootstrap = (options?: { enabled?: boolean }) => {
 
         const nextStatus = new Map<string, SessionStatusPayload>();
         sessions.forEach((session) => {
-          nextStatus.set(session.id, piSessionStatusToUiStatus(session.status));
+          nextStatus.set(session.id, projectPiSessionStatusToRuntimeStatus(session.status));
         });
 
         if (nextStatus.size > 0) {

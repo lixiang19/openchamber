@@ -91,21 +91,20 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
           return;
         }
 
-        const mapped = piCommands
-          .map((cmd) => {
-            const name = typeof cmd.name === 'string' ? cmd.name.trim() : '';
-            if (!name) {
-              return null;
-            }
-            return {
-              name,
-              description: typeof cmd.description === 'string' ? cmd.description : undefined,
-              isBuiltIn: false,
-              isSkill: cmd.source === 'skill',
-              scope: cmd.source === 'prompt' || cmd.source === 'extension' ? cmd.source : undefined,
-            } satisfies CommandInfo;
-          })
-          .filter((cmd): cmd is CommandInfo => Boolean(cmd));
+        const mapped: CommandInfo[] = [];
+        for (const cmd of piCommands) {
+          const name = typeof cmd.name === 'string' ? cmd.name.trim() : '';
+          if (!name) {
+            continue;
+          }
+          mapped.push({
+            name,
+            description: typeof cmd.description === 'string' ? cmd.description : undefined,
+            isBuiltIn: false,
+            isSkill: cmd.source === 'skill',
+            scope: cmd.source === 'prompt' || cmd.source === 'extension' ? cmd.source : undefined,
+          });
+        }
 
         setCatalogCommands(mapped);
       } catch {

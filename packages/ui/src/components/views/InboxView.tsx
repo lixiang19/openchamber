@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Session } from '@opencode-ai/sdk/v2';
+import type { Session } from '@/lib/runtime/types';
 import { RiChat4Line } from '@remixicon/react';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';

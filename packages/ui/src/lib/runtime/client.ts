@@ -1,27 +1,28 @@
-import { createOpencodeClient, OpencodeClient } from "@opencode-ai/sdk/v2/client";
 import type { FilesAPI, RuntimeAPIs } from "../api/types";
 import { getDesktopHomeDirectory } from "../desktop";
 import type {
-  Session,
+  Agent,
+  Config,
+  Event,
+  FilePartInput,
   Message,
+  Model,
+  OpencodeClient,
   Part,
   Provider,
-  Config,
-  Model,
-  Agent,
-  FilePartInput,
-  Event,
-} from "@opencode-ai/sdk/v2/client";
+  RuntimeApiClient,
+  RuntimeApiResponse,
+  Session,
+} from "@/lib/runtime/types";
 import type { PermissionRequest } from "@/types/permission";
 import type { QuestionRequest } from "@/types/question";
 import type { PiAgentInfo, PiInteractiveRequestViewState, PiServerEvent, PiSessionViewState } from "@/lib/pi/types";
 import {
-  extractPiQuestionResponseValue,
-  piSessionStatusToUiStatus,
-  toUiMessageEntries,
-  toUiQuestionRequest,
-  toUiSession,
-} from "@/lib/pi/ui-mappers";
+  projectPiInteractiveRequestToQuestionRequest,
+  projectPiSessionStatusToRuntimeStatus,
+  projectPiSessionToRuntimeMessages,
+  projectPiSessionToRuntimeSession,
+} from "@/lib/runtime/projections";
 export type RoutedOpencodeEvent = {
   directory: string;
   payload: Event;
@@ -132,8 +133,121 @@ const getDesktopFilesApi = (): FilesAPI | null => {
   return null;
 };
 
+const buildQuery = (params?: Record<string, unknown>): string => {
+  if (!params) {
+    return '';
+  }
+
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue;
+    search.set(key, String(value));
+  }
+  const encoded = search.toString();
+  return encoded ? `?${encoded}` : '';
+};
+
+const createHttpClient = (baseUrl: string, directory?: string | null): RuntimeApiClient & {
+  project: { current: (params?: { directory?: string }) => Promise<RuntimeApiResponse<Record<string, any>>> };
+  tool: { ids: (params?: { directory?: string }) => Promise<RuntimeApiResponse<string[]>> };
+  permission: {
+    reply: (payload: { requestID: string; directory?: string; reply: string; message?: string }) => Promise<RuntimeApiResponse<boolean>>;
+    list: (params?: { directory?: string }) => Promise<RuntimeApiResponse<unknown[]>>;
+  };
+  config: {
+    get: () => Promise<RuntimeApiResponse<Config>>;
+    update: (payload: Record<string, unknown>) => Promise<RuntimeApiResponse<Config>>;
+  };
+  command: {
+    list: (params?: { directory?: string }) => Promise<RuntimeApiResponse<Record<string, unknown>[]>>;
+  };
+} => {
+  const normalizeBase = baseUrl.replace(/\/+$/, '');
+  const defaultDirectory = typeof directory === 'string' && directory.trim().length > 0 ? directory.trim() : undefined;
+
+  const get = async <T>(path: string, params?: Record<string, unknown>): Promise<RuntimeApiResponse<T>> => {
+    const response = await fetch(`${normalizeBase}${path}${buildQuery({ ...params, ...(defaultDirectory ? { directory: defaultDirectory } : {}) })}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) {
+      throw Object.assign(new Error(`Request failed: ${response.status}`), { status: response.status, response });
+    }
+    if (response.status === 204) {
+      return { data: undefined, headers: response.headers };
+    }
+    return { data: await response.json() as T, headers: response.headers };
+  };
+
+  const post = async <T>(path: string, body?: Record<string, unknown>): Promise<RuntimeApiResponse<T>> => {
+    const response = await fetch(`${normalizeBase}${path}`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ...(defaultDirectory ? { directory: defaultDirectory } : {}), ...(body || {}) }),
+    });
+    if (!response.ok) {
+      throw Object.assign(new Error(`Request failed: ${response.status}`), { status: response.status, response });
+    }
+    if (response.status === 204) {
+      return { data: undefined, headers: response.headers };
+    }
+    return { data: await response.json() as T, headers: response.headers };
+  };
+
+  return {
+    session: {
+      list: async () => ({ data: [] }),
+      update: async () => ({ data: undefined as unknown as Session }),
+      delete: async () => ({ data: true }),
+      share: async () => ({ data: null }),
+      unshare: async () => ({ data: null }),
+      prompt: async () => ({ data: true }),
+      shell: async () => ({ data: true }),
+      summarize: async () => ({ data: true }),
+    },
+    experimental: {
+      session: {
+        list: async () => ({ data: [], nextCursor: null }),
+      },
+    },
+    mcp: {
+      status: async () => get<Record<string, any>>('/mcp/status', defaultDirectory ? { directory: defaultDirectory } : undefined),
+      connect: async ({ name }) => post<boolean>('/mcp/connect', { name }),
+      disconnect: async ({ name }) => post<boolean>('/mcp/disconnect', { name }),
+    },
+    path: {
+      get: async (params) => get<Record<string, any>>('/path', params),
+    },
+    file: {
+      list: async (payload) => post<any[]>('/file/list', payload),
+    },
+    find: {
+      files: async (payload) => post<string[]>('/find/files', payload),
+    },
+    project: {
+      current: async (params) => get<{ path?: string }>('/project/current', params),
+    },
+    tool: {
+      ids: async (params) => get<string[]>('/tool/ids', params),
+    },
+    permission: {
+      reply: async (payload) => post<boolean>('/permission/reply', payload),
+      list: async (params) => get<unknown[]>('/permission/list', params),
+    },
+    config: {
+      get: async () => get<Config>('/config'),
+      update: async (payload) => post<Config>('/config', payload),
+    },
+    command: {
+      list: async (params) => get<Record<string, unknown>[]>('/command/list', params),
+    },
+  };
+};
+
 class RuntimeService {
-  private client: OpencodeClient;
+  private client: ReturnType<typeof createHttpClient>;
   private baseUrl: string;
   private scopedClients: Map<string, OpencodeClient> = new Map();
   private sseAbortControllers: Map<string, AbortController> = new Map();
@@ -160,7 +274,7 @@ class RuntimeService {
     const desktopBase = resolveDesktopBaseUrl();
     const requestedBaseUrl = desktopBase || baseUrl;
     this.baseUrl = ensureAbsoluteBaseUrl(requestedBaseUrl);
-    this.client = createOpencodeClient({ baseUrl: this.baseUrl });
+    this.client = createHttpClient(this.baseUrl);
   }
 
   getBaseUrl(): string {
@@ -325,7 +439,7 @@ class RuntimeService {
       name: agent.name,
       description: agent.description,
       mode: agent.mode,
-      permission: Object.entries(agent.permission || {}).map(([permission, action]) => ({ permission, pattern: '*', action })),
+      permission: agent.permission || {},
       ...(agent.scope ? { scope: agent.scope } : {}),
       ...(agent.source ? { source: agent.source } : {}),
       ...(agent.displayName ? { displayName: agent.displayName } : {}),
@@ -410,9 +524,7 @@ class RuntimeService {
 
   private createRuntimeApiClient(directory?: string | null): OpencodeClient {
     const scopeDirectory = this.normalizeCandidatePath(directory ?? null);
-    const baseClient = scopeDirectory
-      ? createOpencodeClient({ baseUrl: this.baseUrl, directory: scopeDirectory })
-      : this.client;
+    const baseClient = createHttpClient(this.baseUrl, scopeDirectory);
 
     const withScope = async <T>(operation: () => Promise<T>): Promise<T> => {
       if (!scopeDirectory) {
@@ -421,75 +533,64 @@ class RuntimeService {
       return this.withDirectory(scopeDirectory, operation);
     };
 
-    const runtimeSession = {
-      ...((baseClient as unknown as { session?: Record<string, unknown> }).session || {}),
-      list: async () => ({ data: await withScope(() => this.listSessions()) }),
-      update: async ({ sessionID, title }: { sessionID: string; title?: string }) => ({
-        data: await withScope(() => this.updateSession(sessionID, title)),
-      }),
-      delete: async ({ sessionID }: { sessionID: string }) => ({
-        data: await withScope(() => this.deleteSession(sessionID)),
-      }),
-      share: async () => ({ data: null }),
-      unshare: async () => ({ data: null }),
-      prompt: async ({ sessionID, parts }: { sessionID: string; parts?: Array<Record<string, unknown>> }) => {
-        const text = Array.isArray(parts)
-          ? parts.map((part) => {
-              if (typeof part?.text === 'string') return part.text;
-              if (typeof part?.content === 'string') return part.content;
-              return '';
-            }).filter(Boolean).join('\n\n')
-          : '';
-        await withScope(() => this.sendMessage({
-          id: sessionID,
-          providerID: 'opencode',
-          modelID: 'big-pickle',
-          text,
-        }));
-        return { data: true };
-      },
-      shell: async ({ sessionID, command }: { sessionID: string; command: string }) => {
-        await withScope(() => this.sendMessage({
-          id: sessionID,
-          providerID: 'opencode',
-          modelID: 'big-pickle',
-          text: command,
-        }));
-        return { data: true };
-      },
-      summarize: async ({ sessionID }: { sessionID: string }) => {
-        await withScope(() => this.sendMessage({
-          id: sessionID,
-          providerID: 'opencode',
-          modelID: 'big-pickle',
-          text: '/compact',
-        }));
-        return { data: true };
-      },
-    };
-
-    const runtimeExperimental = {
-      ...((baseClient as unknown as { experimental?: Record<string, unknown> }).experimental || {}),
+    return {
+      ...baseClient,
       session: {
-        ...(((baseClient as unknown as { experimental?: { session?: Record<string, unknown> } }).experimental?.session) || {}),
-        list: async ({ archived }: { archived?: boolean } = {}) => ({
-          data: archived ? [] : await withScope(() => this.listSessions()),
-          nextCursor: null,
+        list: async () => ({ data: await withScope(() => this.listSessions()) }),
+        update: async (payload: any) => ({
+          data: await withScope(() => this.updateSession(payload.sessionID, payload.title)),
         }),
+        delete: async (payload: any) => ({
+          data: await withScope(() => this.deleteSession(payload.sessionID)),
+        }),
+        share: async () => ({ data: null }),
+        unshare: async () => ({ data: null }),
+        prompt: async (payload: any) => {
+          const sessionID = payload.sessionID;
+          const parts = payload.parts;
+          const text = Array.isArray(parts)
+            ? parts.map((part) => {
+                if (typeof part?.text === 'string') return part.text;
+                if (typeof part?.content === 'string') return part.content;
+                return '';
+              }).filter(Boolean).join('\n\n')
+            : '';
+          await withScope(() => this.sendMessage({
+            id: sessionID,
+            providerID: 'pi',
+            modelID: 'default',
+            text,
+          }));
+          return { data: true };
+        },
+        shell: async (payload: any) => {
+          await withScope(() => this.sendMessage({
+            id: payload.sessionID,
+            providerID: 'pi',
+            modelID: 'default',
+            text: payload.command,
+          }));
+          return { data: true };
+        },
+        summarize: async (payload: any) => {
+          await withScope(() => this.sendMessage({
+            id: payload.sessionID,
+            providerID: 'pi',
+            modelID: 'default',
+            text: '/compact',
+          }));
+          return { data: true };
+        },
+      },
+      experimental: {
+        session: {
+          list: async ({ archived }: { archived?: boolean } = {}) => ({
+            data: archived ? [] : await withScope(() => this.listSessions()),
+            nextCursor: null,
+          }),
+        },
       },
     };
-
-    return new Proxy(baseClient as unknown as object, {
-      get(target, prop, receiver) {
-        if (prop === 'session') {
-          return runtimeSession;
-        }
-        if (prop === 'experimental') {
-          return runtimeExperimental;
-        }
-        return Reflect.get(target, prop, receiver);
-      },
-    }) as unknown as OpencodeClient;
   }
 
   // Get the raw API client for direct access.
@@ -586,7 +687,7 @@ class RuntimeService {
 
   // Session Management
   async listSessions(): Promise<Session[]> {
-    const sessions = (await this.listPiSessions()).map((session) => toUiSession(session));
+    const sessions = (await this.listPiSessions()).map((session) => projectPiSessionToRuntimeSession(session));
 
     if (!this.currentDirectory) {
       return sessions;
@@ -611,11 +712,11 @@ class RuntimeService {
         title: params?.title,
       }),
     });
-    return toUiSession(snapshot);
+    return projectPiSessionToRuntimeSession(snapshot);
   }
 
   async getSession(id: string): Promise<Session> {
-    return toUiSession(await this.getPiSession(id));
+    return projectPiSessionToRuntimeSession(await this.getPiSession(id));
   }
 
   async deleteSession(_id: string): Promise<boolean> {
@@ -628,12 +729,12 @@ class RuntimeService {
       method: 'PUT',
       body: JSON.stringify({ title }),
     });
-    return toUiSession(snapshot);
+    return projectPiSessionToRuntimeSession(snapshot);
   }
 
   async getSessionMessages(id: string, limit?: number): Promise<{ info: Message; parts: Part[] }[]> {
     const snapshot = await this.getPiSession(id);
-    const entries = toUiMessageEntries(snapshot);
+    const entries = projectPiSessionToRuntimeMessages(snapshot);
     if (typeof limit === 'number' && Number.isFinite(limit)) {
       return entries.slice(-limit);
     }
@@ -937,7 +1038,7 @@ class RuntimeService {
         if (normalizedDirectory && sessionDirectory && sessionDirectory !== normalizedDirectory) {
           continue;
         }
-        statusMap[session.id] = piSessionStatusToUiStatus(session.status);
+        statusMap[session.id] = projectPiSessionStatusToRuntimeStatus(session.status);
       }
 
       return statusMap;
@@ -1054,7 +1155,15 @@ class RuntimeService {
       return false;
     }
 
-    const responseValue = extractPiQuestionResponseValue(request, answers);
+    const normalized = Array.isArray(answers) && Array.isArray(answers[0])
+      ? (answers as string[][])
+      : [answers as string[]];
+    const firstGroup = normalized[0] ?? [];
+    const firstAnswer = typeof firstGroup[0] === 'string' ? firstGroup[0].trim() : '';
+    const responseValue = request.method === 'confirm'
+      ? firstAnswer.length === 0 || firstAnswer.toLowerCase() === 'confirm' || firstAnswer.toLowerCase() === 'yes'
+      : firstAnswer;
+
     await this.fetchPi<void>(`/requests/${encodeURIComponent(requestId)}/respond`, {
       method: 'POST',
       body: JSON.stringify({ response: responseValue }),
@@ -1086,7 +1195,7 @@ class RuntimeService {
       }
 
       for (const request of session.interactiveRequests) {
-        requests.push(toUiQuestionRequest(request));
+        requests.push(projectPiInteractiveRequestToQuestionRequest(request));
       }
     }
 
@@ -1201,7 +1310,7 @@ class RuntimeService {
           type: 'session.status',
           properties: {
             sessionID: raw.sessionId,
-            status: piSessionStatusToUiStatus(raw.payload.status),
+            status: projectPiSessionStatusToRuntimeStatus(raw.payload.status),
           },
         } as unknown as Event,
       };
@@ -1644,5 +1753,5 @@ class RuntimeService {
 export const runtimeClient = new RuntimeService();
 
 // Exported types
-export type { Session, Message, Part, Provider, Config, Model };
+export type { Session, Message, Part, Provider, Config, Model, Agent, OpencodeClient } from '@/lib/runtime/types';
 export type { App };

@@ -27,6 +27,8 @@ import {
   createWriteTool,
 } from '@mariozechner/pi-coding-agent';
 
+import { compileAgentPermission, createPermissionGateExtension } from '../permissions.js';
+
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
 
@@ -158,28 +160,14 @@ const normalizePositiveInteger = (value) => {
   return undefined;
 };
 
-const normalizePermissionConfig = (value) => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
-  }
-
-  const normalized = Object.fromEntries(
-    Object.entries(value)
-      .map(([toolName, action]) => [normalizeString(toolName).toLowerCase(), normalizeString(action).toLowerCase()])
-      .filter(([toolName, action]) => toolName && (action === 'allow' || action === 'deny'))
-  );
-
-  return Object.keys(normalized).length > 0 ? normalized : null;
-};
-
-const resolveSubagentTools = (cwd, permission) => {
-  const normalizedPermission = normalizePermissionConfig(permission);
-  if (!normalizedPermission) {
+const resolveSubagentTools = (cwd, toolNames) => {
+  if (!Array.isArray(toolNames) || toolNames.length === 0) {
     return undefined;
   }
 
-  const allowed = Object.keys(TOOL_FACTORIES)
-    .filter((toolName) => normalizedPermission[toolName] !== 'deny');
+  const allowed = toolNames
+    .map((toolName) => normalizeString(toolName).toLowerCase())
+    .filter((toolName) => Object.prototype.hasOwnProperty.call(TOOL_FACTORIES, toolName));
 
   return allowed.map((toolName) => TOOL_FACTORIES[toolName](cwd));
 };
@@ -481,16 +469,20 @@ async function runSingleAgent(defaultCwd, agents, agentName, task, cwdOverride, 
   const modelRegistry = new ModelRegistry(authStorage);
   const settingsManager = SettingsManager.create(effectiveCwd);
   const appendedPrompt = buildSubagentPrompt(agent);
+  const permissionPolicy = compileAgentPermission(effectiveCwd, agent.permission, Object.keys(TOOL_FACTORIES));
   const resourceLoader = new DefaultResourceLoader({
     cwd: effectiveCwd,
     settingsManager,
+    extensionFactories: [
+      createPermissionGateExtension(permissionPolicy),
+    ],
     ...(appendedPrompt
       ? { appendSystemPrompt: appendedPrompt }
       : {}),
   });
   await resourceLoader.reload();
 
-  const tools = resolveSubagentTools(effectiveCwd, agent.permission);
+  const tools = resolveSubagentTools(effectiveCwd, permissionPolicy.activeToolNames);
   const model = await resolveSubagentModel(modelRegistry, agent.model);
   const thinkingLevel = normalizeThinkingLevel(agent.thinking);
   const { session } = await createAgentSession({

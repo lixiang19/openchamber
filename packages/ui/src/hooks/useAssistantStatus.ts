@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AssistantMessage, Message, Part, ReasoningPart, TextPart, ToolPart } from '@opencode-ai/sdk/v2';
+import type { AssistantMessage, Message, Part, ReasoningPart, TextPart, ToolPart } from '@/lib/runtime/types';
 import { useShallow } from 'zustand/react/shallow';
 
 import type { MessageStreamPhase } from '@/stores/types/sessionTypes';

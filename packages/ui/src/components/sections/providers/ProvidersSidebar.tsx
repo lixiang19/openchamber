@@ -36,7 +36,13 @@ interface ProvidersSidebarProps {
 }
 
 export const ProvidersSidebar: React.FC<ProvidersSidebarProps> = ({ onItemSelect }) => {
-  const providers = useConfigStore((state) => state.providers);
+  const providersRaw = useConfigStore((state) => state.providers) as any[];
+  const providers = React.useMemo(() => (providersRaw || []).map((provider) => ({
+    ...provider,
+    id: String(provider?.id || ''),
+    name: typeof provider?.name === 'string' ? provider.name : '',
+    models: Array.isArray(provider?.models) ? provider.models : [],
+  })), [providersRaw]);
   const selectedProviderId = useConfigStore((state) => state.selectedProviderId);
   const setSelectedProvider = useConfigStore((state) => state.setSelectedProvider);
   const activeProjectId = useProjectsStore((s) => s.activeProjectId);

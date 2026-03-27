@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { devtools, persist, createJSONStorage } from "zustand/middleware";
 import { runtimeClient } from "@/lib/runtime/client";
-import type { Session } from "@opencode-ai/sdk/v2/client";
+import type { Session } from "@/lib/runtime/types";
 import type { PermissionRequest, PermissionResponse } from "@/types/permission";
 import {
     normalizeDirectory,

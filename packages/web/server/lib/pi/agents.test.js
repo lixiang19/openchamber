@@ -66,8 +66,10 @@ model: anthropic/claude-sonnet-4-5
 thinking: high
 steps: 12
 permission:
-  edit: deny
-  write: deny
+  bash: deny
+  edit:
+    "*": deny
+    "**/*.md": allow
 ---
 Project shared prompt
 `);
@@ -90,7 +92,13 @@ Project shared prompt
       model: 'anthropic/claude-sonnet-4-5',
       thinking: 'high',
       steps: 12,
-      permission: { edit: 'deny', write: 'deny' },
+      permission: {
+        bash: 'deny',
+        edit: {
+          '*': 'deny',
+          '**/*.md': 'allow',
+        },
+      },
     });
     expect(agents[1].source).toBe(path.join(projectAgentsDir, 'shared.md'));
   });

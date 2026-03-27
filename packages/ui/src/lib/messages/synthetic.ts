@@ -1,4 +1,4 @@
-import type { Part } from "@opencode-ai/sdk/v2";
+import type { Part } from "@/lib/runtime/types";
 
 export const isSyntheticPart = (part: Part | undefined): boolean => {
     if (!part || typeof part !== "object") {

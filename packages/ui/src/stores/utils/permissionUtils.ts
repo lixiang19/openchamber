@@ -17,15 +17,11 @@ export const isEditPermissionType = (type?: string | null): boolean => {
 
 type PermissionAction = 'allow' | 'deny' | 'ask';
 
-type PermissionRule = {
-    permission: string;
-    pattern: string;
-    action: PermissionAction;
-};
+type PermissionRuleValue = PermissionAction | Record<string, PermissionAction>;
 
 type ConfigStoreAgent = {
     name: string;
-    permission?: PermissionRule[];
+    permission?: Record<string, PermissionRuleValue>;
 };
 
 type ConfigStoreState = {
@@ -59,25 +55,34 @@ const getAgentDefinition = (agentName?: string): ConfigStoreAgent | undefined =>
     return undefined;
 };
 
-const resolvePermissionAction = (ruleset: PermissionRule[] | undefined, permission: string): PermissionAction => {
-    if (!ruleset || ruleset.length === 0) {
+const resolvePermissionAction = (
+    config: Record<string, PermissionRuleValue> | undefined,
+    permission: string,
+): PermissionAction => {
+    if (!config || typeof config !== 'object') {
         return 'ask';
     }
 
-    // Prefer explicit rule for the tool at wildcard pattern.
-    for (let index = ruleset.length - 1; index >= 0; index -= 1) {
-        const rule = ruleset[index];
-        if (rule.permission === permission && rule.pattern === '*') {
-            return rule.action;
-        }
+    const direct = config[permission];
+    if (typeof direct === 'string') {
+        return direct;
     }
 
-    // Fall back to global wildcard.
-    for (let index = ruleset.length - 1; index >= 0; index -= 1) {
-        const rule = ruleset[index];
-        if (rule.permission === '*' && rule.pattern === '*') {
-            return rule.action;
+    if (direct && typeof direct === 'object') {
+        const fallback = direct['*'];
+        if (fallback === 'allow' || fallback === 'deny' || fallback === 'ask') {
+            if (fallback === 'deny') {
+                return Object.values(direct).some((value) => value === 'allow') ? 'allow' : 'deny';
+            }
+            return fallback;
         }
+
+        return Object.values(direct).some((value) => value === 'allow') ? 'allow' : 'ask';
+    }
+
+    const global = config['*'];
+    if (typeof global === 'string') {
+        return global;
     }
 
     return 'ask';

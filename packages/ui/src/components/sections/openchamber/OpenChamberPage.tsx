@@ -8,7 +8,6 @@ import { NotificationSettings } from './NotificationSettings';
 import { GitHubSettings } from './GitHubSettings';
 import { VoiceSettings } from './VoiceSettings';
 import { TunnelSettings } from './TunnelSettings';
-import { OpenCodeCliSettings } from './OpenCodeCliSettings';
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings';
 import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
 import { useDeviceInfo } from '@/lib/device';
@@ -38,11 +37,6 @@ export const OpenChamberPage: React.FC<OpenChamberPageProps> = ({ section }) => 
                     <div className="border-t border-border/40 pt-6">
                         <DefaultsSettings />
                     </div>
-                    {!isVSCode && (
-                        <div className="border-t border-border/40 pt-6">
-                            <OpenCodeCliSettings />
-                        </div>
-                    )}
                     <div className="border-t border-border/40 pt-6">
                         <SessionRetentionSettings />
                     </div>
@@ -124,11 +118,6 @@ const SessionsSectionContent: React.FC = () => {
     return (
         <div className="space-y-6">
             <DefaultsSettings />
-            {!isVSCode && (
-                <div className="border-t border-border/40 pt-6">
-                    <OpenCodeCliSettings />
-                </div>
-            )}
             <div className="border-t border-border/40 pt-6">
                 <SessionRetentionSettings />
             </div>

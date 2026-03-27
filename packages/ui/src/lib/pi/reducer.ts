@@ -586,6 +586,11 @@ const applyServerEvent = (state: PiClientState, event: PiServerEvent): PiClientS
     return state;
   }
 
+  // Ignore late SSE envelopes that were already captured by a fresher session snapshot.
+  if (typeof event.sequence === 'number' && event.sequence <= existing.sequence) {
+    return state;
+  }
+
   if (existing.runtime.seenEventIds.has(event.eventId)) {
     return state;
   }
@@ -633,9 +638,19 @@ export const piClientReducer = (state: PiClientState, action: PiClientAction): P
   switch (action.type) {
     case 'bootstrap_sessions': {
       const sessions = action.sessions.reduce<Record<string, PiClientSessionState>>((acc, snapshot) => {
-        acc[snapshot.id] = createSessionState(snapshot);
+        const hydrated = createSessionState(snapshot);
+        const existing = state.sessions[snapshot.id];
+        // Bootstrap runs concurrently with live SSE hydration, so keep whichever copy is newer.
+        acc[snapshot.id] = existing && existing.sequence > hydrated.sequence ? existing : hydrated;
         return acc;
       }, {});
+
+      for (const [sessionId, session] of Object.entries(state.sessions)) {
+        if (!sessions[sessionId]) {
+          sessions[sessionId] = session;
+        }
+      }
+
       const currentSessionId = state.currentSessionId || action.sessions[0]?.id || null;
       return { sessions, currentSessionId };
     }

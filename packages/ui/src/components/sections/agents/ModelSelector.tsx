@@ -55,7 +55,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     allowedProviderIds,
     placeholder
 }) => {
-    const { providers, modelsMetadata } = useConfigStore();
+    const { providers: providersRaw, modelsMetadata } = useConfigStore();
+    const providers = React.useMemo(() => (providersRaw as any[]).map((provider) => ({
+        ...provider,
+        id: String(provider?.id || ''),
+        name: typeof provider?.name === 'string' ? provider.name : '',
+        models: Array.isArray(provider?.models) ? provider.models : [],
+    })), [providersRaw]);
     const isMobile = useUIStore(state => state.isMobile);
     const hiddenModels = useUIStore(state => state.hiddenModels);
     const { toggleFavoriteModel, isFavoriteModel, addRecentModel } = useUIStore();

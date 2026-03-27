@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import { devtools, persist, createJSONStorage } from "zustand/middleware";
-import type { Session } from "@opencode-ai/sdk/v2";
+import type { Session } from "@/lib/runtime/types";
 import { runtimeClient } from "@/lib/runtime/client";
 import { piClient } from "@/lib/pi/client";
-import { toUiSession } from "@/lib/pi/ui-mappers";
+import { projectPiSessionToRuntimeSession } from "@/lib/runtime/projections";
 import { getSafeStorage } from "./utils/safeStorage";
 import type { WorktreeMetadata } from "@/types/worktree";
 import { getWorktreeStatus } from "@/lib/worktrees/worktreeStatus";
@@ -316,7 +316,7 @@ export const useSessionStore = create<SessionStore>()(
                                 return;
                             }
 
-                            const sessions = dedupeSessionsById(snapshots.map((session) => toUiSession(session)));
+                            const sessions = dedupeSessionsById(snapshots.map((session) => projectPiSessionToRuntimeSession(session)));
                             const sessionsByDirectory = buildSessionsByDirectory(sessions);
                             const validSessionIds = new Set(sessions.map((session) => session.id));
                             const stateSnapshot = get();

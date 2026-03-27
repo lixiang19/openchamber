@@ -291,7 +291,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
     onAgentPanelSelection,
 }) => {
     const {
-        providers,
+        providers: providersRaw,
         currentProviderId,
         currentModelId,
         currentVariant,
@@ -309,6 +309,13 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
         getCurrentAgent,
         getVisibleAgents,
     } = useConfigStore();
+
+    const providers = React.useMemo(() => (providersRaw as any[]).map((provider) => ({
+        ...provider,
+        id: String(provider?.id || ''),
+        name: typeof provider?.name === 'string' ? provider.name : '',
+        models: Array.isArray(provider?.models) ? provider.models : [],
+    })), [providersRaw]);
 
     // Use visible agents (excludes hidden internal agents)
     const agents = getVisibleAgents();

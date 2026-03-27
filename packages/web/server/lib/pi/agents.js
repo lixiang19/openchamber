@@ -2,9 +2,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import { getAgentDir, parseFrontmatter } from '@mariozechner/pi-coding-agent';
 
+import { normalizeAgentPermission } from './permissions.js';
+
 const AGENT_MODES = new Set(['primary', 'subagent', 'all']);
 const THINKING_LEVELS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
-const PERMISSION_ACTIONS = new Set(['allow', 'deny']);
 
 const normalizeString = (value) => {
   if (typeof value !== 'string') {
@@ -45,20 +46,6 @@ const normalizeInteger = (value) => {
 const normalizeThinking = (value) => {
   const normalized = normalizeString(value).toLowerCase();
   return THINKING_LEVELS.has(normalized) ? normalized : undefined;
-};
-
-const normalizePermission = (value) => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return undefined;
-  }
-
-  const normalized = Object.fromEntries(
-    Object.entries(value)
-      .map(([toolName, action]) => [normalizeString(toolName).toLowerCase(), normalizeString(action).toLowerCase()])
-      .filter(([toolName, action]) => toolName && PERMISSION_ACTIONS.has(action))
-  );
-
-  return Object.keys(normalized).length > 0 ? normalized : undefined;
 };
 
 const isDirectory = async (targetPath) => {
@@ -133,7 +120,14 @@ const loadAgentsFromDir = async (dirPath, sourceScope) => {
     const model = normalizeString(data.model) || undefined;
     const thinking = normalizeThinking(data.thinking);
     const steps = normalizeInteger(data.steps);
-    const permission = normalizePermission(data.permission);
+
+    let permission;
+    try {
+      permission = normalizeAgentPermission(data.permission);
+    } catch (error) {
+      console.warn(`Invalid permission config in agent ${filePath}:`, error);
+      continue;
+    }
 
     agents.push({
       name,
@@ -173,7 +167,7 @@ const loadAgentsFromDir = async (dirPath, sourceScope) => {
  *   model?: string,
  *   thinking?: 'off'|'minimal'|'low'|'medium'|'high'|'xhigh',
  *   steps?: number,
- *   permission?: Record<string, 'allow'|'deny'>,
+ *   permission?: Record<string, 'allow'|'deny'|Record<string, 'allow'|'deny'>>,
  * }>>}
  */
 export async function discoverAgents(cwd, options = {}) {

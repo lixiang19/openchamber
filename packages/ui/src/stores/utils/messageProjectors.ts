@@ -1,4 +1,4 @@
-import type { Message, Part } from '@opencode-ai/sdk/v2';
+import type { Message, Part } from '@/lib/runtime/types';
 
 export const resolveClientRole = (info: Pick<Message, 'role'> & { clientRole?: string | null }): string => {
     const role = info.clientRole ?? info.role;

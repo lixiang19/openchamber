@@ -1,6 +1,6 @@
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
-import type { Session } from '@opencode-ai/sdk/v2';
+import type { Session } from '@/lib/runtime/types';
 
 /**
  * Hook that resolves the effective working directory for tabs (Git, Diff, Files, Terminal).

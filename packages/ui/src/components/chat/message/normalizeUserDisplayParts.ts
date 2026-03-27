@@ -1,4 +1,4 @@
-import type { Part } from '@opencode-ai/sdk/v2';
+import type { Part } from '@/lib/runtime/types';
 
 const shouldKeepSyntheticUserText = (text: string): boolean => {
     const trimmed = text.trim();

@@ -112,7 +112,13 @@ export const ModelMultiSelect: React.FC<ModelMultiSelectProps> = ({
   showChips = true,
   maxModels,
 }) => {
-  const { providers, modelsMetadata } = useConfigStore();
+  const { providers: providersRaw, modelsMetadata } = useConfigStore();
+  const providers = React.useMemo(() => (providersRaw as any[]).map((provider) => ({
+    ...provider,
+    id: String(provider?.id || ''),
+    name: typeof provider?.name === 'string' ? provider.name : '',
+    models: Array.isArray(provider?.models) ? provider.models : [],
+  })), [providersRaw]);
   const { favoriteModelsList, recentModelsList } = useModelLists();
   const [isOpen, setIsOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -190,7 +196,7 @@ export const ModelMultiSelect: React.FC<ModelMultiSelectProps> = ({
     return providers
       .map((provider) => {
         const models = Array.isArray(provider.models) ? provider.models : [];
-        const filteredModels = models.filter((model) => {
+        const filteredModels = models.filter((model: any) => {
           const modelName = getModelDisplayName(model);
           return filterByQuery(modelName, provider.name || provider.id || '');
         });
@@ -327,7 +333,7 @@ export const ModelMultiSelect: React.FC<ModelMultiSelectProps> = ({
               flatModelList.push({ model, providerID, modelID, section: 'recent' });
             });
             filteredProviders.forEach((provider) => {
-              provider.models.forEach((model) => {
+              provider.models.forEach((model: any) => {
                 flatModelList.push({ model, providerID: provider.id, modelID: model.id as string, section: 'provider' });
               });
             });
@@ -459,7 +465,7 @@ export const ModelMultiSelect: React.FC<ModelMultiSelectProps> = ({
                           />
                           {provider.name}
                         </div>
-                        {provider.models.map((model) => {
+                        {provider.models.map((model: any) => {
                           const idx = currentFlatIndex++;
                           return renderModelRow(model, provider.id, model.id as string, 'provider', idx, selectedIndex === idx);
                         })}

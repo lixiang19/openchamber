@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { piClient } from '@/lib/pi/client';
-import { piSessionStatusToUiStatus } from '@/lib/pi/ui-mappers';
+import { projectPiSessionStatusToRuntimeStatus } from '@/lib/runtime/projections';
 
 interface SessionAttentionState {
   needsAttention: boolean;
@@ -70,7 +70,7 @@ export function useServerSessionStatus(options?: { enabled?: boolean }) {
 
       sessions.forEach((session) => {
         nextStatuses.set(session.id, {
-          ...piSessionStatusToUiStatus(session.status),
+          ...projectPiSessionStatusToRuntimeStatus(session.status),
           confirmedAt: session.updatedAt,
         });
       });
@@ -88,7 +88,7 @@ export function useServerSessionStatus(options?: { enabled?: boolean }) {
       const nextAttentionStates = new Map<string, SessionAttentionState>();
       sessions.forEach((session) => {
         const previous = currentAttentionStates.get(session.id);
-        const uiStatus = piSessionStatusToUiStatus(session.status).type;
+        const uiStatus = projectPiSessionStatusToRuntimeStatus(session.status).type;
         nextAttentionStates.set(session.id, {
           needsAttention: false,
           lastUserMessageAt: previous?.lastUserMessageAt ?? null,

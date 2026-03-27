@@ -6,6 +6,7 @@ import { discoverAgents } from './agents.js';
 import { normalizePiRpcEnvelope } from './bridge-schema.js';
 import { createSubagentToolDefinition } from './extensions/subagent.js';
 import { createQuestionToolDefinition } from './extensions/question.js';
+import { compileAgentPermission, createPermissionGateExtension, normalizeAgentPermission } from './permissions.js';
 
 const EVENT_HISTORY_LIMIT = 200;
 const COMMAND_CATALOG_CACHE_TTL_MS = 5000;
@@ -45,29 +46,6 @@ const normalizePositiveInteger = (value) => {
   return null;
 };
 
-const normalizePermissionConfig = (value) => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
-  }
-
-  const normalized = Object.fromEntries(
-    Object.entries(value)
-      .map(([toolName, action]) => [normalizeString(toolName).toLowerCase(), normalizeString(action).toLowerCase()])
-      .filter(([toolName, action]) => toolName && (action === 'allow' || action === 'deny'))
-  );
-
-  return Object.keys(normalized).length > 0 ? normalized : null;
-};
-
-const applyAgentPermissionFilter = (toolNames, permission) => {
-  const normalizedPermission = normalizePermissionConfig(permission);
-  if (!normalizedPermission) {
-    return [...toolNames];
-  }
-
-  return toolNames.filter((toolName) => normalizedPermission[normalizeString(toolName).toLowerCase()] !== 'deny');
-};
-
 const buildAgentPromptAppend = (agent) => {
   if (!agent) {
     return [];
@@ -105,7 +83,7 @@ const getAgentConfigSignature = (agent) => {
     model: agent.model || '',
     thinking: agent.thinking || '',
     steps: normalizePositiveInteger(agent.steps) || 0,
-    permission: normalizePermissionConfig(agent.permission) || {},
+    permission: normalizeAgentPermission(agent.permission) || {},
     enabled: agent.enabled !== false,
     displayName: agent.displayName || '',
   });
@@ -468,8 +446,9 @@ export const createPiSdkHost = () => {
       record.selectedAgentSignature = nextAgentSignature;
     }
 
-    const activeToolNames = applyAgentPermissionFilter(record.defaultToolNames, agent?.permission);
-    record.session.setActiveToolsByName(activeToolNames);
+    const permissionPolicy = compileAgentPermission(record.cwd, agent?.permission, record.defaultToolNames);
+    record.selectedPermissionPolicy = permissionPolicy;
+    record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
     record.turnBudget = {
       maxTurns: normalizePositiveInteger(agent?.steps),
       usedTurns: 0,
@@ -697,6 +676,9 @@ export const createPiSdkHost = () => {
       const resourceLoader = new DefaultResourceLoader({
         cwd: normalizedCwd,
         settingsManager,
+        extensionFactories: [
+          createPermissionGateExtension(() => recordRef.current?.selectedPermissionPolicy || null),
+        ],
         appendSystemPromptOverride: (base) => {
           const agent = recordRef.current?.selectedAgentConfig;
           const promptSections = buildAgentPromptAppend(agent);
@@ -737,6 +719,7 @@ export const createPiSdkHost = () => {
         selectedAgentName: null,
         selectedAgentConfig: null,
         selectedAgentSignature: '',
+        selectedPermissionPolicy: compileAgentPermission(normalizedCwd, undefined, session.getActiveToolNames()),
         availableAgents: [],
         turnBudget: { maxTurns: null, usedTurns: 0, exhausted: false },
       };

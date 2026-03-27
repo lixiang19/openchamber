@@ -6,7 +6,7 @@ import { File as PierreFile, PatchDiff } from '@pierre/diffs/react';
 import { cn } from '@/lib/utils';
 import { SimpleMarkdownRenderer } from '../../MarkdownRenderer';
 import { getToolMetadata, getLanguageFromExtension, isImageFile, getImageMimeType } from '@/lib/toolHelpers';
-import type { ToolPart as ToolPartType, ToolState as ToolStateUnion } from '@opencode-ai/sdk/v2';
+import type { ToolPart as ToolPartType, ToolState as ToolStateUnion } from '@/lib/runtime/types';
 import { toolDisplayStyles } from '@/lib/typography';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { useOptionalThemeSystem } from '@/contexts/useThemeSystem';
@@ -14,7 +14,7 @@ import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { piClient } from '@/lib/pi/client';
-import { toUiMessageEntries } from '@/lib/pi/ui-mappers';
+import { projectPiSessionToRuntimeMessages } from '@/lib/runtime/projections';
 import { ScrollShadow } from '@/components/ui/ScrollShadow';
 import { Text } from '@/components/ui/text';
 import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
@@ -1865,7 +1865,7 @@ const ToolPart: React.FC<ToolPartProps> = ({
         const fetchSessionMessages = async () => {
             try {
                 const session = await piClient.getSession(taskSessionId);
-                const messages = toUiMessageEntries(session).slice(-500);
+                const messages = projectPiSessionToRuntimeMessages(session).slice(-500);
                 if (cancelled || !Array.isArray(messages) || messages.length === 0) {
                     return;
                 }

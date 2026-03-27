@@ -1,12 +1,12 @@
 import React from 'react';
-import type { Part } from '@opencode-ai/sdk/v2';
+import type { Part } from '@/lib/runtime/types';
 
 import UserTextPart from './parts/UserTextPart';
 import ToolPart from './parts/ToolPart';
 import AssistantTextPart from './parts/AssistantTextPart';
 import ReasoningPart from './parts/ReasoningPart';
 import { MessageFilesDisplay } from '../FileAttachment';
-import type { ToolPart as ToolPartType } from '@opencode-ai/sdk/v2';
+import type { ToolPart as ToolPartType } from '@/lib/runtime/types';
 import type { StreamPhase, ToolPopupContent, AgentMentionInfo } from './types';
 import type { TurnGroupingContext } from '../lib/turns/types';
 import { cn } from '@/lib/utils';
@@ -521,7 +521,7 @@ const UserMessageBody: React.FC<{
                 {userContentParts.map((part, index) => {
                     if (isSubtaskPart(part)) {
                         return (
-                            <React.Fragment key={part.id ?? `user-subtask-${index}`}>
+                            <React.Fragment key={(part as any).id ?? `user-subtask-${index}`}>
                                 <UserSubtaskPart part={part} />
                             </React.Fragment>
                         );
@@ -529,7 +529,7 @@ const UserMessageBody: React.FC<{
 
                     if (isShellActionPart(part)) {
                         return (
-                            <React.Fragment key={part.id ?? `user-shell-${index}`}>
+                            <React.Fragment key={(part as any).id ?? `user-shell-${index}`}>
                                 <UserShellActionPart part={part} />
                             </React.Fragment>
                         );
@@ -544,7 +544,7 @@ const UserMessageBody: React.FC<{
                         }
                     }
                     return (
-                        <React.Fragment key={part.id ?? `user-text-${index}`}>
+                        <React.Fragment key={(part as any).id ?? `user-text-${index}`}>
                             <UserTextPart
                                 part={part}
                                 messageId={messageId}

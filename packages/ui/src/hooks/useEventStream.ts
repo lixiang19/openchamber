@@ -10,12 +10,12 @@ import {
   type PiClientState,
 } from '@/lib/pi/reducer';
 import {
-  buildSessionsByDirectory,
-  projectPiStateToQuestions,
-  projectPiStateToStatus,
-  toUiMessageEntries,
-  toUiSession,
-} from '@/lib/pi/ui-mappers';
+  buildRuntimeSessionsByDirectory,
+  projectPiSessionToRuntimeMessages,
+  projectPiSessionToRuntimeSession,
+  projectPiSessionsToQuestions,
+  projectPiSessionsToRuntimeStatus,
+} from '@/lib/runtime/projections';
 import { useSessionStore as useSessionManagementStore } from '@/stores/sessionStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useMessageStore } from '@/stores/messageStore';
@@ -24,7 +24,7 @@ import type { MessageStreamLifecycle, SessionHistoryMeta, SessionMemoryState } f
 
 const projectPiStateToStores = (state: PiClientState) => {
   const sessions = Object.values(state.sessions).sort((a, b) => b.updatedAt - a.updatedAt);
-  const uiSessions = sessions.map(toUiSession);
+  const uiSessions = sessions.map(projectPiSessionToRuntimeSession);
   const sessionIds = new Set(uiSessions.map((session) => session.id));
 
   const sessionStore = useSessionManagementStore.getState();
@@ -36,7 +36,7 @@ const projectPiStateToStores = (state: PiClientState) => {
   useSessionManagementStore.setState({
     sessions: uiSessions,
     archivedSessions: [],
-    sessionsByDirectory: buildSessionsByDirectory(uiSessions),
+    sessionsByDirectory: buildRuntimeSessionsByDirectory(uiSessions),
     currentSessionId,
     lastLoadedDirectory: currentSessionId
       ? ((uiSessions.find((session) => session.id === currentSessionId) as { directory?: string | null } | undefined)?.directory ?? null)
@@ -46,14 +46,14 @@ const projectPiStateToStores = (state: PiClientState) => {
   });
 
   const previousMessageState = useMessageStore.getState();
-  const messages = new Map<string, { info: import('@opencode-ai/sdk/v2/client').Message; parts: import('@opencode-ai/sdk/v2/client').Part[] }[]>();
+  const messages = new Map<string, { info: import('@/lib/runtime/types').Message; parts: import('@/lib/runtime/types').Part[] }[]>();
   const sessionHistoryMeta = new Map<string, SessionHistoryMeta>();
   const sessionMemoryState = new Map<string, SessionMemoryState>();
   const streamingMessageIds = new Map<string, string | null>();
   const messageStreamStates = new Map<string, MessageStreamLifecycle>();
 
   for (const session of sessions) {
-    messages.set(session.id, toUiMessageEntries(session));
+    messages.set(session.id, projectPiSessionToRuntimeMessages(session));
     sessionHistoryMeta.set(session.id, {
       limit: Number.MAX_SAFE_INTEGER,
       complete: true,
@@ -96,11 +96,11 @@ const projectPiStateToStores = (state: PiClientState) => {
   });
 
   useQuestionStore.setState({
-    questions: projectPiStateToQuestions(state.sessions),
+    questions: projectPiSessionsToQuestions(state.sessions),
   });
 
   useSessionStore.setState({
-    sessionStatus: projectPiStateToStatus(state.sessions),
+    sessionStatus: projectPiSessionsToRuntimeStatus(state.sessions),
   });
 };
 

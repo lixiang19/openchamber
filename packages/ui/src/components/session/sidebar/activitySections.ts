@@ -1,4 +1,4 @@
-import type { Session } from '@opencode-ai/sdk/v2';
+import type { Session } from '@/lib/runtime/types';
 
 export const ACTIVE_NOW_STORAGE_KEY = 'oc.sessions.activeNow';
 export const ACTIVE_NOW_MAX_AGE_MS = 36 * 60 * 60 * 1000;

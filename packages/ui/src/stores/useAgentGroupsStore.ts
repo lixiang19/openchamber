@@ -6,7 +6,7 @@ import { useDirectoryStore } from './useDirectoryStore';
 import { useProjectsStore } from './useProjectsStore';
 import { useSessionStore } from './useSessionStore';
 import type { WorktreeMetadata } from '@/types/worktree';
-import type { Session } from '@opencode-ai/sdk/v2';
+import type { Session } from '@/lib/runtime/types';
 
 
 const resolveProjectDirectory = (currentDirectory: string | null | undefined): string | null => {

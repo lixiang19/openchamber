@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Agent } from '@opencode-ai/sdk/v2';
+import type { Agent } from '@/lib/runtime/types';
 import { RiFolderLine, RiInformationLine, RiRobot2Line, RiUser3Line } from '@remixicon/react';
 
 import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
@@ -22,6 +22,9 @@ import { useAgentsStore, type AgentConfig, type AgentScope } from '@/stores/useA
 import { ModelSelector } from './ModelSelector';
 
 type ThinkingLevel = NonNullable<AgentConfig['thinking']>;
+type PermissionAction = 'allow' | 'deny';
+type PermissionRuleValue = PermissionAction | Record<string, PermissionAction>;
+type EditPermissionMode = 'allow' | 'deny' | 'markdown' | 'custom';
 type AgentPermissionRule = { permission: string; pattern: string; action: string };
 
 type AgentWithPiFields = Agent & {
@@ -43,13 +46,18 @@ type AgentFormState = {
   steps?: number;
   enabled: boolean;
   prompt: string;
-  deniedTools: string[];
+  simpleToolActions: Record<string, PermissionAction>;
+  editPermissionMode: EditPermissionMode;
+  customEditRulesText: string;
+};
+
+const EDIT_PERMISSION_MARKDOWN_RULES: Record<string, PermissionAction> = {
+  '*': 'deny',
+  '**/*.md': 'allow',
 };
 
 const DEFAULT_TOOL_ORDER = [
   'read',
-  'edit',
-  'write',
   'bash',
   'grep',
   'find',
@@ -93,21 +101,97 @@ const formatToolLabel = (toolName: string): string => {
     .join(' ');
 };
 
-const getDeniedToolsFromAgent = (agent: Agent | null, draftPermission: AgentConfig['permission'] | undefined): string[] => {
-  if (draftPermission && typeof draftPermission === 'object' && !Array.isArray(draftPermission)) {
-    return sortToolNames(
-      Object.entries(draftPermission)
-        .filter(([, action]) => action === 'deny')
-        .map(([toolName]) => toolName)
-    );
+const isPermissionAction = (value: unknown): value is PermissionAction => value === 'allow' || value === 'deny';
+
+const asPermissionConfig = (value: unknown): AgentConfig['permission'] | undefined => {
+  if (Array.isArray(value)) {
+    const normalized: Record<string, PermissionAction> = {};
+    value
+      .filter((entry): entry is AgentPermissionRule => Boolean(entry) && typeof entry === 'object')
+      .filter((entry) => typeof entry.permission === 'string' && typeof entry.pattern === 'string' && isPermissionAction(entry.action))
+      .filter((entry) => entry.pattern === '*')
+      .forEach((entry) => {
+        normalized[normalizeToolName(entry.permission)] = entry.action as PermissionAction;
+      });
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
   }
 
-  const rules = Array.isArray(agent?.permission) ? (agent.permission as AgentPermissionRule[]) : [];
-  return sortToolNames(
-    rules
-      .filter((rule) => rule.pattern === '*' && rule.action === 'deny')
-      .map((rule) => rule.permission)
-  );
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const normalized: Record<string, PermissionRuleValue> = {};
+  for (const [rawKey, rawRule] of Object.entries(value as Record<string, unknown>)) {
+    const key = normalizeToolName(rawKey);
+    if (!key) continue;
+
+    if (isPermissionAction(rawRule)) {
+      normalized[key] = rawRule;
+      continue;
+    }
+
+    if (!rawRule || typeof rawRule !== 'object' || Array.isArray(rawRule)) {
+      continue;
+    }
+
+    const nested = Object.fromEntries(
+      Object.entries(rawRule)
+        .filter((entry): entry is [string, PermissionAction] => isPermissionAction(entry[1]))
+        .map(([pattern, action]) => [pattern, action])
+    );
+
+    if (Object.keys(nested).length > 0) {
+      normalized[key] = nested;
+    }
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+};
+
+const getSimpleToolActions = (permission: AgentConfig['permission'] | undefined): Record<string, PermissionAction> => {
+  const actions: Record<string, PermissionAction> = {};
+  if (!permission) {
+    return actions;
+  }
+
+  for (const [toolName, rule] of Object.entries(permission)) {
+    if (toolName === 'edit') {
+      continue;
+    }
+    if (isPermissionAction(rule)) {
+      actions[normalizeToolName(toolName)] = rule;
+    }
+  }
+
+  return actions;
+};
+
+const isMarkdownOnlyRules = (value: Record<string, PermissionAction>) => {
+  return value['*'] === 'deny'
+    && value['**/*.md'] === 'allow'
+    && Object.keys(value).length === Object.keys(EDIT_PERMISSION_MARKDOWN_RULES).length;
+};
+
+const getEditPermissionMode = (permission: AgentConfig['permission'] | undefined): EditPermissionMode => {
+  const rule = permission?.edit;
+  if (!rule || rule === 'allow') {
+    return 'allow';
+  }
+  if (rule === 'deny') {
+    return 'deny';
+  }
+  if (rule && typeof rule === 'object' && !Array.isArray(rule)) {
+    return isMarkdownOnlyRules(rule as Record<string, PermissionAction>) ? 'markdown' : 'custom';
+  }
+  return 'allow';
+};
+
+const getCustomEditRulesText = (permission: AgentConfig['permission'] | undefined): string => {
+  const rule = permission?.edit;
+  if (!rule || rule === 'allow' || rule === 'deny') {
+    return JSON.stringify(EDIT_PERMISSION_MARKDOWN_RULES, null, 2);
+  }
+  return JSON.stringify(rule, null, 2);
 };
 
 const buildFormState = (params: {
@@ -116,6 +200,7 @@ const buildFormState = (params: {
   selectedAgent: Agent | null;
 }): AgentFormState | null => {
   const { isNewAgent, agentDraft, selectedAgent } = params;
+  const draftPermission = asPermissionConfig(isNewAgent ? agentDraft?.permission : selectedAgent?.permission);
 
   if (isNewAgent && agentDraft) {
     return {
@@ -129,7 +214,9 @@ const buildFormState = (params: {
       steps: agentDraft.steps,
       enabled: agentDraft.enabled ?? true,
       prompt: agentDraft.prompt || '',
-      deniedTools: getDeniedToolsFromAgent(null, agentDraft.permission),
+      simpleToolActions: getSimpleToolActions(draftPermission),
+      editPermissionMode: getEditPermissionMode(draftPermission),
+      customEditRulesText: getCustomEditRulesText(draftPermission),
     };
   }
 
@@ -151,21 +238,70 @@ const buildFormState = (params: {
     steps: extended.steps,
     enabled: extended.enabled ?? true,
     prompt: selectedAgent.prompt || '',
-    deniedTools: getDeniedToolsFromAgent(selectedAgent, undefined),
+    simpleToolActions: getSimpleToolActions(draftPermission),
+    editPermissionMode: getEditPermissionMode(draftPermission),
+    customEditRulesText: getCustomEditRulesText(draftPermission),
   };
 };
 
-const areStringArraysEqual = (left: string[], right: string[]) => {
-  if (left.length !== right.length) return false;
-  return left.every((value, index) => value === right[index]);
+const areStringRecordArraysEqual = (left: Record<string, PermissionAction>, right: Record<string, PermissionAction>) => {
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key, index) => key === rightKeys[index] && left[key] === right[key]);
 };
 
-const buildPermissionConfig = (deniedTools: string[]): AgentConfig['permission'] => {
-  if (deniedTools.length === 0) {
-    return undefined;
+const buildPermissionConfig = (
+  simpleToolActions: Record<string, PermissionAction>,
+  editPermissionMode: EditPermissionMode,
+  customEditRulesText: string,
+): AgentConfig['permission'] => {
+  const permission: Record<string, PermissionRuleValue> = {};
+
+  Object.entries(simpleToolActions).forEach(([toolName, action]) => {
+    if (action === 'deny') {
+      permission[toolName] = 'deny';
+    }
+  });
+
+  if (editPermissionMode === 'deny') {
+    permission.edit = 'deny';
+    permission.bash = 'deny';
+    return permission;
   }
 
-  return Object.fromEntries(deniedTools.map((toolName) => [toolName, 'deny'])) as NonNullable<AgentConfig['permission']>;
+  if (editPermissionMode === 'markdown') {
+    permission.edit = { ...EDIT_PERMISSION_MARKDOWN_RULES };
+    permission.bash = 'deny';
+    return permission;
+  }
+
+  if (editPermissionMode === 'custom') {
+    const parsed = JSON.parse(customEditRulesText) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Custom edit rules must be a JSON object.');
+    }
+
+    const normalized = Object.fromEntries(
+      Object.entries(parsed)
+        .filter((entry): entry is [string, PermissionAction] => isPermissionAction(entry[1]))
+        .map(([pattern, action]) => [pattern, action])
+    );
+
+    if (!Object.prototype.hasOwnProperty.call(normalized, '*')) {
+      throw new Error('Custom edit rules must include a "*" fallback rule.');
+    }
+
+    permission.edit = normalized;
+    permission.bash = 'deny';
+    return permission;
+  }
+
+  if (permission.bash === 'deny') {
+    delete permission.bash;
+  }
+
+  return Object.keys(permission).length > 0 ? permission : undefined;
 };
 
 export const AgentsPage: React.FC = () => {
@@ -193,17 +329,19 @@ export const AgentsPage: React.FC = () => {
   const [steps, setSteps] = React.useState<number | undefined>(undefined);
   const [enabled, setEnabled] = React.useState(true);
   const [prompt, setPrompt] = React.useState('');
-  const [deniedTools, setDeniedTools] = React.useState<string[]>([]);
+  const [simpleToolActions, setSimpleToolActions] = React.useState<Record<string, PermissionAction>>({});
+  const [editPermissionMode, setEditPermissionMode] = React.useState<EditPermissionMode>('allow');
+  const [customEditRulesText, setCustomEditRulesText] = React.useState(JSON.stringify(EDIT_PERMISSION_MARKDOWN_RULES, null, 2));
   const [isSaving, setIsSaving] = React.useState(false);
   const initialStateRef = React.useRef<AgentFormState | null>(null);
 
   const toolOptions = React.useMemo(() => {
     return sortToolNames([
       ...DEFAULT_TOOL_ORDER,
-      ...availableTools,
-      ...deniedTools,
+      ...availableTools.filter((toolName) => normalizeToolName(toolName) !== 'edit' && normalizeToolName(toolName) !== 'write'),
+      ...Object.keys(simpleToolActions),
     ]);
-  }, [availableTools, deniedTools]);
+  }, [availableTools, simpleToolActions]);
 
   React.useEffect(() => {
     const nextState = buildFormState({ isNewAgent, agentDraft, selectedAgent });
@@ -222,7 +360,9 @@ export const AgentsPage: React.FC = () => {
     setSteps(nextState.steps);
     setEnabled(nextState.enabled);
     setPrompt(nextState.prompt);
-    setDeniedTools(nextState.deniedTools);
+    setSimpleToolActions(nextState.simpleToolActions);
+    setEditPermissionMode(nextState.editPermissionMode);
+    setCustomEditRulesText(nextState.customEditRulesText);
     initialStateRef.current = nextState;
   }, [agentDraft, isNewAgent, selectedAgent]);
 
@@ -245,21 +385,18 @@ export const AgentsPage: React.FC = () => {
     if (steps !== initial.steps) return true;
     if (enabled !== initial.enabled) return true;
     if (prompt !== initial.prompt) return true;
-    if (!areStringArraysEqual(deniedTools, initial.deniedTools)) return true;
+    if (!areStringRecordArraysEqual(simpleToolActions, initial.simpleToolActions)) return true;
+    if (editPermissionMode !== initial.editPermissionMode) return true;
+    if (customEditRulesText !== initial.customEditRulesText) return true;
     return false;
-  }, [deniedTools, description, displayName, draftName, draftScope, enabled, isNewAgent, mode, model, prompt, steps, thinking]);
+  }, [customEditRulesText, description, displayName, draftName, draftScope, editPermissionMode, enabled, isNewAgent, mode, model, prompt, simpleToolActions, steps, thinking]);
 
-  const toggleDeniedTool = React.useCallback((toolName: string) => {
+  const toggleSimpleTool = React.useCallback((toolName: string) => {
     const normalized = normalizeToolName(toolName);
-    setDeniedTools((current) => {
-      const next = new Set(current);
-      if (next.has(normalized)) {
-        next.delete(normalized);
-      } else {
-        next.add(normalized);
-      }
-      return sortToolNames(next);
-    });
+    setSimpleToolActions((current) => ({
+      ...current,
+      [normalized]: current[normalized] === 'deny' ? 'allow' : 'deny',
+    }));
   }, []);
 
   const handleSave = async () => {
@@ -284,6 +421,7 @@ export const AgentsPage: React.FC = () => {
 
     try {
       const trimmedModel = model.trim();
+      const permission = buildPermissionConfig(simpleToolActions, editPermissionMode, customEditRulesText);
       const config: AgentConfig = {
         name: agentName,
         description: description.trim(),
@@ -294,7 +432,7 @@ export const AgentsPage: React.FC = () => {
         steps,
         enabled,
         prompt: prompt.trim() || undefined,
-        permission: buildPermissionConfig(deniedTools),
+        permission,
         scope: isNewAgent ? draftScope : undefined,
       };
 
@@ -553,46 +691,107 @@ export const AgentsPage: React.FC = () => {
           <div className="mb-1 px-1">
             <h3 className="typography-ui-header font-medium text-foreground">Permission</h3>
             <p className="typography-meta text-muted-foreground mt-1">
-              First version: tools are enabled by default. Turn a tool off by marking it as denied.
+              `edit` now follows OpenCode-style rules. Use presets for disable or Markdown-only editing; all other tools still use simple allow/deny toggles.
             </p>
           </div>
-          <section className="px-2 pb-2 pt-0 space-y-0">
-            {toolOptions.map((toolName, index) => {
-              const denied = deniedTools.includes(toolName);
-              return (
-                <div
-                  key={toolName}
-                  className={cn(
-                    'flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-8',
-                    index > 0 && 'border-t border-[var(--surface-subtle)]'
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="typography-ui-label text-foreground">{formatToolLabel(toolName)}</span>
-                    <span className="typography-micro text-muted-foreground/70 font-mono">{toolName}</span>
-                  </div>
+          <section className="px-2 pb-2 pt-0 space-y-5">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="typography-ui-label text-foreground">Edit</span>
+                <span className="typography-micro text-muted-foreground/70 font-mono">edit + write</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  { value: 'allow', label: 'Allow' },
+                  { value: 'deny', label: 'Deny' },
+                  { value: 'markdown', label: 'Markdown only' },
+                  { value: 'custom', label: 'Custom' },
+                ] as const).map((option) => (
                   <Button
+                    key={option.value}
                     type="button"
                     variant="outline"
                     size="xs"
                     className={cn(
-                      '!font-normal min-w-[110px]',
-                      denied
-                        ? 'border-[var(--status-error)] text-[var(--status-error)] bg-[var(--status-error)]/10 hover:text-[var(--status-error)]'
-                        : 'border-[var(--status-success)] text-[var(--status-success)] bg-[var(--status-success)]/10 hover:text-[var(--status-success)]'
+                      '!font-normal',
+                      editPermissionMode === option.value
+                        ? 'border-[var(--primary-base)] text-[var(--primary-base)] bg-[var(--primary-base)]/10 hover:text-[var(--primary-base)]'
+                        : 'text-foreground'
                     )}
-                    onClick={() => toggleDeniedTool(toolName)}
+                    onClick={() => {
+                      setEditPermissionMode(option.value);
+                      if (option.value !== 'allow') {
+                        setSimpleToolActions((current) => ({ ...current, bash: 'deny' }));
+                      }
+                      if (option.value === 'markdown' && customEditRulesText.trim().length === 0) {
+                        setCustomEditRulesText(JSON.stringify(EDIT_PERMISSION_MARKDOWN_RULES, null, 2));
+                      }
+                    }}
                   >
-                    {denied ? 'Denied' : 'Enabled'}
+                    {option.label}
                   </Button>
-                </div>
-              );
-            })}
-            {toolOptions.length === 0 && (
-              <div className="py-3 typography-meta text-muted-foreground">
-                {toolsLoading ? 'Loading tools…' : 'No tools available'}
+                ))}
               </div>
-            )}
+              {(editPermissionMode === 'markdown' || editPermissionMode === 'custom') && (
+                <div className="space-y-2 rounded-xl border border-border/60 bg-muted/20 p-3">
+                  <p className="typography-meta text-muted-foreground">
+                    {editPermissionMode === 'markdown'
+                      ? 'Preset: blocks all edits except `**/*.md`. Bash is forced to deny when saving.'
+                      : 'Enter a JSON rule object. Last matching rule wins. A `"*"` fallback rule is required.'}
+                  </p>
+                  <Textarea
+                    value={editPermissionMode === 'markdown' ? JSON.stringify(EDIT_PERMISSION_MARKDOWN_RULES, null, 2) : customEditRulesText}
+                    onChange={(event) => {
+                      if (editPermissionMode === 'custom') {
+                        setCustomEditRulesText(event.target.value);
+                      }
+                    }}
+                    readOnly={editPermissionMode === 'markdown'}
+                    rows={editPermissionMode === 'custom' ? 8 : 4}
+                    className="w-full font-mono typography-meta min-h-[96px] bg-transparent resize-y"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-0">
+              {toolOptions.map((toolName, index) => {
+                const denied = simpleToolActions[toolName] === 'deny';
+                return (
+                  <div
+                    key={toolName}
+                    className={cn(
+                      'flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-8',
+                      index > 0 && 'border-t border-[var(--surface-subtle)]'
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="typography-ui-label text-foreground">{formatToolLabel(toolName)}</span>
+                      <span className="typography-micro text-muted-foreground/70 font-mono">{toolName}</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      className={cn(
+                        '!font-normal min-w-[110px]',
+                        denied
+                          ? 'border-[var(--status-error)] text-[var(--status-error)] bg-[var(--status-error)]/10 hover:text-[var(--status-error)]'
+                          : 'border-[var(--status-success)] text-[var(--status-success)] bg-[var(--status-success)]/10 hover:text-[var(--status-success)]'
+                      )}
+                      onClick={() => toggleSimpleTool(toolName)}
+                    >
+                      {denied ? 'Denied' : 'Enabled'}
+                    </Button>
+                  </div>
+                );
+              })}
+              {toolOptions.length === 0 && (
+                <div className="py-3 typography-meta text-muted-foreground">
+                  {toolsLoading ? 'Loading tools…' : 'No tools available'}
+                </div>
+              )}
+            </div>
           </section>
         </div>
 

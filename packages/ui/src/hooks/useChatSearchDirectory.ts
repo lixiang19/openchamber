@@ -1,7 +1,7 @@
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useSessionStore } from '@/stores/useSessionStore';
-import type { Session } from '@opencode-ai/sdk/v2';
+import type { Session } from '@/lib/runtime/types';
 
 export const useChatSearchDirectory = (): string | undefined => {
   const currentSessionId = useSessionStore((state) => state.currentSessionId);

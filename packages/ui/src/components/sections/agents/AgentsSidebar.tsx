@@ -20,7 +20,7 @@ import {
 import { RiAddLine, RiAiAgentFill, RiAiAgentLine, RiDeleteBinLine, RiFileCopyLine, RiMore2Line, RiRobot2Line, RiRobotLine, RiRestartLine, RiEditLine } from '@remixicon/react';
 import { useAgentsStore, isAgentBuiltIn, isAgentHidden, type AgentScope, type AgentDraft } from '@/stores/useAgentsStore';
 import { cn } from '@/lib/utils';
-import type { Agent } from '@opencode-ai/sdk/v2';
+import type { Agent } from '@/lib/runtime/types';
 import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
 import { SettingsProjectSelector } from '@/components/sections/shared/SettingsProjectSelector';
 import { SidebarGroup } from '@/components/sections/shared/SidebarGroup';
@@ -31,23 +31,54 @@ interface AgentsSidebarProps {
 
 type PermissionRule = { permission: string; pattern: string; action: string };
 
-const rulesetToPermissionConfig = (ruleset: unknown): AgentDraft['permission'] => {
-  if (!Array.isArray(ruleset)) {
+type PermissionAction = 'allow' | 'deny';
+type PermissionRuleValue = PermissionAction | Record<string, PermissionAction>;
+
+const copyPermissionConfig = (value: unknown): AgentDraft['permission'] => {
+  if (Array.isArray(value)) {
+    const normalized: Record<string, PermissionAction> = {};
+    value
+      .filter((entry): entry is PermissionRule => Boolean(entry) && typeof entry === 'object')
+      .filter((entry) => typeof entry.permission === 'string' && typeof entry.pattern === 'string' && typeof entry.action === 'string')
+      .filter((entry) => entry.pattern === '*' && (entry.action === 'allow' || entry.action === 'deny'))
+      .forEach((entry) => {
+        normalized[entry.permission.trim().toLowerCase()] = entry.action as PermissionAction;
+      });
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+  }
+
+  if (!value || typeof value !== 'object') {
     return undefined;
   }
 
-  const deniedEntries = ruleset
-    .filter((entry): entry is PermissionRule => Boolean(entry) && typeof entry === 'object')
-    .filter((entry) => typeof entry.permission === 'string' && typeof entry.pattern === 'string' && typeof entry.action === 'string')
-    .filter((entry) => entry.pattern === '*' && entry.action === 'deny')
-    .map((entry) => entry.permission.trim().toLowerCase())
-    .filter((permission) => permission.length > 0 && permission !== 'invalid' && permission !== '*');
+  const normalized: Record<string, PermissionRuleValue> = {};
+  for (const [rawKey, rawRule] of Object.entries(value as Record<string, unknown>)) {
+    const key = rawKey.trim().toLowerCase();
+    if (!key) continue;
 
-  if (deniedEntries.length === 0) {
-    return undefined;
+    if (rawRule === 'allow' || rawRule === 'deny') {
+      normalized[key] = rawRule;
+      continue;
+    }
+
+    if (!rawRule || typeof rawRule !== 'object' || Array.isArray(rawRule)) {
+      continue;
+    }
+
+    const nested = Object.fromEntries(
+      Object.entries(rawRule)
+        .filter((entry): entry is [string, PermissionAction] => {
+          return typeof entry[0] === 'string' && (entry[1] === 'allow' || entry[1] === 'deny');
+        })
+        .map(([pattern, action]) => [pattern, action])
+    );
+
+    if (Object.keys(nested).length > 0) {
+      normalized[key] = nested;
+    }
   }
 
-  return Object.fromEntries(Array.from(new Set(deniedEntries)).map((permission) => [permission, 'deny'])) as AgentDraft['permission'];
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
 };
 
 export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) => {
@@ -164,7 +195,7 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
       steps: draftAgent.steps,
       prompt: agent.prompt,
       mode: agent.mode,
-      permission: rulesetToPermissionConfig(agent.permission),
+      permission: copyPermissionConfig(agent.permission),
       enabled: draftAgent.enabled,
       display_name: draftAgent.displayName,
     });
@@ -217,7 +248,7 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
       steps: renameExt.steps,
       prompt: renameDialogAgent.prompt,
       mode: renameDialogAgent.mode,
-      permission: rulesetToPermissionConfig(renameDialogAgent.permission),
+      permission: copyPermissionConfig(renameDialogAgent.permission),
       enabled: renameExt.enabled,
       display_name: renameExt.displayName,
       scope: renameExt.scope,

@@ -4,7 +4,7 @@ import { createCodePlugin } from '@streamdown/code';
 import { renderMermaidASCII, renderMermaidSVG } from 'beautiful-mermaid';
 import 'streamdown/styles.css';
 import { FadeInOnReveal } from './message/FadeInOnReveal';
-import type { Part } from '@opencode-ai/sdk/v2';
+import type { Part } from '@/lib/runtime/types';
 import { cn } from '@/lib/utils';
 import { RiFileCopyLine, RiCheckLine, RiDownloadLine } from '@remixicon/react';
 import { toast } from '@/components/ui';

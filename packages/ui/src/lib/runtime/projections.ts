@@ -1,8 +1,7 @@
-import type { Message, Part, Session } from '@opencode-ai/sdk/v2/client';
-
+import type { Message, Part, Session } from '@/lib/runtime/types';
 import type { QuestionRequest } from '@/types/question';
-import type { PiClientSessionState } from './reducer';
-import type { PiContentBlock, PiInteractiveRequestViewState, PiSessionViewState, PiToolExecutionViewState } from './types';
+import type { PiClientSessionState } from '@/lib/pi/reducer';
+import type { PiContentBlock, PiInteractiveRequestViewState, PiSessionViewState, PiToolExecutionViewState } from '@/lib/pi/types';
 
 const normalizePath = (value?: string | null): string | null => {
   if (typeof value !== 'string') return null;
@@ -61,27 +60,6 @@ const getBlockFallbackText = (block: PiContentBlock): string => {
   return stringify({ type: block.type });
 };
 
-const contentBlocksToText = (blocks: PiContentBlock[] | undefined): string => {
-  if (!Array.isArray(blocks) || blocks.length === 0) {
-    return '';
-  }
-
-  return blocks.map((block) => {
-    if (isTextBlock(block)) return block.text;
-    if (isThinkingBlock(block)) return block.thinking;
-    if (isToolCallBlock(block)) {
-      return joinNonEmpty([
-        `Tool call: ${normalizeToolName(block.name)}`,
-        block.arguments ? stringify(block.arguments) : '',
-      ]);
-    }
-    if (isImageBlock(block)) {
-      return `[Image${block.mimeType ? ` ${block.mimeType}` : ''}]`;
-    }
-    return getBlockFallbackText(block);
-  }).filter(Boolean).join('\n\n');
-};
-
 const toolOutputText = (execution: PiToolExecutionViewState): string => {
   return joinNonEmpty([
     typeof execution.partialResult === 'undefined' || execution.partialResult === null ? '' : stringify(execution.partialResult),
@@ -134,7 +112,7 @@ const toToolPart = (
       start: timestamp,
       ...(status !== 'running' ? { end: timestamp } : {}),
     },
-  } as unknown as Part;
+  } as Part;
 };
 
 const toMessageParts = (
@@ -152,7 +130,7 @@ const toMessageParts = (
       sessionID: sessionId,
       messageID: messageId,
       time: { start: timestamp, end: timestamp },
-    } as unknown as Part];
+    } as Part];
   }
 
   const parts = content.map((block, index) => {
@@ -165,7 +143,7 @@ const toMessageParts = (
         sessionID: sessionId,
         messageID: messageId,
         time: { start: timestamp, end: timestamp },
-      } as unknown as Part;
+      } as Part;
     }
 
     if (isThinkingBlock(block)) {
@@ -176,7 +154,7 @@ const toMessageParts = (
         sessionID: sessionId,
         messageID: messageId,
         time: { start: timestamp, end: timestamp },
-      } as unknown as Part;
+      } as Part;
     }
 
     if (isToolCallBlock(block)) {
@@ -191,7 +169,7 @@ const toMessageParts = (
       sessionID: sessionId,
       messageID: messageId,
       time: { start: timestamp, end: timestamp },
-    } as unknown as Part;
+    } as Part;
   });
 
   return parts.length > 0 ? parts : [{
@@ -201,10 +179,10 @@ const toMessageParts = (
     sessionID: sessionId,
     messageID: messageId,
     time: { start: timestamp, end: timestamp },
-  } as unknown as Part];
+  } as Part];
 };
 
-export const toUiSession = (session: Pick<PiSessionViewState, 'id' | 'title' | 'cwd' | 'createdAt' | 'updatedAt' | 'status'>): Session => ({
+export const projectPiSessionToRuntimeSession = (session: Pick<PiSessionViewState, 'id' | 'title' | 'cwd' | 'createdAt' | 'updatedAt' | 'status'>): Session => ({
   id: session.id,
   title: session.title || 'Pi Session',
   directory: normalizePath(session.cwd),
@@ -219,7 +197,7 @@ export const toUiSession = (session: Pick<PiSessionViewState, 'id' | 'title' | '
   share: undefined,
 } as Session);
 
-export const toUiMessageEntries = (session: PiClientSessionState | PiSessionViewState): Array<{ info: Message; parts: Part[] }> => {
+export const projectPiSessionToRuntimeMessages = (session: PiClientSessionState | PiSessionViewState): Array<{ info: Message; parts: Part[] }> => {
   const toolExecutionsById = new Map((session.toolExecutions || []).map((entry) => [entry.toolCallId, entry]));
   const entries: Array<{ info: Message; parts: Part[] }> = [];
   const representedToolCalls = new Set<string>();
@@ -237,7 +215,7 @@ export const toUiMessageEntries = (session: PiClientSessionState | PiSessionView
           clientRole: 'user',
           userMessageMarker: true,
           time: { created: timestamp, completed: timestamp },
-        } as unknown as Message,
+        } as Message,
         parts: toMessageParts(session.id, messageId, message.content, timestamp, toolExecutionsById),
       });
       return;
@@ -258,75 +236,118 @@ export const toUiMessageEntries = (session: PiClientSessionState | PiSessionView
           clientRole: 'assistant',
           ...(message.provider ? { providerID: message.provider } : {}),
           ...(message.model ? { modelID: message.model } : {}),
-          ...(message.errorMessage ? { error: message.errorMessage, finish: 'error', status: 'error' } : { finish: 'stop', status: 'completed' }),
-          time: { created: timestamp, completed: timestamp },
-        } as unknown as Message,
+          time: {
+            created: timestamp,
+            ...(message.stopReason && message.stopReason !== 'toolUse' ? { completed: timestamp } : {}),
+          },
+        } as Message,
         parts,
       });
       return;
     }
 
     if (message.role === 'toolResult') {
-      if (representedToolCalls.has(message.toolCallId)) {
-        return;
-      }
+      const toolCallId = message.toolCallId || `${messageId}:tool-result`;
+      representedToolCalls.add(toolCallId);
+      const toolName = normalizeToolName(message.toolName);
       entries.push({
         info: {
           id: messageId,
           sessionID: session.id,
           role: 'assistant',
           clientRole: 'assistant',
-          finish: message.isError ? 'error' : 'stop',
-          status: 'completed',
           time: { created: timestamp, completed: timestamp },
-        } as unknown as Message,
+        } as Message,
         parts: [{
-          id: message.toolCallId || `${messageId}:tool-result`,
+          id: toolCallId,
           type: 'tool',
-          tool: normalizeToolName(message.toolName),
-          callID: message.toolCallId || `${messageId}:tool-result`,
+          tool: toolName,
+          callID: toolCallId,
           sessionID: session.id,
           messageID: messageId,
           state: {
             status: message.isError ? 'error' : 'completed',
-            output: joinNonEmpty([contentBlocksToText(message.content), stringify(message.details)]),
-            ...(message.isError ? { error: joinNonEmpty([contentBlocksToText(message.content), stringify(message.details)]) || 'Tool failed' } : {}),
+            input: {},
+            title: toolName,
+            ...(message.isError
+              ? { error: contentBlocksToText(message.content) || `${toolName} failed` }
+              : { output: contentBlocksToText(message.content) }),
+            metadata: message.details ?? {},
             time: { start: timestamp, end: timestamp },
           },
           time: { start: timestamp, end: timestamp },
-        } as unknown as Part],
+        } as Part],
       });
       return;
     }
 
-    const textContent = message.role === 'custom'
-      ? (typeof message.content === 'string' ? message.content : contentBlocksToText(message.content))
-      : joinNonEmpty([message.command, message.output], '\n');
+    const fallbackText = 'content' in message
+      ? contentBlocksToText(Array.isArray(message.content) ? message.content : undefined)
+      : ('output' in message && typeof message.output === 'string' ? message.output : '');
+    entries.push({
+      info: {
+        id: messageId,
+        sessionID: session.id,
+        role: message.role,
+        clientRole: message.role,
+        time: { created: timestamp, completed: timestamp },
+      } as Message,
+      parts: [{
+        id: `${messageId}:fallback`,
+        type: 'text',
+        text: fallbackText,
+        sessionID: session.id,
+        messageID: messageId,
+        time: { start: timestamp, end: timestamp },
+      } as Part],
+    });
+  });
+
+  (session.toolExecutions || []).forEach((execution, index) => {
+    if (representedToolCalls.has(execution.toolCallId)) {
+      return;
+    }
+
+    const timestamp = session.updatedAt;
+    const messageId = `${session.id}:synthetic-tool:${index}`;
+    const output = toolOutputText(execution);
+    const status = toolPartStatus(execution);
+    const toolName = normalizeToolName(execution.toolName);
+
     entries.push({
       info: {
         id: messageId,
         sessionID: session.id,
         role: 'assistant',
         clientRole: 'assistant',
-        finish: 'stop',
-        status: 'completed',
-        time: { created: timestamp, completed: timestamp },
-      } as unknown as Message,
+        time: {
+          created: timestamp,
+          ...(status !== 'running' ? { completed: timestamp } : {}),
+        },
+      } as Message,
       parts: [{
-        id: `${messageId}:text`,
-        type: 'text',
-        text: textContent || (message.role === 'custom' ? stringify(message.details ?? '') : ''),
+        id: execution.toolCallId,
+        type: 'tool',
+        tool: toolName,
+        callID: execution.toolCallId,
         sessionID: session.id,
         messageID: messageId,
-        time: { start: timestamp, end: timestamp },
-      } as unknown as Part],
+        state: {
+          status,
+          input: (execution.args || {}) as Record<string, unknown>,
+          title: toolName,
+          ...(status === 'error' ? { error: output || `${toolName} failed` } : output ? { output } : {}),
+          time: { start: timestamp, ...(status !== 'running' ? { end: timestamp } : {}) },
+        },
+        time: { start: timestamp, ...(status !== 'running' ? { end: timestamp } : {}) },
+      } as Part],
     });
   });
 
   return entries;
 };
 
-export const toUiQuestionRequest = (request: PiInteractiveRequestViewState): QuestionRequest => ({
+export const projectPiInteractiveRequestToQuestionRequest = (request: PiInteractiveRequestViewState): QuestionRequest => ({
   id: request.id,
   sessionID: request.sessionId,
   questions: Array.isArray(request.questions) && request.questions.length > 0
@@ -355,43 +376,16 @@ export const toUiQuestionRequest = (request: PiInteractiveRequestViewState): Que
   },
 });
 
-export const extractPiQuestionResponseValue = (
-  request: PiInteractiveRequestViewState,
-  answers: string[] | string[][],
-): string | boolean => {
-  const normalized = Array.isArray(answers) && Array.isArray(answers[0])
-    ? (answers as string[][])
-    : [answers as string[]];
-  const firstGroup = normalized[0] ?? [];
-  const firstAnswer = typeof firstGroup[0] === 'string' ? firstGroup[0].trim() : '';
-
-  if (request.method === 'confirm') {
-    return firstAnswer.length === 0 || firstAnswer.toLowerCase() === 'confirm' || firstAnswer.toLowerCase() === 'yes';
-  }
-
-  return firstAnswer;
-};
-
-export const buildSessionsByDirectory = (sessions: Session[]): Map<string, Session[]> => {
-  const grouped = new Map<string, Session[]>();
-  for (const session of sessions) {
-    const key = normalizePath((session as { directory?: string | null }).directory ?? null) || '__no_directory__';
-    const existing = grouped.get(key) || [];
-    grouped.set(key, [...existing, session]);
-  }
-  return grouped;
-};
-
-export const projectPiStateToQuestions = (sessions: Record<string, PiClientSessionState>): Map<string, QuestionRequest[]> => {
+export const projectPiSessionsToQuestions = (sessions: Record<string, PiClientSessionState>): Map<string, QuestionRequest[]> => {
   const next = new Map<string, QuestionRequest[]>();
   for (const session of Object.values(sessions)) {
     if (!session.interactiveRequests.length) continue;
-    next.set(session.id, session.interactiveRequests.map(toUiQuestionRequest));
+    next.set(session.id, session.interactiveRequests.map(projectPiInteractiveRequestToQuestionRequest));
   }
   return next;
 };
 
-export const piSessionStatusToUiStatus = (status: PiSessionViewState['status']): { type: 'idle' | 'busy' | 'retry' } => {
+export const projectPiSessionStatusToRuntimeStatus = (status: PiSessionViewState['status']): { type: 'idle' | 'busy' | 'retry' } => {
   if (status === 'retrying') {
     return { type: 'retry' };
   }
@@ -401,48 +395,41 @@ export const piSessionStatusToUiStatus = (status: PiSessionViewState['status']):
   return { type: 'idle' };
 };
 
-export const projectPiStateToStatus = (sessions: Record<string, PiClientSessionState>): Map<string, { type: 'idle' | 'busy' | 'retry'; confirmedAt?: number }> => {
+export const projectPiSessionsToRuntimeStatus = (sessions: Record<string, PiClientSessionState>): Map<string, { type: 'idle' | 'busy' | 'retry'; confirmedAt?: number }> => {
   const next = new Map<string, { type: 'idle' | 'busy' | 'retry'; confirmedAt?: number }>();
   for (const session of Object.values(sessions)) {
-    next.set(session.id, { ...piSessionStatusToUiStatus(session.status), confirmedAt: session.updatedAt });
+    next.set(session.id, { ...projectPiSessionStatusToRuntimeStatus(session.status), confirmedAt: session.updatedAt });
   }
   return next;
 };
 
-export const getPiUiProviders = (): { providers: import('@opencode-ai/sdk/v2/client').Provider[]; default: Record<string, string> } => ({
-  providers: [{
-    id: 'pi',
-    name: 'Pi Runtime',
-    env: [],
-    npm: [],
-    models: {
-      default: {
-        id: 'default',
-        name: 'Default',
-      },
-    },
-  } as unknown as import('@opencode-ai/sdk/v2/client').Provider],
-  default: {
-    chat: 'pi/default',
-  },
-});
+export const buildRuntimeSessionsByDirectory = (sessions: Session[]): Map<string, Session[]> => {
+  const grouped = new Map<string, Session[]>();
+  for (const session of sessions) {
+    const key = normalizePath((session as { directory?: string | null }).directory ?? null) || '__no_directory__';
+    const existing = grouped.get(key) || [];
+    grouped.set(key, [...existing, session]);
+  }
+  return grouped;
+};
 
-export const getPiUiAgents = (): import('@opencode-ai/sdk/v2/client').Agent[] => {
-  const model = { providerID: 'pi', modelID: 'default' };
-  return [
-    {
-      name: 'build',
-      description: 'Pi build agent',
-      mode: 'primary',
-      model,
-      permission: {},
-    } as import('@opencode-ai/sdk/v2/client').Agent,
-    {
-      name: 'plan',
-      description: 'Pi planning agent',
-      mode: 'all',
-      model,
-      permission: {},
-    } as import('@opencode-ai/sdk/v2/client').Agent,
-  ];
+const contentBlocksToText = (blocks: PiContentBlock[] | undefined): string => {
+  if (!Array.isArray(blocks) || blocks.length === 0) {
+    return '';
+  }
+
+  return blocks.map((block) => {
+    if (isTextBlock(block)) return block.text;
+    if (isThinkingBlock(block)) return block.thinking;
+    if (isToolCallBlock(block)) {
+      return joinNonEmpty([
+        `Tool call: ${normalizeToolName(block.name)}`,
+        block.arguments ? stringify(block.arguments) : '',
+      ]);
+    }
+    if (isImageBlock(block)) {
+      return `[Image${block.mimeType ? ` ${block.mimeType}` : ''}]`;
+    }
+    return getBlockFallbackText(block);
+  }).filter(Boolean).join('\n\n');
 };

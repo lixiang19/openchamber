@@ -1,7 +1,7 @@
 import React from 'react';
 import { RiArrowLeftLine } from '@remixicon/react';
 import { useShallow } from 'zustand/react/shallow';
-import type { Message, Part } from '@opencode-ai/sdk/v2';
+import type { Message, Part } from '@/lib/runtime/types';
 
 import { ChatInput } from './ChatInput';
 import { useSessionStore } from '@/stores/useSessionStore';
