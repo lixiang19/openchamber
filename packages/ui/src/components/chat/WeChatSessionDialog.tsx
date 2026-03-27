@@ -27,6 +27,10 @@ interface WeChatSessionDialogProps {
   sessionId: string;
   sessionTitle: string;
   sessionCwd: string;
+  triggerClassName?: string;
+  triggerVariant?: React.ComponentProps<typeof Button>['variant'];
+  triggerSize?: React.ComponentProps<typeof Button>['size'];
+  showTriggerLabel?: boolean;
 }
 
 const API_BASE = '/api/wechat-bridge';
@@ -65,7 +69,15 @@ const statusMeta: Record<WeChatBridgeLoginStatus, { label: string; tone: string;
   error: { label: 'Error', tone: 'text-red-500 bg-red-500/10 border-red-500/20', icon: <RiErrorWarningLine className="size-3.5" /> },
 };
 
-export const WeChatSessionDialog: React.FC<WeChatSessionDialogProps> = ({ sessionId, sessionTitle, sessionCwd }) => {
+export const WeChatSessionDialog: React.FC<WeChatSessionDialogProps> = ({
+  sessionId,
+  sessionTitle,
+  sessionCwd,
+  triggerClassName,
+  triggerVariant = 'outline',
+  triggerSize = 'xs',
+  showTriggerLabel = true,
+}) => {
   const [open, setOpen] = React.useState(false);
   const [status, setStatus] = React.useState<WeChatBridgeStatus>(EMPTY_STATUS);
   const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
@@ -208,14 +220,14 @@ export const WeChatSessionDialog: React.FC<WeChatSessionDialogProps> = ({ sessio
     <>
       <Button
         type="button"
-        variant="outline"
-        size="xs"
+        variant={triggerVariant}
+        size={triggerSize}
         onClick={() => setOpen(true)}
-        className="absolute right-3 top-3 z-20 !font-normal bg-[var(--surface-background)]/95"
+        className={cn('bg-[var(--surface-background)]/95 !font-normal', triggerClassName)}
         aria-label="Connect WeChat to this session"
       >
         <RiRobot2Line className="h-4 w-4" />
-        WeChat
+        {showTriggerLabel ? 'WeChat' : null}
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>

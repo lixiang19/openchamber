@@ -22,8 +22,7 @@ import { useSessionStore } from '@/stores/useSessionStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useUIStore } from '@/stores/useUIStore';
-import { useFileSystemAccess } from '@/hooks/useFileSystemAccess';
-import { isDesktopLocalOriginActive, isTauriShell } from '@/lib/desktop';
+
 import { useDeviceInfo } from '@/lib/device';
 import { sessionEvents } from '@/lib/sessionEvents';
 
@@ -50,7 +49,6 @@ type DeleteDialogState = {
 
 export const SessionDialogs: React.FC = () => {
     const [isDirectoryDialogOpen, setIsDirectoryDialogOpen] = React.useState(false);
-    const [hasShownInitialDirectoryPrompt, setHasShownInitialDirectoryPrompt] = React.useState(false);
     const [deleteDialog, setDeleteDialog] = React.useState<DeleteDialogState | null>(null);
     const [deleteDialogSummaries, setDeleteDialogSummaries] = React.useState<Array<{ session: Session; metadata: WorktreeMetadata }>>([]);
     const [deleteDialogShouldRemoveRemote, setDeleteDialogShouldRemoveRemote] = React.useState(false);
@@ -69,9 +67,8 @@ export const SessionDialogs: React.FC = () => {
     } = useSessionStore();
     const showDeletionDialog = useUIStore((state) => state.showDeletionDialog);
     const setShowDeletionDialog = useUIStore((state) => state.setShowDeletionDialog);
-    const { currentDirectory, homeDirectory, isHomeReady } = useDirectoryStore();
-    const { projects, addProject, activeProjectId } = useProjectsStore();
-    const { requestAccess, startAccessing } = useFileSystemAccess();
+    const { currentDirectory, homeDirectory } = useDirectoryStore();
+    const { projects, activeProjectId } = useProjectsStore();
     const { isMobile, isTablet, hasTouchInput } = useDeviceInfo();
     const useMobileOverlay = isMobile || isTablet || hasTouchInput;
 
@@ -129,56 +126,6 @@ export const SessionDialogs: React.FC = () => {
         loadSessions();
     }, [loadSessions, projectsKey]);
 
-    React.useEffect(() => {
-        if (hasShownInitialDirectoryPrompt || !isHomeReady || projects.length > 0) {
-            return;
-        }
-
-        setHasShownInitialDirectoryPrompt(true);
-
-        if (isTauriShell() && isDesktopLocalOriginActive()) {
-            requestAccess('')
-                .then(async (result) => {
-                    if (!result.success || !result.path) {
-                        if (result.error && result.error !== 'Directory selection cancelled') {
-                            toast.error('Failed to select directory', {
-                                description: result.error,
-                            });
-                        }
-                        return;
-                    }
-
-                    const accessResult = await startAccessing(result.path);
-                    if (!accessResult.success) {
-                        toast.error('Failed to open directory', {
-                            description: accessResult.error || 'Desktop could not grant file access.',
-                        });
-                        return;
-                    }
-
-                    const added = addProject(result.path, { id: result.projectId });
-                    if (!added) {
-                        toast.error('Failed to add project', {
-                            description: 'Please select a valid directory path.',
-                        });
-                    }
-                })
-                .catch((error) => {
-                    console.error('Desktop: Error selecting directory:', error);
-                    toast.error('Failed to select directory');
-                });
-            return;
-        }
-
-        setIsDirectoryDialogOpen(true);
-    }, [
-        addProject,
-        hasShownInitialDirectoryPrompt,
-        isHomeReady,
-        projects.length,
-        requestAccess,
-        startAccessing,
-    ]);
 
     const openDeleteDialog = React.useCallback((payload: { sessions: Session[]; dateLabel?: string; mode?: 'session' | 'worktree'; worktree?: WorktreeMetadata | null }) => {
         setDeleteDialog({

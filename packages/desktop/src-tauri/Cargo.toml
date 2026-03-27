@@ -1,11 +1,11 @@
 [package]
-name = "openchamber-desktop"
+name = "ridge-desktop"
 version = "1.9.0"
 edition = "2021"
 publish = false
 
 [[bin]]
-name = "openchamber-desktop"
+name = "ridge-desktop"
 path = "src/main.rs"
 
 [features]

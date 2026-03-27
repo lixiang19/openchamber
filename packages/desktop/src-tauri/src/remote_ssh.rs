@@ -14,7 +14,7 @@ use std::{
 use tauri::{AppHandle, Emitter, State};
 
 const LOCAL_HOST_ID: &str = "local";
-const SSH_STATUS_EVENT: &str = "openchamber:ssh-instance-status";
+const SSH_STATUS_EVENT: &str = "ridge:ssh-instance-status";
 const DEFAULT_CONNECTION_TIMEOUT_SEC: u16 = 60;
 const DEFAULT_LOCAL_BIND_HOST: &str = "127.0.0.1";
 const DEFAULT_CONTROL_PERSIST_SEC: u16 = 300;
@@ -307,7 +307,7 @@ fn now_millis() -> u64 {
 }
 
 fn settings_file_path() -> PathBuf {
-    if let Ok(dir) = std::env::var("OPENCHAMBER_DATA_DIR") {
+    if let Ok(dir) = std::env::var("RIDGE_DATA_DIR") {
         if !dir.trim().is_empty() {
             return PathBuf::from(dir.trim()).join("settings.json");
         }
@@ -315,7 +315,7 @@ fn settings_file_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_default();
     PathBuf::from(home)
         .join(".config")
-        .join("openchamber")
+        .join("ridge")
         .join("settings.json")
 }
 
@@ -935,9 +935,9 @@ fn askpass_script_content() -> String {
     let script = r#"#!/bin/bash
 PROMPT="$1"
 
-if [[ -n "$OPENCHAMBER_SSH_ASKPASS_VALUE" ]]; then
+if [[ -n "$RIDGE_SSH_ASKPASS_VALUE" ]]; then
   if [[ "$PROMPT" == *"assword"* || "$PROMPT" == *"passphrase"* ]]; then
-    printf '%s\n' "$OPENCHAMBER_SSH_ASKPASS_VALUE"
+    printf '%s\n' "$RIDGE_SSH_ASKPASS_VALUE"
     exit 0
   fi
 fi
@@ -1009,7 +1009,7 @@ fn spawn_master_process(
         .env("DISPLAY", "1");
 
     if let Some(secret) = ssh_password.filter(|value| !value.trim().is_empty()) {
-        command.env("OPENCHAMBER_SSH_ASKPASS_VALUE", secret.trim());
+        command.env("RIDGE_SSH_ASKPASS_VALUE", secret.trim());
     }
 
     command.spawn().with_context(|| {
@@ -1165,7 +1165,7 @@ fn current_remote_openchamber_version(
     run_remote_command(
         parsed,
         control_path,
-        "openchamber --version 2>/dev/null || true",
+        "ridge --version 2>/dev/null || true",
         DEFAULT_CONNECTION_TIMEOUT_SEC,
     )
     .ok()
@@ -1186,26 +1186,26 @@ fn install_openchamber_managed(
     match preferred {
         DesktopSshInstallMethod::Bun => {
             if has_bun {
-                commands.push(format!("bun add -g @openchamber/web@{version}"));
+                commands.push(format!("bun add -g @ridge/web@{version}"));
             }
             if has_npm {
-                commands.push(format!("npm install -g @openchamber/web@{version}"));
+                commands.push(format!("npm install -g @ridge/web@{version}"));
             }
         }
         DesktopSshInstallMethod::Npm => {
             if has_npm {
-                commands.push(format!("npm install -g @openchamber/web@{version}"));
+                commands.push(format!("npm install -g @ridge/web@{version}"));
             }
             if has_bun {
-                commands.push(format!("bun add -g @openchamber/web@{version}"));
+                commands.push(format!("bun add -g @ridge/web@{version}"));
             }
         }
         DesktopSshInstallMethod::DownloadRelease | DesktopSshInstallMethod::UploadBundle => {
             if has_bun {
-                commands.push(format!("bun add -g @openchamber/web@{version}"));
+                commands.push(format!("bun add -g @ridge/web@{version}"));
             }
             if has_npm {
-                commands.push(format!("npm install -g @openchamber/web@{version}"));
+                commands.push(format!("npm install -g @ridge/web@{version}"));
             }
         }
     }
@@ -1229,7 +1229,7 @@ fn install_openchamber_managed(
         }
     }
 
-    Err(last_error.unwrap_or_else(|| anyhow!("Failed to install OpenChamber on remote host")))
+    Err(last_error.unwrap_or_else(|| anyhow!("Failed to install Ridge on remote host")))
 }
 
 fn parse_probe_status_line(line: Option<&str>, prefix: &str) -> Option<u16> {
@@ -1299,7 +1299,7 @@ fn probe_remote_system_info(
         if is_auth_http_status(info_status) {
             if openchamber_password.is_some() && auth_status != 200 {
                 return Err(anyhow!(format!(
-                    "Remote OpenChamber requires UI authentication and configured password was rejected (auth status {auth_status})"
+                    "Remote Ridge requires UI authentication and configured password was rejected (auth status {auth_status})"
                 )));
             }
 
@@ -1308,14 +1308,14 @@ fn probe_remote_system_info(
             }
 
             return Err(anyhow!(
-                "Remote OpenChamber requires UI authentication on /api/system/info; configure OpenChamber UI password"
+                "Remote Ridge requires UI authentication on /api/system/info; configure Ridge UI password"
             ));
         }
     } else if is_liveness_http_status(health_status) {
         return Ok(RemoteSystemInfo::default());
     } else {
         return Err(anyhow!(format!(
-            "Remote OpenChamber probe failed (info status {info_status}, health status {health_status})"
+            "Remote Ridge probe failed (info status {info_status}, health status {health_status})"
         )));
     }
 
@@ -1323,7 +1323,7 @@ fn probe_remote_system_info(
     if info.openchamber_version.is_none() {
         if let Ok(value) = serde_json::from_str::<Value>(&body) {
             info.openchamber_version = value
-                .get("openchamberVersion")
+                .get("ridgeVersion")
                 .and_then(Value::as_str)
                 .map(|v| v.to_string());
             info.runtime = value
@@ -1366,7 +1366,7 @@ fn start_remote_server_managed(
     instance: &DesktopSshInstance,
     desired_port: u16,
 ) -> Result<u16> {
-    let mut env_prefix = "OPENCHAMBER_RUNTIME=ssh-remote".to_string();
+    let mut env_prefix = "RIDGE_RUNTIME=ssh-remote".to_string();
     if let Some(secret) = instance
         .auth
         .openchamber_password
@@ -1376,11 +1376,11 @@ fn start_remote_server_managed(
         .filter(|v| !v.is_empty())
     {
         env_prefix.push(' ');
-        env_prefix.push_str("OPENCHAMBER_UI_PASSWORD=");
+        env_prefix.push_str("RIDGE_UI_PASSWORD=");
         env_prefix.push_str(&shell_quote(&secret));
     }
     let script = format!(
-        "{env_prefix} openchamber serve --daemon --hostname 127.0.0.1 --port {desired_port}"
+        "{env_prefix} ridge serve --daemon --hostname 127.0.0.1 --port {desired_port}"
     );
     let output = run_remote_command(
         parsed,
@@ -1567,7 +1567,7 @@ fn wait_local_forward_ready(local_port: u16) -> Result<()> {
         std::thread::sleep(Duration::from_millis(250));
     }
     Err(anyhow!(
-        "Timed out waiting for forwarded OpenChamber health"
+        "Timed out waiting for forwarded Ridge health"
     ))
 }
 
@@ -1934,14 +1934,14 @@ impl DesktopSshManagerInner {
             DesktopSshRemoteMode::External => {
                 let Some(port) = instance.remote_openchamber.preferred_port else {
                     return Err(anyhow!(
-                        "External mode requires a preferred remote OpenChamber port"
+                        "External mode requires a preferred remote Ridge port"
                     ));
                 };
                 self.set_status(
                     app,
                     &instance.id,
                     DesktopSshPhase::ServerDetecting,
-                    Some("Probing external OpenChamber server".to_string()),
+                    Some("Probing external Ridge server".to_string()),
                     None,
                     None,
                     Some(port),
@@ -1957,7 +1957,7 @@ impl DesktopSshManagerInner {
                 )
                 .map_err(|err| {
                     anyhow!(format!(
-                        "External OpenChamber server probe failed on configured remote port: {err}"
+                        "External Ridge server probe failed on configured remote port: {err}"
                     ))
                 })?;
                 Ok((port, false))
@@ -1967,7 +1967,7 @@ impl DesktopSshManagerInner {
                     app,
                     &instance.id,
                     DesktopSshPhase::RemoteProbe,
-                    Some("Checking remote OpenChamber installation".to_string()),
+                    Some("Checking remote Ridge installation".to_string()),
                     None,
                     None,
                     None,
@@ -1982,7 +1982,7 @@ impl DesktopSshManagerInner {
                         app,
                         &instance.id,
                         DesktopSshPhase::Installing,
-                        Some("Installing OpenChamber on remote host".to_string()),
+                        Some("Installing Ridge on remote host".to_string()),
                         None,
                         None,
                         None,
@@ -2002,7 +2002,7 @@ impl DesktopSshManagerInner {
                         &instance.id,
                         DesktopSshPhase::Updating,
                         Some(format!(
-                            "Updating remote OpenChamber from {} to {}",
+                            "Updating remote Ridge from {} to {}",
                             installed_version
                                 .clone()
                                 .unwrap_or_else(|| "unknown".to_string()),
@@ -2027,7 +2027,7 @@ impl DesktopSshManagerInner {
                     app,
                     &instance.id,
                     DesktopSshPhase::ServerDetecting,
-                    Some("Detecting managed OpenChamber server".to_string()),
+                    Some("Detecting managed Ridge server".to_string()),
                     None,
                     None,
                     None,
@@ -2055,7 +2055,7 @@ impl DesktopSshManagerInner {
                         app,
                         &instance.id,
                         DesktopSshPhase::ServerStarting,
-                        Some("Starting managed OpenChamber server".to_string()),
+                        Some("Starting managed Ridge server".to_string()),
                         None,
                         None,
                         None,
@@ -2074,7 +2074,7 @@ impl DesktopSshManagerInner {
                 }
 
                 let Some(port) = remote_port else {
-                    return Err(anyhow!("Failed to determine remote OpenChamber port"));
+                    return Err(anyhow!("Failed to determine remote Ridge port"));
                 };
 
                 if !remote_server_running(
@@ -2084,7 +2084,7 @@ impl DesktopSshManagerInner {
                     configured_openchamber_password(instance),
                 ) {
                     return Err(anyhow!(
-                        "Managed OpenChamber server failed to become reachable"
+                        "Managed Ridge server failed to become reachable"
                     ));
                 }
 
@@ -2904,7 +2904,7 @@ mod tests {
     #[test]
     fn parse_ssh_config_candidates_extracts_host_entries() {
         let temp =
-            std::env::temp_dir().join(format!("openchamber-ssh-import-{}.txt", now_millis()));
+            std::env::temp_dir().join(format!("ridge-ssh-import-{}.txt", now_millis()));
         fs::write(
             &temp,
             "\nHost prod\n  HostName 10.0.0.1\nHost *.dev !skip\nHost *\n",

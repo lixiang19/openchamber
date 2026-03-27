@@ -31,7 +31,7 @@ const persistToLocalStorage = (settings: DesktopSettings) => {
   }
   if (settings.homeDirectory) {
     localStorage.setItem('homeDirectory', settings.homeDirectory);
-    window.__OPENCHAMBER_HOME__ = settings.homeDirectory;
+    window.__RIDGE_HOME__ = settings.homeDirectory;
   }
   if (Array.isArray(settings.projects) && settings.projects.length > 0) {
     localStorage.setItem('projects', JSON.stringify(settings.projects));
@@ -165,6 +165,14 @@ const sanitizeProjects = (value: unknown): DesktopSettings['projects'] | undefin
       path: normalizedPath,
     };
 
+    if (candidate.source === 'default' || candidate.source === 'managed' || candidate.source === 'external') {
+      project.source = candidate.source;
+    }
+    if (candidate.templateId === null) {
+      (project as unknown as Record<string, unknown>).templateId = null;
+    } else if (typeof candidate.templateId === 'string' && candidate.templateId.trim().length > 0) {
+      (project as unknown as Record<string, unknown>).templateId = candidate.templateId.trim();
+    }
     if (typeof candidate.label === 'string' && candidate.label.trim().length > 0) {
       project.label = candidate.label.trim();
     }
@@ -895,7 +903,7 @@ export const syncDesktopSettings = async (): Promise<void> => {
     }
 
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent<DesktopSettings>('openchamber:settings-synced', { detail: settings }));
+      window.dispatchEvent(new CustomEvent<DesktopSettings>('ridge:settings-synced', { detail: settings }));
     }
   };
 

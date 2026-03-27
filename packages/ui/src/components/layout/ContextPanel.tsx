@@ -327,8 +327,8 @@ export const ContextPanel: React.FC = () => {
       }
 
       const directThemeSync = (frameWindow as unknown as {
-        __openchamberApplyThemeSync?: (themePayload: typeof payload) => void;
-      }).__openchamberApplyThemeSync;
+        __ridgeApplyThemeSync?: (themePayload: typeof payload) => void;
+      }).__ridgeApplyThemeSync;
 
       if (typeof directThemeSync === 'function') {
         try {
@@ -341,7 +341,7 @@ export const ContextPanel: React.FC = () => {
 
       frameWindow.postMessage(
         {
-          type: 'openchamber:theme-sync',
+          type: 'ridge:theme-sync',
           payload,
         },
         window.location.origin,
@@ -362,8 +362,8 @@ export const ContextPanel: React.FC = () => {
 
       const payload = { visible: activeChatTabID === tabID };
       const directVisibilitySync = (frameWindow as unknown as {
-        __openchamberSetEmbeddedVisibility?: (visibilityPayload: typeof payload) => void;
-      }).__openchamberSetEmbeddedVisibility;
+        __ridgeSetEmbeddedVisibility?: (visibilityPayload: typeof payload) => void;
+      }).__ridgeSetEmbeddedVisibility;
 
       if (typeof directVisibilitySync === 'function') {
         try {
@@ -376,7 +376,7 @@ export const ContextPanel: React.FC = () => {
 
       frameWindow.postMessage(
         {
-          type: 'openchamber:embedded-visibility',
+          type: 'ridge:embedded-visibility',
           payload,
         },
         window.location.origin,

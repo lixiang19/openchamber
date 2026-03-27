@@ -41,7 +41,7 @@ const TUNNEL_BOOTSTRAP_TTL_MAX_MS = 24 * 60 * 60 * 1000;
 const TUNNEL_SESSION_TTL_DEFAULT_MS = 8 * 60 * 60 * 1000;
 const TUNNEL_SESSION_TTL_MIN_MS = 5 * 60 * 1000;
 const TUNNEL_SESSION_TTL_MAX_MS = 24 * 60 * 60 * 1000;
-const CLI_BIN_NAME = 'opchat';
+const CLI_BIN_NAME = 'ridge';
 const CONNECT_TTL_PICKER_OPTIONS = [
   { value: String(3 * 60 * 1000), label: '3m' },
   { value: String(TUNNEL_BOOTSTRAP_TTL_DEFAULT_MS), label: '30m' },
@@ -938,7 +938,7 @@ function generateCompletionScript(shell) {
   if (normalized === 'bash') {
     return `# Bash completion for ${CLI_BIN_NAME} tunnel
 # Add to ~/.bashrc: eval "$(${CLI_BIN_NAME} tunnel completion bash)"
-_opchat_tunnel() {
+_ridge_tunnel() {
   local cur prev commands tunnel_commands profile_commands common_flags start_flags
   COMPREPLY=()
   cur="\${COMP_WORDS[COMP_CWORD]}"
@@ -979,7 +979,7 @@ _opchat_tunnel() {
   COMPREPLY=( $(compgen -W "\${common_flags}" -- "\${cur}") )
   return 0
 }
-complete -F _opchat_tunnel ${CLI_BIN_NAME}
+complete -F _ridge_tunnel ${CLI_BIN_NAME}
 `;
   }
 
@@ -988,7 +988,7 @@ complete -F _opchat_tunnel ${CLI_BIN_NAME}
 # Zsh completion for ${CLI_BIN_NAME} tunnel
 # Add to ~/.zshrc: eval "$(${CLI_BIN_NAME} tunnel completion zsh)"
 
-_opchat() {
+_ridge() {
   local -a commands tunnel_commands profile_commands
 
   commands=(
@@ -1044,7 +1044,7 @@ _opchat() {
   esac
 }
 
-compdef _opchat ${CLI_BIN_NAME}
+compdef _ridge ${CLI_BIN_NAME}
 `;
   }
 

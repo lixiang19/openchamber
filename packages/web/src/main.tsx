@@ -1,17 +1,17 @@
 import { createWebAPIs } from './api';
 import { registerSW } from 'virtual:pwa-register';
 
-import type { RuntimeAPIs } from '@openchamber/ui/lib/api/types';
-import '@openchamber/ui/index.css';
-import '@openchamber/ui/styles/fonts';
+import type { RuntimeAPIs } from '@ridge/ui/lib/api/types';
+import '@ridge/ui/index.css';
+import '@ridge/ui/styles/fonts';
 
 declare global {
   interface Window {
-    __OPENCHAMBER_RUNTIME_APIS__?: RuntimeAPIs;
+    __RIDGE_RUNTIME_APIS__?: RuntimeAPIs;
   }
 }
 
-window.__OPENCHAMBER_RUNTIME_APIS__ = createWebAPIs();
+window.__RIDGE_RUNTIME_APIS__ = createWebAPIs();
 
 if (import.meta.env.PROD) {
   registerSW({
@@ -25,4 +25,4 @@ if (import.meta.env.PROD) {
     .catch(() => {});
 }
 
-import('@openchamber/ui/main');
+import('@ridge/ui/main');

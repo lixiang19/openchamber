@@ -102,6 +102,100 @@ const createRequestLabel = (method) => {
   }
 };
 
+const normalizeQuestionOptions = (options) => {
+  if (!Array.isArray(options)) {
+    return [];
+  }
+
+  return options.flatMap((option) => {
+    if (typeof option === 'string') {
+      const label = option.trim();
+      return label ? [{ label, description: '' }] : [];
+    }
+    if (!option || typeof option !== 'object') {
+      return [];
+    }
+
+    const candidate = option;
+    const label = typeof candidate.label === 'string' ? candidate.label.trim() : '';
+    if (!label) {
+      return [];
+    }
+
+    const description = typeof candidate.description === 'string' ? candidate.description : undefined;
+    return [{ label, ...(description ? { description } : {}) }];
+  });
+};
+
+const normalizeInteractiveQuestion = (question, fallbackHeader) => {
+  if (!question || typeof question !== 'object') {
+    return null;
+  }
+
+  const prompt = typeof question.question === 'string' ? question.question.trim() : '';
+  if (!prompt) {
+    return null;
+  }
+
+  const options = normalizeQuestionOptions(question.options);
+  return {
+    ...(typeof question.header === 'string' && question.header.trim()
+      ? { header: question.header.trim() }
+      : fallbackHeader
+        ? { header: fallbackHeader }
+        : {}),
+    question: prompt,
+    options,
+    multiple: question.multiple === true,
+    allowCustom: options.length === 0 ? true : question.allowCustom === true,
+  };
+};
+
+const createQuestionRequest = (record, payload) => {
+  const id = `pi-ui-${crypto.randomUUID()}`;
+  const title = normalizeString(payload?.title) || createRequestLabel('question');
+  const normalizedQuestions = Array.isArray(payload?.questions)
+    ? payload.questions
+        .map((question) => normalizeInteractiveQuestion(question, title || 'Input required'))
+        .filter(Boolean)
+    : [];
+
+  const questions = normalizedQuestions.length > 0
+    ? normalizedQuestions
+    : [{
+        ...(title ? { header: title } : {}),
+        question: normalizeString(payload?.message) || title || 'Provide a response',
+        options: normalizeQuestionOptions(payload?.options),
+        multiple: false,
+        allowCustom: normalizeQuestionOptions(payload?.options).length === 0,
+      }];
+
+  return {
+    id,
+    sessionId: record.id,
+    method: 'question',
+    title: title || createRequestLabel('question'),
+    message: typeof payload?.message === 'string' ? payload.message : questions[0]?.question || '',
+    questions,
+    bridgeKind: 'question',
+    webSupport: 'supported',
+    createdAt: Date.now(),
+  };
+};
+
+const normalizeInteractiveResponse = (response) => {
+  if (Array.isArray(response) && Array.isArray(response[0])) {
+    return response.map((group) => Array.isArray(group) ? group.filter((value) => typeof value === 'string') : []);
+  }
+  if (Array.isArray(response)) {
+    return [response.filter((value) => typeof value === 'string')];
+  }
+  if (typeof response === 'string') {
+    return [[response]];
+  }
+  return [];
+};
+
 const serializeToolExecutions = (toolExecutions) => Array.from(toolExecutions.values()).map((entry) => ({ ...entry }));
 const serializeInteractiveRequests = (interactiveRequests) => Array.from(interactiveRequests.values()).map((entry) => ({ ...entry }));
 const serializeStatusEntries = (statusEntries) => Array.from(statusEntries.entries()).map(([key, text]) => ({ key, text }));
@@ -209,31 +303,19 @@ export const createPiSdkHost = () => {
     record.status = 'idle';
   };
 
-  const createInteractiveRequest = (record, method, payload) => {
-    const id = `pi-ui-${crypto.randomUUID()}`;
-    return new Promise((resolve) => {
-      const request = {
-        id,
-        sessionId: record.id,
-        method,
-        title: normalizeString(payload?.title) || createRequestLabel(method),
-        message: typeof payload?.message === 'string' ? payload.message : '',
-        placeholder: typeof payload?.placeholder === 'string' ? payload.placeholder : '',
-        options: Array.isArray(payload?.options) ? payload.options.filter((item) => typeof item === 'string') : [],
-        prefill: typeof payload?.prefill === 'string' ? payload.prefill : '',
-        questions: Array.isArray(payload?.questions) ? cloneJson(payload.questions) : [],
-        bridgeKind: typeof payload?.bridgeKind === 'string' ? payload.bridgeKind : undefined,
-        webSupport: typeof payload?.webSupport === 'string' ? payload.webSupport : undefined,
-        createdAt: Date.now(),
-      };
-      record.interactiveRequests.set(id, request);
-      interactiveRequestIndex.set(id, { record, resolve, request });
-      emitEventEnvelope(record, 'pi_ui_event', {
-        kind: 'interactive_request',
-        request,
-      });
+  const createInteractiveRequest = (record, method, payload) => new Promise((resolve) => {
+    if (method !== 'question') {
+      throw new Error(`Unsupported interactive method in web host: ${method}`);
+    }
+
+    const request = createQuestionRequest(record, payload);
+    record.interactiveRequests.set(request.id, request);
+    interactiveRequestIndex.set(request.id, { record, resolve, request });
+    emitEventEnvelope(record, 'pi_ui_event', {
+      kind: 'interactive_request',
+      request,
     });
-  };
+  });
 
   const themeStub = new Proxy({}, {
     get() {
@@ -247,17 +329,14 @@ export const createPiSdkHost = () => {
   });
 
   const createExtensionUiContext = (record) => ({
-    async select(title, options) {
-      const result = await createInteractiveRequest(record, 'select', { title, options });
-      return typeof result === 'string' ? result : undefined;
+    async select() {
+      throw new Error('ctx.ui.select() is not supported in the web host. Use the custom question tool instead.');
     },
-    async confirm(title, message) {
-      const result = await createInteractiveRequest(record, 'confirm', { title, message });
-      return result === true;
+    async confirm() {
+      throw new Error('ctx.ui.confirm() is not supported in the web host. Use the custom question tool instead.');
     },
-    async input(title, placeholder) {
-      const result = await createInteractiveRequest(record, 'input', { title, placeholder });
-      return typeof result === 'string' ? result : undefined;
+    async input() {
+      throw new Error('ctx.ui.input() is not supported in the web host. Use the custom question tool instead.');
     },
     notify(message, type = 'info') {
       emitNotification(record, type, message);
@@ -338,9 +417,8 @@ export const createPiSdkHost = () => {
     getEditorText() {
       return record.editorText || '';
     },
-    async editor(title, prefill) {
-      const result = await createInteractiveRequest(record, 'editor', { title, prefill });
-      return typeof result === 'string' ? result : undefined;
+    async editor() {
+      throw new Error('ctx.ui.editor() is not supported in the web host. Use the custom question tool instead.');
     },
     setEditorComponent() {},
     get theme() {
@@ -852,16 +930,9 @@ export const createPiSdkHost = () => {
       const { record, resolve, request } = indexed;
       interactiveRequestIndex.delete(requestId);
       record.interactiveRequests.delete(requestId);
-      if (request.method === 'confirm') {
-        resolve(response === true);
-      } else if (request.method === 'select') {
-        resolve(typeof response === 'string' ? response : undefined);
-      } else if (request.method === 'question') {
-        // question answers can be array or string
-        resolve(Array.isArray(response) ? response : (typeof response === 'string' ? response : undefined));
-      } else {
-        resolve(typeof response === 'string' ? response : undefined);
-      }
+
+      resolve(normalizeInteractiveResponse(response));
+
       emitEventEnvelope(record, 'pi_ui_event', {
         kind: 'interactive_request_resolved',
         requestId,

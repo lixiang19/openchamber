@@ -107,7 +107,7 @@ export const VSCodeLayout: React.FC = () => {
   const openNewSessionDraft = useSessionStore((state) => state.openNewSessionDraft);
   const [connectionStatus, setConnectionStatus] = React.useState<'connecting' | 'connected' | 'error' | 'disconnected'>(
     () => (typeof window !== 'undefined'
-      ? (window as { __OPENCHAMBER_CONNECTION__?: { status?: string } }).__OPENCHAMBER_CONNECTION__?.status as
+      ? (window as { __RIDGE_CONNECTION__?: { status?: string } }).__RIDGE_CONNECTION__?.status as
         'connecting' | 'connected' | 'error' | 'disconnected' | undefined
       : 'connecting') || 'connecting'
   );
@@ -185,7 +185,7 @@ export const VSCodeLayout: React.FC = () => {
     // before this component registered the event listener.
     const current =
       (typeof window !== 'undefined'
-        ? (window as { __OPENCHAMBER_CONNECTION__?: { status?: string } }).__OPENCHAMBER_CONNECTION__?.status
+        ? (window as { __RIDGE_CONNECTION__?: { status?: string } }).__RIDGE_CONNECTION__?.status
         : undefined) as 'connecting' | 'connected' | 'error' | 'disconnected' | undefined;
     if (current === 'connected' || current === 'connecting' || current === 'error' || current === 'disconnected') {
       setConnectionStatus(current);
@@ -198,8 +198,8 @@ export const VSCodeLayout: React.FC = () => {
         setConnectionStatus(status);
       }
     };
-    window.addEventListener('openchamber:connection-status', handler as EventListener);
-    return () => window.removeEventListener('openchamber:connection-status', handler as EventListener);
+    window.addEventListener('ridge:connection-status', handler as EventListener);
+    return () => window.removeEventListener('ridge:connection-status', handler as EventListener);
   }, []);
 
   // Listen for navigation events from VS Code extension title bar buttons
@@ -215,8 +215,8 @@ export const VSCodeLayout: React.FC = () => {
         setCurrentView('sessions');
       }
     };
-    window.addEventListener('openchamber:navigate', handler as EventListener);
-    return () => window.removeEventListener('openchamber:navigate', handler as EventListener);
+    window.addEventListener('ridge:navigate', handler as EventListener);
+    return () => window.removeEventListener('ridge:navigate', handler as EventListener);
   }, []);
 
   // Bootstrap config and sessions when connected
@@ -241,7 +241,7 @@ export const VSCodeLayout: React.FC = () => {
           }
         })();
 
-        if (debugEnabled) console.log('[OpenChamber][VSCode][bootstrap] attempt', { configInitialized });
+        if (debugEnabled) console.log('[Ridge][VSCode][bootstrap] attempt', { configInitialized });
         if (!configInitialized) {
           await initializeConfig();
         }
@@ -265,7 +265,7 @@ export const VSCodeLayout: React.FC = () => {
         }
         await loadSessions();
         const sessionsError = useSessionStore.getState().error;
-        if (debugEnabled) console.log('[OpenChamber][VSCode][bootstrap] post-load', {
+        if (debugEnabled) console.log('[Ridge][VSCode][bootstrap] post-load', {
           providers: configState.providers.length,
           agents: configState.agents.length,
           sessions: useSessionStore.getState().sessions.length,

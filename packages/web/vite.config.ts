@@ -8,7 +8,7 @@ import { themeStoragePlugin } from '../../vite-theme-plugin';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'));
-const pwaDevEnabled = process.env.OPENCHAMBER_DISABLE_PWA_DEV !== '1';
+const pwaDevEnabled = process.env.RIDGE_DISABLE_PWA_DEV !== '1';
 const reactScanToggle = (process.env.VITE_ENABLE_REACT_SCAN ?? '').toLowerCase();
 const enableReactScan = reactScanToggle === '1' || reactScanToggle === 'true' || reactScanToggle === 'on' || reactScanToggle === 'yes';
 
@@ -61,8 +61,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: [
-      { find: '@openchamber/ui', replacement: path.resolve(__dirname, '../ui/src') },
-      { find: '@openaurora/ui', replacement: path.resolve(__dirname, '../ui/src') },
+      { find: '@ridge/ui', replacement: path.resolve(__dirname, '../ui/src') },
       { find: '@web', replacement: path.resolve(__dirname, './src') },
       { find: '@', replacement: path.resolve(__dirname, '../ui/src') },
     ],
@@ -82,15 +81,15 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/auth': {
-        target: `http://127.0.0.1:${process.env.OPENCHAMBER_PORT || 3001}`,
+        target: `http://127.0.0.1:${process.env.RIDGE_PORT || 3001}`,
         changeOrigin: true,
       },
       '/health': {
-        target: `http://127.0.0.1:${process.env.OPENCHAMBER_PORT || 3001}`,
+        target: `http://127.0.0.1:${process.env.RIDGE_PORT || 3001}`,
         changeOrigin: true,
       },
       '/api': {
-        target: `http://127.0.0.1:${process.env.OPENCHAMBER_PORT || 3001}`,
+        target: `http://127.0.0.1:${process.env.RIDGE_PORT || 3001}`,
         changeOrigin: true,
       },
     },

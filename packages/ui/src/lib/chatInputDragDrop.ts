@@ -1,4 +1,4 @@
-export const CHAT_INPUT_FILE_REFERENCE_MIME = 'application/x-openchamber-chat-file-reference';
+export const CHAT_INPUT_FILE_REFERENCE_MIME = 'application/x-ridge-chat-file-reference';
 
 export type ChatInputFileReferencePayload = {
   kind: 'file';

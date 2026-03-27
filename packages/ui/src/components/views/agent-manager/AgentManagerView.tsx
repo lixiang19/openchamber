@@ -19,14 +19,14 @@ interface AgentManagerViewProps {
 export const AgentManagerView: React.FC<AgentManagerViewProps> = ({ className }) => {
   const isVSCodeRuntime = Boolean(
     (typeof window !== 'undefined'
-      ? (window as unknown as { __OPENCHAMBER_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } })
-          .__OPENCHAMBER_RUNTIME_APIS__?.runtime?.isVSCode
+      ? (window as unknown as { __RIDGE_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } })
+          .__RIDGE_RUNTIME_APIS__?.runtime?.isVSCode
       : false)
   );
   const [connectionStatus, setConnectionStatus] = React.useState<'connecting' | 'connected' | 'error' | 'disconnected'>(
     () =>
       (typeof window !== 'undefined'
-        ? (window as unknown as { __OPENCHAMBER_CONNECTION__?: { status?: string } }).__OPENCHAMBER_CONNECTION__?.status as
+        ? (window as unknown as { __RIDGE_CONNECTION__?: { status?: string } }).__RIDGE_CONNECTION__?.status as
             'connecting' | 'connected' | 'error' | 'disconnected' | undefined
         : 'connecting') || 'connecting'
   );
@@ -52,7 +52,7 @@ export const AgentManagerView: React.FC<AgentManagerViewProps> = ({ className })
 
     const current =
       (typeof window !== 'undefined'
-        ? (window as unknown as { __OPENCHAMBER_CONNECTION__?: { status?: string } }).__OPENCHAMBER_CONNECTION__?.status
+        ? (window as unknown as { __RIDGE_CONNECTION__?: { status?: string } }).__RIDGE_CONNECTION__?.status
         : undefined) as 'connecting' | 'connected' | 'error' | 'disconnected' | undefined;
     if (current === 'connected' || current === 'connecting' || current === 'error' || current === 'disconnected') {
       setConnectionStatus(current);
@@ -65,8 +65,8 @@ export const AgentManagerView: React.FC<AgentManagerViewProps> = ({ className })
         setConnectionStatus(status);
       }
     };
-    window.addEventListener('openchamber:connection-status', handler as EventListener);
-    return () => window.removeEventListener('openchamber:connection-status', handler as EventListener);
+    window.addEventListener('ridge:connection-status', handler as EventListener);
+    return () => window.removeEventListener('ridge:connection-status', handler as EventListener);
   }, [isVSCodeRuntime]);
 
   React.useEffect(() => {
@@ -111,7 +111,7 @@ export const AgentManagerView: React.FC<AgentManagerViewProps> = ({ className })
         await loadSessions();
 
         if (streamDebugEnabled()) {
-          console.log('[OpenChamber][VSCode][agentManager] bootstrap complete', {
+          console.log('[Ridge][VSCode][agentManager] bootstrap complete', {
             providers: configState.providers.length,
             agents: configState.agents.length,
             sessions: useSessionStore.getState().sessions.length,

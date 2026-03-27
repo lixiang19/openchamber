@@ -272,13 +272,13 @@ export const DirectoryTree: React.FC<DirectoryTreeProps> = ({
         applyPinned(detail.pinnedDirectories);
       }
     };
-    window.addEventListener('openchamber:settings-synced', handleSettingsSynced);
+    window.addEventListener('ridge:settings-synced', handleSettingsSynced);
 
     void loadPinnedDirectories();
 
     return () => {
       cancelled = true;
-      window.removeEventListener('openchamber:settings-synced', handleSettingsSynced);
+      window.removeEventListener('ridge:settings-synced', handleSettingsSynced);
     };
   }, [stripTrailingSlashes]);
 

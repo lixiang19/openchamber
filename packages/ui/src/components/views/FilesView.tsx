@@ -1684,7 +1684,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
     setTextViewMode('edit');
   }, [selectedFile?.path]);
 
-  const MD_VIEWER_MODE_KEY = 'openchamber:files:md-viewer-mode';
+  const MD_VIEWER_MODE_KEY = 'ridge:files:md-viewer-mode';
 
   React.useEffect(() => {
     try {

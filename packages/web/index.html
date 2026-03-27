@@ -281,13 +281,13 @@
       const initialInstallNameOverride = getQueryInstallNameOverride();
       void updateManifest(initialInstallNameOverride);
 
-      window.__OPENAURORA_GET_PWA_INSTALL_NAME__ = () => getStoredInstallName();
-      window.__OPENAURORA_SET_PWA_INSTALL_NAME__ = (value) => {
+      window.__RIDGE_GET_PWA_INSTALL_NAME__ = () => getStoredInstallName();
+      window.__RIDGE_SET_PWA_INSTALL_NAME__ = (value) => {
         const resolvedName = setStoredInstallName(value);
         void updateManifest(resolvedName);
         return resolvedName;
       };
-      window.__OPENAURORA_UPDATE_PWA_MANIFEST__ = () => {
+      window.__RIDGE_UPDATE_PWA_MANIFEST__ = () => {
         refreshManifestFromStorage();
       };
     </script>

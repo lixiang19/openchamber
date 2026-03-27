@@ -17,6 +17,7 @@ import { useGitStore } from '@/stores/useGitStore';
 import { useDeviceInfo } from '@/lib/device';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { NewWorktreeDialog } from './NewWorktreeDialog';
+import { CreateProjectDialog } from './CreateProjectDialog';
 import { ProjectNotesTodoPanel } from './ProjectNotesTodoPanel';
 import { useSessionFoldersStore } from '@/stores/useSessionFoldersStore';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -174,6 +175,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
   const [newWorktreeDialogOpen, setNewWorktreeDialogOpen] = React.useState(false);
   const [updateDialogOpen, setUpdateDialogOpen] = React.useState(false);
   const [projectNotesPanelOpen, setProjectNotesPanelOpen] = React.useState(false);
+  const [createProjectDialogOpen, setCreateProjectDialogOpen] = React.useState(false);
   const [openSidebarMenuKey, setOpenSidebarMenuKey] = React.useState<string | null>(null);
   const [renamingFolderId, setRenamingFolderId] = React.useState<string | null>(null);
   const [renameFolderDraft, setRenameFolderDraft] = React.useState('');
@@ -669,6 +671,10 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
     setDeleteFolderConfirm(null);
     deleteFolder(scopeKey, folderId);
   }, [deleteFolderConfirm, deleteFolder]);
+
+  const handleOpenCreateProjectDialog = React.useCallback(() => {
+    setCreateProjectDialogOpen(true);
+  }, []);
 
   const handleOpenDirectoryDialog = React.useCallback(() => {
     if (!tauriIpcAvailable || !isDesktopLocalOriginActive()) {
@@ -1321,6 +1327,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
 
       <SidebarHeader
         hideDirectoryControls={hideDirectoryControls}
+        handleOpenCreateProjectDialog={handleOpenCreateProjectDialog}
         handleOpenDirectoryDialog={handleOpenDirectoryDialog}
         handleNewSession={handleSidebarNewSession}
         headerActionIconClass={headerActionIconClass}
@@ -1412,6 +1419,11 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
           onSave={handleSaveProjectEdit}
         />
       ) : null}
+
+      <CreateProjectDialog
+        open={createProjectDialogOpen}
+        onOpenChange={setCreateProjectDialogOpen}
+      />
 
       <NewWorktreeDialog
         open={newWorktreeDialogOpen}

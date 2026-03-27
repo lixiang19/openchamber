@@ -201,6 +201,14 @@ const sanitizeProjects = (value: unknown): ProjectEntry[] => {
       path: normalizedPath,
     };
 
+    if (candidate.source === 'default' || candidate.source === 'managed' || candidate.source === 'external') {
+      project.source = candidate.source;
+    }
+    if (candidate.templateId === null) {
+      project.templateId = null;
+    } else if (typeof candidate.templateId === 'string' && candidate.templateId.trim().length > 0) {
+      project.templateId = candidate.templateId.trim();
+    }
     if (typeof candidate.label === 'string' && candidate.label.trim().length > 0) {
       project.label = candidate.label.trim();
     }
@@ -294,8 +302,8 @@ const getVSCodeWorkspaceProject = (): { projects: ProjectEntry[]; activeProjectI
     return null;
   }
 
-  const runtimeApis = (window as unknown as { __OPENCHAMBER_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } })
-    .__OPENCHAMBER_RUNTIME_APIS__;
+  const runtimeApis = (window as unknown as { __RIDGE_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } })
+    .__RIDGE_RUNTIME_APIS__;
   if (!runtimeApis?.runtime?.isVSCode) {
     return null;
   }
@@ -315,6 +323,7 @@ const getVSCodeWorkspaceProject = (): { projects: ProjectEntry[]; activeProjectI
     id,
     path: normalizedPath,
     label: deriveProjectLabel(normalizedPath),
+    source: 'external',
     addedAt: Date.now(),
     lastOpenedAt: Date.now(),
   };
@@ -384,6 +393,7 @@ export const useProjectsStore = create<ProjectsStore>()(
         id,
         path: normalizedPath,
         label,
+        source: 'external',
         color: pickAutoColor(get().projects),
         addedAt: now,
         lastOpenedAt: now,
@@ -693,7 +703,7 @@ export const useProjectsStore = create<ProjectsStore>()(
 );
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('openchamber:settings-synced', (event: Event) => {
+  window.addEventListener('ridge:settings-synced', (event: Event) => {
     const detail = (event as CustomEvent<DesktopSettings>).detail;
     if (detail && typeof detail === 'object') {
       useProjectsStore.getState().synchronizeFromSettings(detail);

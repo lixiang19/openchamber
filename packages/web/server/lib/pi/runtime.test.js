@@ -54,54 +54,48 @@ describe('pi runtime helpers', () => {
     }
   });
 
-  it('maps extension UI requests into QuestionCard-compatible requests', () => {
+  it('maps native question UI requests into QuestionCard-compatible requests', () => {
     const sessionRecord = { session: { id: 'session-bridge' } };
 
     expect(mapPiUiRequestToQuestionRequest(sessionRecord, {
-      id: 'ui-input',
-      method: 'input',
+      id: 'ui-question',
+      method: 'question',
       bridgeKind: 'question',
-      webSupport: 'priority',
-      title: 'Need a branch name',
-      placeholder: 'feature/pi-bridge',
+      webSupport: 'supported',
+      title: 'Clarify rollout',
+      questions: [{
+        header: 'Rollout',
+        question: 'Which environment should we deploy first?',
+        options: [
+          { label: 'staging', description: 'Smoke test first' },
+          { label: 'production' },
+        ],
+        allowCustom: true,
+      }],
     })).toEqual({
-      id: 'ui-input',
+      id: 'ui-question',
       sessionID: 'session-bridge',
       questions: [{
-        header: 'Need a branch name',
-        question: 'feature/pi-bridge',
-        options: [],
+        header: 'Rollout',
+        question: 'Which environment should we deploy first?',
+        options: [
+          { label: 'staging', description: 'Smoke test first' },
+          { label: 'production' },
+        ],
         multiple: false,
+        allowCustom: true,
       }],
       metadata: {
-        bridgeMethod: 'input',
         bridgeKind: 'question',
-        webSupport: 'priority',
+        webSupport: 'supported',
       },
     });
 
     expect(mapPiUiRequestToQuestionRequest(sessionRecord, {
-      id: 'ui-confirm',
-      method: 'confirm',
-      bridgeKind: 'question',
-      webSupport: 'priority',
-      title: 'Apply patch?',
-      message: 'This edits files',
-    })).toEqual({
-      id: 'ui-confirm',
-      sessionID: 'session-bridge',
-      questions: [{
-        header: 'Apply patch?',
-        question: 'This edits files',
-        options: [{ label: 'Confirm', description: '' }],
-        multiple: false,
-      }],
-      metadata: {
-        bridgeMethod: 'confirm',
-        bridgeKind: 'question',
-        webSupport: 'priority',
-      },
-    });
+      id: 'ui-legacy',
+      method: 'input',
+      title: 'Legacy input',
+    })).toBeNull();
   });
 
 });

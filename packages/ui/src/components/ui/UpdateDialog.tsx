@@ -120,7 +120,7 @@ const WEB_UPDATE_MAX_WAIT_MS = 10 * 60 * 1000;
 
 async function installWebUpdate(): Promise<InstallWebUpdateResult> {
   try {
-    const response = await fetch('/api/openchamber/update-install', {
+    const response = await fetch('/api/ridge/update-install', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
@@ -159,7 +159,7 @@ async function waitForUpdateApplied(
 ): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const response = await fetch('/api/openchamber/update-check', {
+      const response = await fetch('/api/ridge/update-check', {
         method: 'GET',
         headers: { Accept: 'application/json' },
       });
@@ -212,7 +212,7 @@ export const UpdateDialog: React.FC<UpdateDialogProps> = ({
     : 0;
 
   const isWebRuntime = runtimeType === 'web';
-  const updateCommand = info?.updateCommand || 'openchamber update';
+  const updateCommand = info?.updateCommand || 'Updates are disabled in Ridge';
 
   // Reset state when dialog closes
   useEffect(() => {
@@ -258,7 +258,7 @@ export const UpdateDialog: React.FC<UpdateDialogProps> = ({
       window.location.reload();
     } else {
       setWebUpdateState('error');
-      setWebError('Update is taking longer than expected. Wait a bit and refresh, or run: openchamber update');
+      setWebError('Updates are disabled in Ridge. Use a manual deployment flow if you need a newer build.');
     }
   }, [info?.currentVersion]);
 

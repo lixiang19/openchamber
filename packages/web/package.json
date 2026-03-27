@@ -1,20 +1,20 @@
 {
-  "name": "@openchamber/web",
+  "name": "@ridge/web",
   "version": "1.9.0",
   "private": false,
   "type": "module",
   "main": "./server/index.js",
   "types": "./server/index.d.ts",
   "bin": {
-    "opchat": "./bin/cli.js"
+    "ridge": "./bin/cli.js"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "dev": "bun run build:watch",
-    "dev:server": "bun server/index.js --port ${OPENCHAMBER_PORT:-3001}",
-    "dev:server:watch": "nodemon --watch server --ext js --exec \"bun server/index.js --port ${OPENCHAMBER_PORT:-3001}\"",
+    "dev:server": "bun server/index.js --port ${RIDGE_PORT:-3001}",
+    "dev:server:watch": "nodemon --watch server --ext js --exec \"bun server/index.js --port ${RIDGE_PORT:-3001}\"",
     "build": "vite build",
     "build:watch": "vite build --watch",
     "type-check": "tsc --noEmit",

@@ -1,7 +1,7 @@
 /**
- * OpenChamber project-level configuration service.
- * Stores per-project settings in ~/.config/openchamber/<projectId>.json.
- * Migrates from legacy <project>/.openchamber/openchamber.json.
+ * Ridge project-level configuration service.
+ * Stores per-project settings in ~/.config/ridge/<projectId>.json.
+ * Migrates from legacy <project>/.work/ridge.json.
  */
 
 import type { FilesAPI, RuntimeAPIs } from './api/types';
@@ -10,11 +10,11 @@ import { isVSCodeRuntime } from './desktop';
 
 type ProjectRef = { id: string; path: string };
 
-const CONFIG_FILENAME = 'openchamber.json';
+const CONFIG_FILENAME = 'ridge.json';
 // LEGACY_PROJECT_CONFIG: legacy per-project config root inside repo.
 const LEGACY_CONFIG_DIR = '.work';
-const USER_CONFIG_DIR_SEGMENTS = ['.config', 'openchamber'];
-const USER_PROJECTS_DIR_SEGMENTS = ['.config', 'openchamber', 'projects'];
+const USER_CONFIG_DIR_SEGMENTS = ['.config', 'ridge'];
+const USER_PROJECTS_DIR_SEGMENTS = ['.config', 'ridge', 'projects'];
 const SETTINGS_FILENAME = 'settings.json';
 
 const projectIdCache = new Map<string, string>();
@@ -48,7 +48,7 @@ const sha1Hex = async (value: string): Promise<string | null> => {
  */
 function getRuntimeFilesAPI(): FilesAPI | null {
   if (typeof window === 'undefined') return null;
-  const apis = (window as typeof window & { __OPENCHAMBER_RUNTIME_APIS__?: RuntimeAPIs }).__OPENCHAMBER_RUNTIME_APIS__;
+  const apis = (window as typeof window & { __RIDGE_RUNTIME_APIS__?: RuntimeAPIs }).__RIDGE_RUNTIME_APIS__;
   if (apis?.files) {
     return apis.files;
   }
@@ -204,8 +204,8 @@ const writeTextFile = async (path: string, content: string): Promise<boolean> =>
 };
 
 const resolveHomeDirectory = async (): Promise<string | null> => {
-  // VSCode webview sets __OPENCHAMBER_HOME__ to workspace folder (not OS home).
-  // For user config (~/.config/openchamber), always use /api/fs/home in VSCode.
+  // VSCode webview sets __RIDGE_HOME__ to workspace folder (not OS home).
+  // For user config (~/.config/ridge), always use /api/fs/home in VSCode.
   if (!isVSCodeRuntime()) {
     const desktopHome = await getDesktopHomeDirectory().catch(() => null);
     if (desktopHome && desktopHome.trim().length > 0) {
@@ -527,8 +527,8 @@ export async function readOpenChamberConfig(project: ProjectRef): Promise<OpenCh
     }
   }
 
-  // 2) Migrate legacy <project>/.openchamber/openchamber.json.
-  // LEGACY_PROJECT_CONFIG: migrate project-local openchamber.json -> ~/.config/openchamber/projects/<projectId>.json
+  // 2) Migrate legacy <project>/.work/ridge.json.
+  // LEGACY_PROJECT_CONFIG: migrate project-local ridge.json -> ~/.config/ridge/projects/<projectId>.json
   const legacyPath = getLegacyConfigPath(projectDirectory);
   const legacyConfig = parseConfig(await readText(legacyPath));
   if (!legacyConfig) {
@@ -576,7 +576,7 @@ export async function writeOpenChamberConfig(
     const content = JSON.stringify(config, null, 2);
     return await writeTextFile(configPath, content);
   } catch (error) {
-    console.error('Failed to write openchamber config:', error);
+    console.error('Failed to write ridge config:', error);
     return false;
   }
 }

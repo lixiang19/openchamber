@@ -34,17 +34,15 @@ export interface PiSlashCommandInfo {
 export interface PiInteractiveRequestViewState {
   id: string;
   sessionId: string;
-  method: 'input' | 'select' | 'confirm' | 'editor' | 'question';
+  method: 'question';
   title: string;
   message: string;
-  placeholder: string;
-  options: string[];
-  prefill: string;
   questions?: Array<{
     header?: string;
     question: string;
-    options?: string[];
+    options?: Array<{ label: string; description?: string }>;
     multiple?: boolean;
+    allowCustom?: boolean;
   }>;
   bridgeKind?: string;
   webSupport?: string;

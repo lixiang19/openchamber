@@ -17,7 +17,7 @@ COPY . .
 RUN bun run build:web
 
 FROM oven/bun:1 AS runtime
-WORKDIR /home/openchamber
+WORKDIR /home/ridge
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
   bash \
@@ -34,17 +34,17 @@ COPY --from=cloudflare/cloudflared:latest /usr/local/bin/cloudflared /usr/local/
 
 ENV NODE_ENV=production
 
-# Create openchamber user
-RUN useradd -m -s /bin/bash openchamber && mkdir -p /home/openchamber && chown -R openchamber:openchamber /home/openchamber
+# Create ridge user
+RUN useradd -m -s /bin/bash ridge && mkdir -p /home/ridge && chown -R ridge:ridge /home/ridge
 
-# Switch to openchamber user
-USER openchamber
+# Switch to ridge user
+USER ridge
 
-ENV NPM_CONFIG_PREFIX=/home/openchamber/.npm-global
+ENV NPM_CONFIG_PREFIX=/home/ridge/.npm-global
 ENV PATH=${NPM_CONFIG_PREFIX}/bin:${PATH}
 
-RUN npm config set prefix /home/openchamber/.npm-global && mkdir -p /home/openchamber/.npm-global && \
-  mkdir -p /home/openchamber/.local /home/openchamber/.config /home/openchamber/.ssh && \
+RUN npm config set prefix /home/ridge/.npm-global && mkdir -p /home/ridge/.npm-global && \
+  mkdir -p /home/ridge/.local /home/ridge/.config /home/ridge/.ssh && \
   npm install -g opencode-ai
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -54,8 +54,8 @@ COPY --from=builder /app/packages/web/package.json ./packages/web/package.json
 COPY --from=builder /app/packages/web/bin ./packages/web/bin
 COPY --from=builder /app/packages/web/server ./packages/web/server
 COPY --from=builder /app/packages/web/dist ./packages/web/dist
-COPY scripts/docker-entrypoint.sh /home/openchamber/openchamber-entrypoint.sh
+COPY scripts/docker-entrypoint.sh /home/ridge/ridge-entrypoint.sh
 
 EXPOSE 3000
 
-ENTRYPOINT ["sh", "/home/openchamber/openchamber-entrypoint.sh"]
+ENTRYPOINT ["sh", "/home/ridge/ridge-entrypoint.sh"]

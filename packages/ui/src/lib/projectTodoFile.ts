@@ -64,7 +64,7 @@ const getRuntimeFilesAPI = (): FilesAPI | null => {
     return null;
   }
 
-  const apis = (window as typeof window & { __OPENCHAMBER_RUNTIME_APIS__?: RuntimeAPIs }).__OPENCHAMBER_RUNTIME_APIS__;
+  const apis = (window as typeof window & { __RIDGE_RUNTIME_APIS__?: RuntimeAPIs }).__RIDGE_RUNTIME_APIS__;
   return apis?.files ?? null;
 };
 

@@ -2,13 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-const OPENCHAMBER_DATA_DIR = process.env.OPENCHAMBER_DATA_DIR
-  ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-  : path.join(os.homedir(), '.config', 'openchamber');
+const RIDGE_DATA_DIR = process.env.RIDGE_DATA_DIR
+  ? path.resolve(process.env.RIDGE_DATA_DIR)
+  : path.join(os.homedir(), '.config', 'ridge');
 
-const STORAGE_DIR = OPENCHAMBER_DATA_DIR;
+const STORAGE_DIR = RIDGE_DATA_DIR;
 const STORAGE_FILE = path.join(STORAGE_DIR, 'github-auth.json');
-const SETTINGS_FILE = path.join(OPENCHAMBER_DATA_DIR, 'settings.json');
+const SETTINGS_FILE = path.join(RIDGE_DATA_DIR, 'settings.json');
 
 const DEFAULT_GITHUB_CLIENT_ID = 'Ov23lizomPOC3eFYo56r';
 const DEFAULT_GITHUB_SCOPES = 'repo read:org workflow read:user user:email';
@@ -269,7 +269,7 @@ export function clearGitHubAuth() {
 }
 
 export function getGitHubClientId() {
-  const raw = process.env.OPENCHAMBER_GITHUB_CLIENT_ID;
+  const raw = process.env.RIDGE_GITHUB_CLIENT_ID;
   const clientId = typeof raw === 'string' ? raw.trim() : '';
   if (clientId) return clientId;
 
@@ -287,7 +287,7 @@ export function getGitHubClientId() {
 }
 
 export function getGitHubScopes() {
-  const raw = process.env.OPENCHAMBER_GITHUB_SCOPES;
+  const raw = process.env.RIDGE_GITHUB_SCOPES;
   const fromEnv = typeof raw === 'string' ? raw.trim() : '';
   if (fromEnv) return fromEnv;
 

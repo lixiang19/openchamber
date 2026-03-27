@@ -11,8 +11,8 @@ import { useFileSystemAccess } from '@/hooks/useFileSystemAccess';
 import { createWorktreeSession } from '@/lib/worktreeSessionCreator';
 import { showOpenCodeStatus } from '@/lib/openCodeStatus';
 
-const MENU_ACTION_EVENT = 'openchamber:menu-action';
-const CHECK_FOR_UPDATES_EVENT = 'openchamber:check-for-updates';
+const MENU_ACTION_EVENT = 'ridge:menu-action';
+const CHECK_FOR_UPDATES_EVENT = 'ridge:check-for-updates';
 
 type TauriEventApi = {
   listen?: (
@@ -182,7 +182,7 @@ export const useMenuActions = (
         }
 
         case 'copy': {
-          const copyEvent = new Event('openchamber:copy', { cancelable: true });
+          const copyEvent = new Event('ridge:copy', { cancelable: true });
           const wasHandled = !window.dispatchEvent(copyEvent);
           if (!wasHandled) {
             document.execCommand('copy');
@@ -265,7 +265,7 @@ export const useMenuActions = (
     let unlistenMenu: null | (() => void | Promise<void>) = null;
     let unlistenUpdate: null | (() => void | Promise<void>) = null;
 
-    listen('openchamber:menu-action', (evt) => {
+    listen('ridge:menu-action', (evt) => {
       const action = evt?.payload;
       if (typeof action !== 'string') return;
       handleAction(action as MenuAction);
@@ -277,7 +277,7 @@ export const useMenuActions = (
         // ignore
       });
 
-    listen('openchamber:check-for-updates', () => {
+    listen('ridge:check-for-updates', () => {
       window.dispatchEvent(new Event(CHECK_FOR_UPDATES_EVENT));
     })
       .then((fn) => {

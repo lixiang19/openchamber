@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
+  RiAddLine,
   RiCheckLine,
   RiChatNewLine,
   RiEqualizer2Line,
@@ -21,6 +22,7 @@ import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
 
 type Props = {
   hideDirectoryControls: boolean;
+  handleOpenCreateProjectDialog: () => void;
   handleOpenDirectoryDialog: () => void;
   handleNewSession: () => void;
   headerActionIconClass: string;
@@ -40,6 +42,7 @@ type Props = {
 export function SidebarHeader(props: Props): React.ReactNode {
   const {
     hideDirectoryControls,
+    handleOpenCreateProjectDialog,
     handleOpenDirectoryDialog,
     handleNewSession,
     headerActionIconClass,
@@ -69,6 +72,19 @@ export function SidebarHeader(props: Props): React.ReactNode {
         <div className="flex h-auto min-h-8 flex-col gap-1">
           <div className="flex h-8 items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleOpenCreateProjectDialog}
+                    className={headerActionButtonClass}
+                    aria-label="Create project"
+                  >
+                    <RiAddLine className={headerActionIconClass} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={4}><p>Create project</p></TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button

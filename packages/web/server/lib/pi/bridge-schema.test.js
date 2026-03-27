@@ -23,7 +23,8 @@ describe('pi bridge schema catalog', () => {
     ]);
     expect(PI_BRIDGE_EVENT_CATALOG.rpc.assistantStreamEvents).toContain('text_delta');
     expect(PI_BRIDGE_EVENT_CATALOG.messages.custom).toContain('custom');
-    expect(PI_BRIDGE_EVENT_CATALOG.extensionUi.confirm.bridgeKind).toBe('question');
+    expect(PI_BRIDGE_EVENT_CATALOG.extensionUi.question.bridgeKind).toBe('question');
+    expect(PI_BRIDGE_EVENT_CATALOG.extensionUi.confirm.webSupport).toBe('unsupported');
   });
 });
 
@@ -100,49 +101,57 @@ describe('normalizePiMessage', () => {
 });
 
 describe('normalizePiExtensionUiRequest', () => {
-  it('marks input, select, and confirm as priority bridge targets', () => {
+  it('only treats native question requests as supported interactive dialogs', () => {
     expect(normalizePiExtensionUiRequest({
       type: 'extension_ui_request',
-      id: 'ui_1',
-      method: 'input',
-      title: 'Need more context',
-      placeholder: 'Type here',
+      id: 'ui_q1',
+      method: 'question',
+      title: 'Need rollout input',
+      questions: [{
+        header: 'Rollout',
+        question: 'Where should we deploy first?',
+        options: [{ label: 'staging', description: 'Smoke test first' }, { label: 'production' }],
+        allowCustom: true,
+      }],
     })).toEqual({
-      id: 'ui_1',
-      method: 'input',
+      id: 'ui_q1',
+      method: 'question',
       bridgeKind: 'question',
       expectedReply: 'value',
       webSupport: 'priority',
       milestone: 'm3',
+      title: 'Need rollout input',
+      questions: [{
+        header: 'Rollout',
+        question: 'Where should we deploy first?',
+        options: [{ label: 'staging', description: 'Smoke test first' }, { label: 'production' }],
+        multiple: false,
+        allowCustom: true,
+      }],
+    });
+  });
+
+  it('leaves legacy dialog methods unsupported instead of collapsing them into question', () => {
+    expect(normalizePiExtensionUiRequest({
+      type: 'extension_ui_request',
+      id: 'ui_legacy',
+      method: 'input',
       title: 'Need more context',
       placeholder: 'Type here',
-      timeout: null,
-    });
-
-    expect(normalizePiExtensionUiRequest({
-      type: 'extension_ui_request',
-      id: 'ui_2',
-      method: 'select',
-      title: 'Pick one',
-      options: ['A', 'B'],
-      timeout: 50,
-    })).toMatchObject({
-      bridgeKind: 'question',
+    })).toEqual({
+      id: 'ui_legacy',
+      method: 'input',
+      bridgeKind: 'unsupported',
       expectedReply: 'value',
-      options: ['A', 'B'],
-      timeout: 50,
-    });
-
-    expect(normalizePiExtensionUiRequest({
-      type: 'extension_ui_request',
-      id: 'ui_3',
-      method: 'confirm',
-      title: 'Apply change?',
-      message: 'This edits files',
-    })).toMatchObject({
-      bridgeKind: 'question',
-      expectedReply: 'confirmed',
-      webSupport: 'priority',
+      webSupport: 'unsupported',
+      milestone: null,
+      raw: {
+        type: 'extension_ui_request',
+        id: 'ui_legacy',
+        method: 'input',
+        title: 'Need more context',
+        placeholder: 'Type here',
+      },
     });
   });
 

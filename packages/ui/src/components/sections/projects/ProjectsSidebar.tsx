@@ -2,11 +2,12 @@ import React from 'react';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { Button } from '@/components/ui/button';
+import { CreateProjectDialog } from '@/components/session/CreateProjectDialog';
 import { SettingsSidebarLayout } from '@/components/sections/shared/SettingsSidebarLayout';
 import { SettingsSidebarItem } from '@/components/sections/shared/SettingsSidebarItem';
 import { PROJECT_COLOR_MAP, PROJECT_ICON_MAP, getProjectIconImageUrl } from '@/lib/projectMeta';
 import { cn } from '@/lib/utils';
-import { RiAddLine, RiFolderLine } from '@remixicon/react';
+import { RiAddLine, RiFolderAddLine, RiFolderLine } from '@remixicon/react';
 import { isDesktopLocalOriginActive, isTauriShell, isVSCodeRuntime, requestDirectoryAccess } from '@/lib/desktop';
 import { sessionEvents } from '@/lib/sessionEvents';
 import { toast } from '@/components/ui';
@@ -19,6 +20,7 @@ export const ProjectsSidebar: React.FC<{ onItemSelect?: () => void }> = ({ onIte
   const setSelectedId = useUIStore((state) => state.setSettingsProjectsSelectedId);
   const { currentTheme } = useThemeSystem();
   const [brokenIconIds, setBrokenIconIds] = React.useState<Set<string>>(new Set());
+  const [createProjectDialogOpen, setCreateProjectDialogOpen] = React.useState(false);
 
   const isVSCode = React.useMemo(() => isVSCodeRuntime(), []);
   const tauriIpcAvailable = React.useMemo(() => isTauriShell(), []);
@@ -66,85 +68,107 @@ export const ProjectsSidebar: React.FC<{ onItemSelect?: () => void }> = ({ onIte
   }, [projects, selectedId, setSelectedId]);
 
   return (
-    <SettingsSidebarLayout
-      variant="background"
-      header={
-        <div className={cn('border-b px-3', 'pt-4 pb-3')}>
-          <h2 className="text-base font-semibold text-foreground mb-3">Projects</h2>
-          <div className="flex items-center justify-between gap-2">
-            <span className="typography-meta text-muted-foreground">Total {projects.length}</span>
-            {!isVSCode && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 -my-1 text-muted-foreground"
-                onClick={handleAddProject}
-                aria-label="Add project"
-              >
-                <RiAddLine className="size-4" />
-              </Button>
-            )}
+    <>
+      <SettingsSidebarLayout
+        variant="background"
+        header={
+          <div className={cn('border-b px-3', 'pt-4 pb-3')}>
+            <h2 className="text-base font-semibold text-foreground mb-3">Projects</h2>
+            <div className="flex items-center justify-between gap-2">
+              <span className="typography-meta text-muted-foreground">Total {projects.length}</span>
+              {!isVSCode && (
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 -my-1 text-muted-foreground"
+                    onClick={() => setCreateProjectDialogOpen(true)}
+                    aria-label="Create project"
+                  >
+                    <RiAddLine className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 -my-1 text-muted-foreground"
+                    onClick={handleAddProject}
+                    aria-label="Add project"
+                  >
+                    <RiFolderAddLine className="size-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      }
-    >
-      {projects.map((project) => {
-        const selected = project.id === selectedId;
-        const Icon = project.icon ? PROJECT_ICON_MAP[project.icon] : null;
-        const imageFailureKey = `${project.id}:${project.iconImage?.updatedAt ?? 0}`;
-        const imageUrl = brokenIconIds.has(imageFailureKey)
-          ? null
-          : getProjectIconImageUrl(project, {
-            themeVariant: currentTheme.metadata.variant,
-            iconColor: currentTheme.colors.surface.foreground,
-          });
-        const color = project.color ? (PROJECT_COLOR_MAP[project.color] ?? null) : null;
-        const icon = imageUrl
-          ? (
-            <span
-              className="inline-flex h-4 w-4 items-center justify-center overflow-hidden rounded-[2px]"
-              style={project.iconBackground ? { backgroundColor: project.iconBackground } : undefined}
-            >
-              <img
-                src={imageUrl}
-                alt=""
-                className="h-full w-full object-contain"
-                draggable={false}
-                onError={() => {
-                  setBrokenIconIds((prev) => {
-                    if (prev.has(imageFailureKey)) {
-                      return prev;
-                    }
-                    const next = new Set(prev);
-                    next.add(imageFailureKey);
-                    return next;
-                  });
-                }}
-              />
-            </span>
-          )
-          : Icon
-          ? (
-            <Icon className={cn('h-4 w-4', selected ? 'text-foreground' : 'text-muted-foreground/70')} style={color ? { color } : undefined} />
-          )
-          : (
-            <RiFolderLine className={cn('h-4 w-4', selected ? 'text-foreground' : 'text-muted-foreground/70')} style={color ? { color } : undefined} />
-          );
+        }
+      >
+        {projects.map((project) => {
+          const selected = project.id === selectedId;
+          const Icon = project.icon ? PROJECT_ICON_MAP[project.icon] : null;
+          const imageFailureKey = `${project.id}:${project.iconImage?.updatedAt ?? 0}`;
+          const imageUrl = brokenIconIds.has(imageFailureKey)
+            ? null
+            : getProjectIconImageUrl(project, {
+              themeVariant: currentTheme.metadata.variant,
+              iconColor: currentTheme.colors.surface.foreground,
+            });
+          const color = project.color ? (PROJECT_COLOR_MAP[project.color] ?? null) : null;
+          const icon = imageUrl
+            ? (
+              <span
+                className="inline-flex h-4 w-4 items-center justify-center overflow-hidden rounded-[2px]"
+                style={project.iconBackground ? { backgroundColor: project.iconBackground } : undefined}
+              >
+                <img
+                  src={imageUrl}
+                  alt=""
+                  className="h-full w-full object-contain"
+                  draggable={false}
+                  onError={() => {
+                    setBrokenIconIds((prev) => {
+                      if (prev.has(imageFailureKey)) {
+                        return prev;
+                      }
+                      const next = new Set(prev);
+                      next.add(imageFailureKey);
+                      return next;
+                    });
+                  }}
+                />
+              </span>
+            )
+            : Icon
+            ? (
+              <Icon className={cn('h-4 w-4', selected ? 'text-foreground' : 'text-muted-foreground/70')} style={color ? { color } : undefined} />
+            )
+            : (
+              <RiFolderLine className={cn('h-4 w-4', selected ? 'text-foreground' : 'text-muted-foreground/70')} style={color ? { color } : undefined} />
+            );
 
-        return (
-          <SettingsSidebarItem
-            key={project.id}
-            title={project.label || project.path}
-            icon={icon}
-            selected={selected}
-            onSelect={() => {
-              setSelectedId(project.id);
-              onItemSelect?.();
-            }}
-          />
-        );
-      })}
-    </SettingsSidebarLayout>
+          return (
+            <SettingsSidebarItem
+              key={project.id}
+              title={project.label || project.path}
+              icon={icon}
+              selected={selected}
+              onSelect={() => {
+                setSelectedId(project.id);
+                onItemSelect?.();
+              }}
+            />
+          );
+        })}
+      </SettingsSidebarLayout>
+
+      <CreateProjectDialog
+        open={createProjectDialogOpen}
+        onOpenChange={setCreateProjectDialogOpen}
+        onCreated={(project) => {
+          setSelectedId(project.id);
+        }}
+      />
+    </>
   );
 };

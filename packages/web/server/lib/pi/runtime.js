@@ -797,105 +797,73 @@ export const translatePiEnvelopeToSseEvents = (sessionRecord, envelope, options 
   return events;
 };
 
+const projectQuestionOptions = (options) => {
+  if (!Array.isArray(options)) {
+    return [];
+  }
+
+  return options.flatMap((option) => {
+    if (typeof option === 'string') {
+      return [{ label: option, description: '' }];
+    }
+    if (!option || typeof option !== 'object') {
+      return [];
+    }
+
+    const label = typeof option.label === 'string' ? option.label.trim() : '';
+    if (!label) {
+      return [];
+    }
+
+    const description = typeof option.description === 'string' ? option.description : undefined;
+    return [{ label, ...(description ? { description } : {}) }];
+  });
+};
+
+const questionAllowsCustom = (input) => {
+  if (!input || typeof input !== 'object') {
+    return false;
+  }
+  if (projectQuestionOptions(input.options).length === 0) {
+    return true;
+  }
+  return input.allowCustom === true;
+};
+
+const projectRequestQuestions = (request) => {
+  if (Array.isArray(request.questions) && request.questions.length > 0) {
+    return request.questions.map((question) => ({
+      header: question.header || request.title || 'Input needed',
+      question: question.question,
+      options: projectQuestionOptions(question.options),
+      multiple: question.multiple === true,
+      allowCustom: questionAllowsCustom(question),
+    }));
+  }
+
+  return [{
+    header: request.title || 'Input needed',
+    question: request.message || request.title || 'Provide a response',
+    options: [],
+    multiple: false,
+    allowCustom: true,
+  }];
+};
+
 export const mapPiUiRequestToQuestionRequest = (sessionRecord, request) => {
-  if (!request || typeof request !== 'object') {
+  if (!request || typeof request !== 'object' || request.method !== 'question') {
     return null;
   }
 
-  const base = {
+  return {
     id: request.id,
     sessionID: sessionRecord.session.id,
+    questions: projectRequestQuestions(request),
+    metadata: {
+      bridgeKind: request.bridgeKind || 'question',
+      webSupport: request.webSupport || 'supported',
+    },
   };
-
-  if (request.method === 'question') {
-    return {
-      ...base,
-      questions: Array.isArray(request.questions) ? request.questions : [{
-        header: request.title || 'Input needed',
-        question: request.message || request.title || 'Provide a response',
-        options: Array.isArray(request.options) ? request.options.map(o => ({ label: o, description: '' })) : [],
-        multiple: false,
-      }],
-      metadata: {
-        bridgeMethod: 'question',
-        bridgeKind: request.bridgeKind || 'question',
-        webSupport: request.webSupport || 'supported',
-      },
-    };
-  }
-
-  if (request.method === 'input') {
-    return {
-      ...base,
-      questions: [{
-        header: request.title || 'Input needed',
-        question: request.placeholder || request.title || 'Provide a response',
-        options: [],
-        multiple: false,
-      }],
-      metadata: {
-        bridgeMethod: 'input',
-        bridgeKind: request.bridgeKind,
-        webSupport: request.webSupport,
-      },
-    };
-  }
-
-  if (request.method === 'select') {
-    return {
-      ...base,
-      questions: [{
-        header: request.title || 'Select an option',
-        question: request.title || 'Select an option',
-        options: Array.isArray(request.options)
-          ? request.options.map((option) => ({ label: option, description: '' }))
-          : [],
-        multiple: false,
-      }],
-      metadata: {
-        bridgeMethod: 'select',
-        bridgeKind: request.bridgeKind,
-        webSupport: request.webSupport,
-      },
-    };
-  }
-
-  if (request.method === 'confirm') {
-    return {
-      ...base,
-      questions: [{
-        header: request.title || 'Confirmation needed',
-        question: request.message || request.title || 'Confirm to continue',
-        options: [{ label: 'Confirm', description: '' }],
-        multiple: false,
-      }],
-      metadata: {
-        bridgeMethod: 'confirm',
-        bridgeKind: request.bridgeKind,
-        webSupport: request.webSupport,
-      },
-    };
-  }
-
-  if (request.method === 'editor') {
-    return {
-      ...base,
-      questions: [{
-        header: 'Unsupported Pi UI request',
-        question: `${request.title || 'Editor input'} is not supported in Web yet. Submit or dismiss to cancel this request explicitly.`,
-        options: [{ label: 'Dismiss request', description: 'Send a cancel response back to Pi' }],
-        multiple: false,
-      }],
-      metadata: {
-        bridgeMethod: 'editor',
-        bridgeKind: request.bridgeKind,
-        webSupport: 'unsupported',
-        downgrade: true,
-      },
-    };
-  }
-
-  return null;
 };
 
 export { buildPromptTextFromParts };

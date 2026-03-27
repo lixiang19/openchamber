@@ -493,6 +493,8 @@ export interface ProjectEntry {
   id: string;
   path: string;
   label?: string;
+  source?: 'default' | 'managed' | 'external';
+  templateId?: string | null;
   icon?: string | null;
   iconImage?: {
     mime: string;
@@ -504,6 +506,12 @@ export interface ProjectEntry {
   addedAt?: number;
   lastOpenedAt?: number;
   sidebarCollapsed?: boolean;
+}
+
+export interface ManagedProjectTemplateSummary {
+  id: string;
+  label: string;
+  description: string;
 }
 
 export interface SettingsPayload {

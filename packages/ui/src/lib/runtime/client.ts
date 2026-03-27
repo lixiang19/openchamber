@@ -1151,22 +1151,17 @@ class RuntimeService {
   // Questions ("ask" tool)
   async replyToQuestion(requestId: string, answers: string[] | string[][]): Promise<boolean> {
     const request = await this.findPiInteractiveRequest(requestId);
-    if (!request) {
+    if (!request || request.method !== 'question') {
       return false;
     }
 
     const normalized = Array.isArray(answers) && Array.isArray(answers[0])
       ? (answers as string[][])
       : [answers as string[]];
-    const firstGroup = normalized[0] ?? [];
-    const firstAnswer = typeof firstGroup[0] === 'string' ? firstGroup[0].trim() : '';
-    const responseValue = request.method === 'confirm'
-      ? firstAnswer.length === 0 || firstAnswer.toLowerCase() === 'confirm' || firstAnswer.toLowerCase() === 'yes'
-      : firstAnswer;
 
     await this.fetchPi<void>(`/requests/${encodeURIComponent(requestId)}/respond`, {
       method: 'POST',
-      body: JSON.stringify({ response: responseValue }),
+      body: JSON.stringify({ response: normalized }),
     });
     return true;
   }

@@ -3,7 +3,7 @@ import { RiArrowRightSLine, RiCheckLine, RiCloseLine, RiEditLine, RiListCheck3, 
 import { Checkbox } from '@/components/ui/checkbox';
 
 import { cn } from '@/lib/utils';
-import type { QuestionRequest } from '@/types/question';
+import type { QuestionInfo, QuestionRequest } from '@/types/question';
 import { useSessionStore } from '@/stores/useSessionStore';
 
 interface QuestionCardProps {
@@ -12,6 +12,22 @@ interface QuestionCardProps {
 
 type TabKey = string;
 const SUMMARY_TAB = 'summary';
+
+const getQuestionOptions = (item: QuestionInfo | null | undefined) => item?.options ?? [];
+
+const allowsCustomAnswer = (item: QuestionInfo | null | undefined) => {
+  if (!item) {
+    return false;
+  }
+  if (getQuestionOptions(item).length === 0) {
+    return true;
+  }
+  return item.allowCustom === true;
+};
+
+const startsInCustomMode = (item: QuestionInfo | null | undefined) => (
+  allowsCustomAnswer(item) && getQuestionOptions(item).length === 0
+);
 
 export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
   const { respondToQuestion, rejectQuestion } = useSessionStore();
@@ -26,17 +42,12 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
   const [activeTab, setActiveTab] = React.useState<TabKey>('0');
   const [isResponding, setIsResponding] = React.useState(false);
   const [hasResponded, setHasResponded] = React.useState(false);
+  const [responseError, setResponseError] = React.useState<string | null>(null);
 
   const [selectedOptions, setSelectedOptions] = React.useState<Record<number, string[]>>({});
   const [customMode, setCustomMode] = React.useState<Record<number, boolean>>({});
   const [customText, setCustomText] = React.useState<Record<number, string>>({});
 
-  const bridgeMethod = React.useMemo(() => {
-    const value = question.metadata?.bridgeMethod;
-    return typeof value === 'string' ? value : null;
-  }, [question.metadata]);
-  const isPiBridgedQuestion = bridgeMethod !== null;
-  const allowCustomAnswers = !isPiBridgedQuestion || bridgeMethod === 'input';
   const questions = React.useMemo(() => question.questions ?? [], [question.questions]);
   const isSummaryTab = activeTab === SUMMARY_TAB;
   const activeIndex = isSummaryTab ? -1 : Math.max(0, Math.min(questions.length - 1, Number(activeTab) || 0));
@@ -51,50 +62,51 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
     setActiveTab('0');
     setSelectedOptions({});
     setCustomMode(() => {
-      if (bridgeMethod !== 'input') {
-        return {};
-      }
       const initial: Record<number, boolean> = {};
-      (question.questions ?? []).forEach((_item, index) => {
-        initial[index] = true;
+      (question.questions ?? []).forEach((item, index) => {
+        initial[index] = startsInCustomMode(item);
       });
       return initial;
     });
     setCustomText({});
     setHasResponded(false);
-  }, [bridgeMethod, question.id, question.questions]);
+    setResponseError(null);
+  }, [question.id, question.questions]);
 
   const tabs = React.useMemo(() => {
     const questionTabs = questions.map((q, index) => ({
       value: String(index),
       label: q.header?.trim() || `Q${index + 1}`,
     }));
-    // Add summary tab when multiple questions
     if (questions.length > 1) {
       questionTabs.push({ value: SUMMARY_TAB, label: 'Summary' });
     }
     return questionTabs;
   }, [questions]);
 
-  // Helper to get answer display for a question index
   const getAnswerDisplay = React.useCallback((index: number): string => {
-    const isCustom = allowCustomAnswers && Boolean(customMode[index]);
+    const questionItem = questions[index];
+    const isCustom = allowsCustomAnswer(questionItem) && Boolean(customMode[index]);
     if (isCustom) {
       const value = (customText[index] ?? '').trim();
       return value || '(no answer)';
     }
     const answers = selectedOptions[index] ?? [];
     return answers.length > 0 ? answers.join(', ') : '(no answer)';
-  }, [allowCustomAnswers, customMode, customText, selectedOptions]);
+  }, [customMode, customText, questions, selectedOptions]);
 
+  const activeOptions = getQuestionOptions(activeQuestion);
   const isMultiple = Boolean(activeQuestion?.multiple);
   const selectedForActive = selectedOptions[activeIndex] ?? [];
-  const isCustomActive = allowCustomAnswers && Boolean(customMode[activeIndex]);
+  const activeAllowsCustom = allowsCustomAnswer(activeQuestion);
+  const hasActiveOptions = activeOptions.length > 0;
+  const isCustomActive = activeAllowsCustom && Boolean(customMode[activeIndex]);
 
   const unansweredIndexes = React.useMemo(() => {
     const pending: number[] = [];
     for (let index = 0; index < questions.length; index += 1) {
-      const isCustom = allowCustomAnswers && Boolean(customMode[index]);
+      const questionItem = questions[index];
+      const isCustom = allowsCustomAnswer(questionItem) && Boolean(customMode[index]);
       if (isCustom) {
         const value = (customText[index] ?? '').trim();
         if (!value) pending.push(index);
@@ -107,7 +119,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
       }
     }
     return pending;
-  }, [allowCustomAnswers, customMode, customText, questions.length, selectedOptions]);
+  }, [customMode, customText, questions, selectedOptions]);
 
   const requiredSatisfied = React.useMemo(() => {
     if (questions.length === 0) return false;
@@ -133,7 +145,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
     const answers: string[][] = [];
 
     for (let index = 0; index < questions.length; index += 1) {
-      const isCustom = allowCustomAnswers && Boolean(customMode[index]);
+      const questionItem = questions[index];
+      const isCustom = allowsCustomAnswer(questionItem) && Boolean(customMode[index]);
       if (isCustom) {
         const value = (customText[index] ?? '').trim();
         answers.push(value ? [value] : []);
@@ -144,13 +157,14 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
     }
 
     return answers;
-  }, [allowCustomAnswers, customMode, customText, questions.length, selectedOptions]);
+  }, [customMode, customText, questions, selectedOptions]);
 
   const handleToggleOption = React.useCallback(
     (label: string) => {
       if (!activeQuestion) return;
 
-      if (allowCustomAnswers) {
+      setResponseError(null);
+      if (activeAllowsCustom) {
         setCustomMode((prev) => ({ ...prev, [activeIndex]: false }));
       }
 
@@ -164,37 +178,40 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
         return { ...prev, [activeIndex]: [label] };
       });
     },
-    [activeIndex, activeQuestion, allowCustomAnswers, isMultiple]
+    [activeAllowsCustom, activeIndex, activeQuestion, isMultiple]
   );
 
   const handleSelectCustom = React.useCallback(() => {
-    if (!allowCustomAnswers) return;
+    if (!activeAllowsCustom) return;
+    setResponseError(null);
     setCustomMode((prev) => ({ ...prev, [activeIndex]: true }));
     setSelectedOptions((prev) => ({ ...prev, [activeIndex]: [] }));
-  }, [activeIndex, allowCustomAnswers]);
+  }, [activeAllowsCustom, activeIndex]);
 
   const handleConfirm = React.useCallback(async () => {
     if (!requiredSatisfied) return;
 
+    setResponseError(null);
     setIsResponding(true);
     try {
       const answers = buildAnswersPayload();
       await respondToQuestion(question.sessionID, question.id, answers);
       setHasResponded(true);
-    } catch {
-      // ignored
+    } catch (error) {
+      setResponseError(error instanceof Error ? error.message : 'Failed to submit answer.');
     } finally {
       setIsResponding(false);
     }
   }, [buildAnswersPayload, question.id, question.sessionID, requiredSatisfied, respondToQuestion]);
 
   const handleDismiss = React.useCallback(async () => {
+    setResponseError(null);
     setIsResponding(true);
     try {
       await rejectQuestion(question.sessionID, question.id);
       setHasResponded(true);
-    } catch {
-      // ignored
+    } catch (error) {
+      setResponseError(error instanceof Error ? error.message : 'Failed to dismiss question.');
     } finally {
       setIsResponding(false);
     }
@@ -208,7 +225,6 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
     <div className="group w-full pt-0 pb-2">
       <div className="chat-column">
         <div className="-mt-1 border border-border/30 rounded-xl bg-muted/10">
-          {/* Header */}
           <div className="px-2 py-1.5 border-b border-border/20">
             <div className="flex items-center gap-2">
               <RiQuestionLine className="h-3.5 w-3.5 text-primary" />
@@ -227,7 +243,6 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
           </div>
 
           <div className="px-2 py-2">
-            {/* Minimal inline tabs for multiple questions */}
             {tabs.length > 1 ? (
               <div className="flex items-center gap-1 mb-2 flex-wrap">
                 {tabs.map((tab) => {
@@ -239,7 +254,10 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
                     <button
                       key={tab.value}
                       type="button"
-                      onClick={() => setActiveTab(tab.value)}
+                      onClick={() => {
+                        setResponseError(null);
+                        setActiveTab(tab.value);
+                      }}
                       className={cn(
                         'px-2 py-0.5 typography-meta font-medium rounded transition-colors flex items-center gap-1',
                         isActive
@@ -259,7 +277,6 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
               </div>
             ) : null}
 
-            {/* Summary view */}
             {isSummaryTab ? (
               <div className="space-y-2">
                 {questions.map((q, index) => {
@@ -269,7 +286,10 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
                     <button
                       key={index}
                       type="button"
-                      onClick={() => setActiveTab(String(index))}
+                      onClick={() => {
+                        setResponseError(null);
+                        setActiveTab(String(index));
+                      }}
                       className="w-full text-left rounded px-1.5 py-1 hover:bg-interactive-hover/20 transition-colors"
                     >
                       <div className="typography-micro text-muted-foreground">{q.header || `Question ${index + 1}`}</div>
@@ -292,7 +312,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
                 ) : null}
 
                 <div className="space-y-0.5">
-                  {activeQuestion.options.map((option, index) => {
+                  {activeOptions.map((option, index) => {
                     const selected = selectedForActive.includes(option.label);
                     const recommended = /\(recommended\)/i.test(option.label);
 
@@ -339,71 +359,69 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
                     );
                   })}
 
-                  {allowCustomAnswers ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={handleSelectCustom}
-                        disabled={isResponding}
-                        className={cn(
-                          'w-full px-1.5 py-1 text-left rounded transition-colors',
-                          'hover:bg-interactive-hover/30',
-                          isCustomActive ? 'bg-interactive-selection/20' : null,
-                          isResponding ? 'opacity-60 cursor-not-allowed' : null
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          <RiEditLine className={cn(
-                            'h-3.5 w-3.5',
-                            isCustomActive ? 'text-primary' : 'text-muted-foreground/50'
-                          )} />
-                          <span className={cn(
-                            'typography-meta',
-                            isCustomActive ? 'text-foreground font-medium' : 'text-muted-foreground'
-                          )}>
-                            Other…
-                          </span>
-                        </div>
-                      </button>
+                  {activeAllowsCustom && hasActiveOptions ? (
+                    <button
+                      type="button"
+                      onClick={handleSelectCustom}
+                      disabled={isResponding}
+                      className={cn(
+                        'w-full px-1.5 py-1 text-left rounded transition-colors',
+                        'hover:bg-interactive-hover/30',
+                        isCustomActive ? 'bg-interactive-selection/20' : null,
+                        isResponding ? 'opacity-60 cursor-not-allowed' : null
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <RiEditLine className={cn(
+                          'h-3.5 w-3.5',
+                          isCustomActive ? 'text-primary' : 'text-muted-foreground/50'
+                        )} />
+                        <span className={cn(
+                          'typography-meta',
+                          isCustomActive ? 'text-foreground font-medium' : 'text-muted-foreground'
+                        )}>
+                          Other…
+                        </span>
+                      </div>
+                    </button>
+                  ) : null}
 
-                      {isCustomActive ? (
-                        <div className="pl-6 pr-1 pt-0.5">
-                          <textarea
-                            ref={(el) => {
-                              if (el) {
-                                el.style.height = 'auto';
-                                const lineHeight = 20;
-                                const minHeight = lineHeight * 2;
-                                const maxHeight = lineHeight * 4;
-                                el.style.height =                                   `${Math.min(Math.max(el.scrollHeight, minHeight), maxHeight)}px`;
-                              }
-                            }}
-                            value={customText[activeIndex] ?? ''}
-                            onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => {
-                              const el = event.target;
-                              el.style.height = 'auto';
-                              const lineHeight = 20;
-                              const minHeight = lineHeight * 2;
-                              const maxHeight = lineHeight * 4;
-                              el.style.height =                                 `${Math.min(Math.max(el.scrollHeight, minHeight), maxHeight)}px`;
-                              setCustomText((prev) => ({ ...prev, [activeIndex]: el.value }));
-                            }}
-                            placeholder="Your answer"
-                            disabled={isResponding}
-                            rows={2}
-                            className="w-full bg-transparent border border-border/30 focus:border-primary rounded px-2 py-1 outline-none typography-meta text-foreground placeholder:text-muted-foreground/50 transition-colors resize-none overflow-hidden"
-                            autoFocus
-                          />
-                        </div>
-                      ) : null}
-                    </>
+                  {activeAllowsCustom && isCustomActive ? (
+                    <div className={cn('pt-0.5', hasActiveOptions ? 'pl-6 pr-1' : 'pr-1')}>
+                      <textarea
+                        ref={(el) => {
+                          if (el) {
+                            el.style.height = 'auto';
+                            const lineHeight = 20;
+                            const minHeight = lineHeight * 2;
+                            const maxHeight = lineHeight * 4;
+                            el.style.height = `${Math.min(Math.max(el.scrollHeight, minHeight), maxHeight)}px`;
+                          }
+                        }}
+                        value={customText[activeIndex] ?? ''}
+                        onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => {
+                          const el = event.target;
+                          el.style.height = 'auto';
+                          const lineHeight = 20;
+                          const minHeight = lineHeight * 2;
+                          const maxHeight = lineHeight * 4;
+                          el.style.height = `${Math.min(Math.max(el.scrollHeight, minHeight), maxHeight)}px`;
+                          setResponseError(null);
+                          setCustomText((prev) => ({ ...prev, [activeIndex]: el.value }));
+                        }}
+                        placeholder="Your answer"
+                        disabled={isResponding}
+                        rows={2}
+                        className="w-full bg-transparent border border-border/30 focus:border-primary rounded px-2 py-1 outline-none typography-meta text-foreground placeholder:text-muted-foreground/50 transition-colors resize-none overflow-hidden"
+                        autoFocus
+                      />
+                    </div>
                   ) : null}
                 </div>
               </>
             ) : null}
           </div>
 
-          {/* Footer actions */}
           <div className="px-2 pb-1.5 pt-1 flex items-center gap-1.5 border-t border-border/20">
             <button
               type="button"
@@ -432,6 +450,12 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
               <RiCloseLine className="h-3 w-3" />
               Dismiss
             </button>
+
+            {responseError ? (
+              <div className="ml-auto typography-micro text-[var(--status-error)] break-words text-right max-w-[50%]">
+                {responseError}
+              </div>
+            ) : null}
 
             {isResponding ? (
               <div className="ml-auto">

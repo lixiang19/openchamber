@@ -78,19 +78,19 @@ async function stopChildTree(child) {
   }
 }
 
-const uiPort = process.env.OPENCHAMBER_HMR_UI_PORT || '5180';
-const backendPort = process.env.OPENCHAMBER_HMR_API_PORT || '3902';
+const uiPort = process.env.RIDGE_HMR_UI_PORT || '5180';
+const backendPort = process.env.RIDGE_HMR_API_PORT || '3902';
 
 const api = run('api', 'bun', ['run', '--cwd', 'packages/web', 'dev:server:watch'], {
-  OPENCHAMBER_PORT: backendPort,
+  RIDGE_PORT: backendPort,
 });
 const vite = run(
   'vite',
   'bun',
   ['x', 'vite', '--host', '127.0.0.1', '--port', uiPort, '--strictPort'],
   {
-    OPENCHAMBER_PORT: backendPort,
-    OPENCHAMBER_DISABLE_PWA_DEV: '1',
+    RIDGE_PORT: backendPort,
+    RIDGE_DISABLE_PWA_DEV: '1',
   },
   { cwd: path.join(repoRoot, 'packages/web') },
 );

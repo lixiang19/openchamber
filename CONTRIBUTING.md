@@ -1,4 +1,4 @@
-# Contributing to OpenChamber
+# Contributing to Ridge
 
 ## Getting Started
 
@@ -89,4 +89,4 @@ You can still help:
 
 ## Questions?
 
-Open an [issue](https://github.com/btriapitsyn/openchamber/issues) or ask in [Discord](https://discord.gg/ZYRSdnwwKA).
+Open an issue in the project tracker or ask in [Discord](https://discord.gg/ZYRSdnwwKA).

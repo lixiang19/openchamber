@@ -63,6 +63,7 @@ import { ProjectActionsButton } from '@/components/layout/ProjectActionsButton';
 import { isDesktopShell, isVSCodeRuntime } from '@/lib/desktop';
 import { desktopHostsGet, locationMatchesHost, redactSensitiveUrl } from '@/lib/desktopHosts';
 import { resolveSessionDiffStats } from '@/components/session/sidebar/utils';
+import { WeChatSessionDialog } from '@/components/chat/WeChatSessionDialog';
 
 
 const isSameContextUsage = (
@@ -1623,6 +1624,14 @@ export const Header: React.FC<HeaderProps> = ({
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
+      {currentSession ? (
+        <WeChatSessionDialog
+          sessionId={currentSession.id}
+          sessionTitle={currentSession.title?.trim() || 'Untitled session'}
+          sessionCwd={currentSession.path}
+          triggerClassName="mr-1"
+        />
+      ) : null}
       <Tooltip delayDuration={500}>
         <TooltipTrigger asChild>
           <button

@@ -11,11 +11,15 @@ import crypto from 'crypto';
 import { createUiAuth } from './lib/security/ui-auth.js';
 import { createTunnelAuth } from './lib/security/tunnel-auth.js';
 import {
-  createBundledProjectFromTemplate,
-  DEFAULT_STARTER_PROJECT_NAME,
-  getDefaultStarterProjectPath,
+  createManagedProjectFromTemplate,
+  DEFAULT_MANAGED_PROJECT_NAME,
+  DEFAULT_MANAGED_PROJECT_TEMPLATE_ID,
+  getDefaultManagedProjectPath,
+  getManagedProjectsRootPath,
+  listManagedProjectTemplates,
+  MANAGED_PROJECT_TEMPLATE_VERSION,
+  normalizeManagedProjectDirectoryName,
   normalizeProjectTemplateName,
-  STARTER_PROJECT_TEMPLATE_VERSION,
 } from './lib/projects/template.js';
 import {
   printTunnelWarning,
@@ -1078,7 +1082,7 @@ const PROJECT_ICON_EXTENSION_TO_MIME = Object.fromEntries(
 );
 const PROJECT_ICON_SUPPORTED_MIMES = new Set(Object.keys(PROJECT_ICON_MIME_TO_EXTENSION));
 const PROJECT_ICON_MAX_BYTES = 5 * 1024 * 1024;
-const STARTER_PROJECT_BOOTSTRAP_KEY = 'starterProjectBootstrap';
+const DEFAULT_PROJECT_BOOTSTRAP_KEY = 'defaultProjectBootstrap';
 const PROJECT_ICON_THEME_COLORS = {
   light: '#111111',
   dark: '#f5f5f5',
@@ -1253,7 +1257,7 @@ const writeSettingsToDisk = async (settings) => {
 const PUSH_SUBSCRIPTIONS_VERSION = 1;
 let persistPushSubscriptionsLock = Promise.resolve();
 let persistManagedRemoteTunnelConfigLock = Promise.resolve();
-let starterProjectBootstrapLock = Promise.resolve();
+let defaultProjectBootstrapLock = Promise.resolve();
 
 const readPushSubscriptionsFromDisk = async () => {
   try {
@@ -1703,6 +1707,27 @@ const sanitizeProjects = (input) => {
     }
     return hexColorPattern.test(trimmed) ? trimmed.toLowerCase() : null;
   };
+  const normalizeProjectSource = (value) => {
+    if (value === 'default' || value === 'managed' || value === 'external') {
+      return value;
+    }
+    return null;
+  };
+  const isWithinDirectory = (rootDirectory, candidatePath) => {
+    const relativePath = path.relative(rootDirectory, candidatePath);
+    return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+  };
+  const inferProjectSource = (projectPath) => {
+    const defaultProjectPath = path.resolve(getDefaultManagedProjectPath());
+    if (projectPath === defaultProjectPath) {
+      return 'default';
+    }
+    const managedProjectsRoot = path.resolve(getManagedProjectsRootPath());
+    if (isWithinDirectory(managedProjectsRoot, projectPath)) {
+      return 'managed';
+    }
+    return 'external';
+  };
 
   const result = [];
   const seenIds = new Set();
@@ -1728,6 +1753,13 @@ const sanitizeProjects = (input) => {
       : null;
 
     if (!id || !normalizedPath) continue;
+
+    const source = normalizeProjectSource(candidate.source) || inferProjectSource(normalizedPath);
+    const templateId = typeof candidate.templateId === 'string' && candidate.templateId.trim().length > 0
+      ? candidate.templateId.trim()
+      : source === 'default'
+        ? DEFAULT_MANAGED_PROJECT_TEMPLATE_ID
+        : null;
     if (seenIds.has(id)) continue;
     if (seenPaths.has(normalizedPath)) continue;
 
@@ -1737,6 +1769,8 @@ const sanitizeProjects = (input) => {
     const project = {
       id,
       path: normalizedPath,
+      source,
+      ...(templateId ? { templateId } : {}),
       ...(label ? { label } : {}),
       ...(icon ? { icon } : {}),
       ...(iconBackground ? { iconBackground } : {}),
@@ -2332,86 +2366,140 @@ const formatSettingsResponse = (settings) => {
   };
 };
 
-const createProjectRegistryEntry = (projectPath, label) => {
+const createProjectRegistryEntry = (projectPath, label, options = {}) => {
   const now = Date.now();
+  const source = options.source === 'default' || options.source === 'managed' || options.source === 'external'
+    ? options.source
+    : 'external';
+  const templateId = typeof options.templateId === 'string' && options.templateId.trim().length > 0
+    ? options.templateId.trim()
+    : null;
+
   return {
     id: typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `proj_${now}_${Math.random().toString(36).slice(2, 8)}`,
     path: projectPath,
     label,
+    source,
+    ...(templateId ? { templateId } : {}),
     addedAt: now,
     lastOpenedAt: now,
   };
 };
 
-const buildStarterProjectBootstrapState = (overrides = {}) => ({
+const buildDefaultProjectBootstrapState = (overrides = {}) => ({
   completed: true,
-  templateVersion: STARTER_PROJECT_TEMPLATE_VERSION,
+  templateVersion: MANAGED_PROJECT_TEMPLATE_VERSION,
   updatedAt: Date.now(),
   ...overrides,
 });
 
-const withStarterProjectBootstrapState = (settings, state) => ({
+const withDefaultProjectBootstrapState = (settings, state) => ({
   ...settings,
-  [STARTER_PROJECT_BOOTSTRAP_KEY]: state,
+  [DEFAULT_PROJECT_BOOTSTRAP_KEY]: state,
 });
 
-const persistStarterProjectBootstrapState = async (state) => {
-  const current = await readSettingsFromDisk();
-  const next = withStarterProjectBootstrapState(current, state);
+const persistDefaultProjectBootstrapState = async (state, currentSettings) => {
+  const current = currentSettings && typeof currentSettings === 'object'
+    ? currentSettings
+    : await readSettingsFromDiskMigrated();
+  const next = withDefaultProjectBootstrapState(current, state);
   await writeSettingsToDisk(next);
   return next;
 };
 
-const ensureStarterProjectBootstrapped = async () => {
-  starterProjectBootstrapLock = starterProjectBootstrapLock.then(async () => {
+const createManagedProject = async ({ projectName, templateId, source = 'managed', allowReuseNonEmpty = false }) => {
+  const normalizedSource = source === 'default' ? 'default' : 'managed';
+  const normalizedProjectName = normalizeProjectTemplateName(
+    projectName ?? (normalizedSource === 'default' ? DEFAULT_MANAGED_PROJECT_NAME : undefined)
+  );
+  const normalizedTemplateId = typeof templateId === 'string' && templateId.trim().length > 0
+    ? templateId.trim()
+    : DEFAULT_MANAGED_PROJECT_TEMPLATE_ID;
+  const targetDirectory = normalizedSource === 'default'
+    ? getDefaultManagedProjectPath()
+    : path.join(getManagedProjectsRootPath(), normalizeManagedProjectDirectoryName(normalizedProjectName));
+
+  let created = null;
+  try {
+    created = await createManagedProjectFromTemplate(targetDirectory, {
+      projectName: normalizedProjectName,
+      templateId: normalizedTemplateId,
+    });
+  } catch (error) {
+    if (!allowReuseNonEmpty || !(error instanceof Error) || error.message !== 'Target directory already exists and is not empty') {
+      throw error;
+    }
+
+    const validation = await validateDirectoryPath(targetDirectory);
+    if (!validation.ok) {
+      throw error;
+    }
+
+    created = {
+      targetDirectory,
+      projectName: normalizedProjectName,
+      templateId: normalizedTemplateId,
+      stats: {
+        filesCreated: 0,
+        directoriesCreated: 0,
+        bytesWritten: 0,
+        templateVersion: MANAGED_PROJECT_TEMPLATE_VERSION,
+      },
+    };
+  }
+
+  return {
+    created,
+    projectEntry: createProjectRegistryEntry(created.targetDirectory, created.projectName, {
+      source: normalizedSource,
+      templateId: created.templateId,
+    }),
+  };
+};
+
+const ensureDefaultProjectInitialized = async () => {
+  defaultProjectBootstrapLock = defaultProjectBootstrapLock.then(async () => {
     const current = await readSettingsFromDiskMigrated();
-    const bootstrapState = current?.[STARTER_PROJECT_BOOTSTRAP_KEY];
-    if (bootstrapState && typeof bootstrapState === 'object' && bootstrapState.completed === true) {
+    const projects = sanitizeProjects(current.projects) || [];
+    const bootstrapState = current?.[DEFAULT_PROJECT_BOOTSTRAP_KEY];
+
+    if (bootstrapState && typeof bootstrapState === 'object' && bootstrapState.completed === true && projects.length > 0) {
       return current;
     }
 
-    const projects = sanitizeProjects(current.projects) || [];
     if (projects.length > 0) {
-      return await persistStarterProjectBootstrapState(
-        buildStarterProjectBootstrapState({ reason: 'existing-projects' })
+      return await persistDefaultProjectBootstrapState(
+        buildDefaultProjectBootstrapState({ reason: 'existing-projects' }),
+        current,
       );
     }
 
-    const targetPath = getDefaultStarterProjectPath();
-    let created = false;
+    const { created, projectEntry } = await createManagedProject({
+      projectName: DEFAULT_MANAGED_PROJECT_NAME,
+      templateId: DEFAULT_MANAGED_PROJECT_TEMPLATE_ID,
+      source: 'default',
+      allowReuseNonEmpty: true,
+    });
 
-    try {
-      await createBundledProjectFromTemplate(targetPath);
-      created = true;
-    } catch (error) {
-      if (!(error instanceof Error) || error.message !== 'Target directory already exists and is not empty') {
-        throw error;
-      }
-
-      const validation = await validateDirectoryPath(targetPath);
-      if (!validation.ok) {
-        throw error;
-      }
-    }
-
-    const projectEntry = createProjectRegistryEntry(targetPath, DEFAULT_STARTER_PROJECT_NAME);
     await persistSettings({
       projects: [projectEntry],
       activeProjectId: projectEntry.id,
     });
 
-    return await persistStarterProjectBootstrapState(
-      buildStarterProjectBootstrapState({
-        reason: created ? 'created' : 'reused-existing-directory',
+    return await persistDefaultProjectBootstrapState(
+      buildDefaultProjectBootstrapState({
+        reason: created.stats.filesCreated > 0 ? 'created' : 'reused-existing-directory',
         projectId: projectEntry.id,
-        projectPath: targetPath,
-      })
+        projectPath: created.targetDirectory,
+        templateId: created.templateId,
+      }),
+      await readSettingsFromDiskMigrated(),
     );
   });
 
-  return starterProjectBootstrapLock;
+  return defaultProjectBootstrapLock;
 };
 
 const validateProjectEntries = async (projects) => {
@@ -6735,241 +6823,24 @@ async function main(options = {}) {
     });
   });
 
-  app.get('/api/openaurora/update-check', async (req, res) => {
-    try {
-      const { checkForUpdates } = await import('./lib/package-manager.js');
-      const parseString = (value) => (typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined);
-      const parseReportUsage = (value) => {
-        if (typeof value !== 'string') return true;
-        const normalized = value.trim().toLowerCase();
-        if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
-        return true;
-      };
-      const inferDeviceClass = (ua) => {
-        const value = (ua || '').toLowerCase();
-        if (!value) return 'unknown';
-        if (value.includes('ipad') || value.includes('tablet')) return 'tablet';
-        if (value.includes('mobi') || value.includes('android') || value.includes('iphone')) return 'mobile';
-        return 'desktop';
-      };
-      const inferArch = (ua) => {
-        const value = (ua || '').toLowerCase();
-        if (!value) return 'unknown';
-        if (value.includes('aarch64') || value.includes('arm64') || value.includes(' arm;') || value.includes('armv')) return 'arm64';
-        if (value.includes('x86_64') || value.includes('x64') || value.includes('amd64') || value.includes('win64') || value.includes('x86-64')) return 'x64';
-        return 'unknown';
-      };
-      const inferPlatform = (ua) => {
-        const value = (ua || '').toLowerCase();
-        if (!value) return undefined;
-        if (value.includes('mac os') || value.includes('macintosh') || value.includes('darwin')) return 'macos';
-        if (value.includes('windows') || value.includes('win32') || value.includes('win64')) return 'windows';
-        if (value.includes('linux') || value.includes('x11')) return 'linux';
-        return 'web';
-      };
-      const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : '';
-
-      const updateInfo = await checkForUpdates({
-        appType: parseString(req.query.appType),
-        deviceClass: parseString(req.query.deviceClass) || inferDeviceClass(userAgent),
-        platform: parseString(req.query.platform) || inferPlatform(userAgent),
-        arch: parseString(req.query.arch) || inferArch(userAgent),
-        instanceMode: parseString(req.query.instanceMode),
-        currentVersion: parseString(req.query.currentVersion),
-        reportUsage: parseReportUsage(parseString(req.query.reportUsage)),
-      });
-      res.json(updateInfo);
-    } catch (error) {
-      console.error('Failed to check for updates:', error);
-      res.status(500).json({
-        available: false,
-        error: error instanceof Error ? error.message : 'Failed to check for updates',
-      });
-    }
+  app.get('/api/ridge/update-check', async (_req, res) => {
+    res.json({
+      available: false,
+      currentVersion: APP_VERSION,
+      version: null,
+      body: 'Updates are disabled in Ridge.',
+      updateCommand: 'Updates are disabled in Ridge',
+    });
   });
 
-  app.post('/api/openaurora/update-install', async (_req, res) => {
-    try {
-      const { spawn: spawnChild } = await import('child_process');
-      const {
-        checkForUpdates,
-        getUpdateCommand,
-        detectPackageManager,
-      } = await import('./lib/package-manager.js');
-
-      // Verify update is available
-      const updateInfo = await checkForUpdates();
-      if (!updateInfo.available) {
-        return res.status(400).json({ error: 'No update available' });
-      }
-
-      const pm = detectPackageManager();
-      const updateCmd = getUpdateCommand(pm);
-      const isContainer =
-        fs.existsSync('/.dockerenv') ||
-        Boolean(process.env.CONTAINER) ||
-        process.env.container === 'docker';
-
-      if (isContainer) {
-        res.json({
-          success: true,
-          message: 'Update starting, server will stay online',
-          version: updateInfo.version,
-          packageManager: pm,
-          autoRestart: false,
-        });
-
-        setTimeout(() => {
-          console.log(`\nInstalling update using ${pm} (container mode)...`);
-          console.log(`Running: ${updateCmd}`);
-
-          const shell = process.platform === 'win32' ? (process.env.ComSpec || 'cmd.exe') : 'sh';
-          const shellFlag = process.platform === 'win32' ? '/c' : '-c';
-          const child = spawnChild(shell, [shellFlag, updateCmd], {
-            detached: true,
-            stdio: 'ignore',
-            env: process.env,
-          });
-          child.unref();
-        }, 500);
-
-        return;
-      }
-
-      // Get current server port for restart
-      const currentPort = server.address()?.port || 3000;
-
-      // Try to read stored instance options for restart
-      const tmpDir = os.tmpdir();
-      const instanceFilePath = path.join(tmpDir, `openaurora-${currentPort}.json`);
-      let storedOptions = { port: currentPort, daemon: true };
-      try {
-        const content = await fs.promises.readFile(instanceFilePath, 'utf8');
-        storedOptions = JSON.parse(content);
-      } catch {
-        // Use defaults
-      }
-
-      const isWindows = process.platform === 'win32';
-
-      const quotePosix = (value) => `'${String(value).replace(/'/g, "'\\''")}'`;
-      const quoteCmd = (value) => {
-        const stringValue = String(value);
-        return `"${stringValue.replace(/"/g, '""')}"`;
-      };
-
-      // Build restart command using explicit runtime + CLI path.
-      // Avoids relying on `openaurora` being in PATH for service environments.
-      const cliPath = path.resolve(__dirname, '..', 'bin', 'cli.js');
-      const restartParts = [
-        isWindows ? quoteCmd(process.execPath) : quotePosix(process.execPath),
-        isWindows ? quoteCmd(cliPath) : quotePosix(cliPath),
-        'serve',
-        '--port',
-        String(storedOptions.port),
-        '--daemon',
-      ];
-      let restartCmdPrimary = restartParts.join(' ');
-      let restartCmdFallback = `openaurora serve --port ${storedOptions.port} --daemon`;
-      if (storedOptions.uiPassword) {
-        if (isWindows) {
-          // Escape for cmd.exe quoted argument
-          const escapedPw = storedOptions.uiPassword.replace(/"/g, '""');
-          restartCmdPrimary += ` --ui-password "${escapedPw}"`;
-          restartCmdFallback += ` --ui-password "${escapedPw}"`;
-        } else {
-          // Escape for POSIX single-quoted argument
-          const escapedPw = storedOptions.uiPassword.replace(/'/g, "'\\''");
-          restartCmdPrimary += ` --ui-password '${escapedPw}'`;
-          restartCmdFallback += ` --ui-password '${escapedPw}'`;
-        }
-      }
-      const restartCmd = `(${restartCmdPrimary}) || (${restartCmdFallback})`;
-
-      // Respond immediately - update will happen after response
-      res.json({
-        success: true,
-        message: 'Update starting, server will restart shortly',
-        version: updateInfo.version,
-        packageManager: pm,
-        autoRestart: true,
-      });
-
-      // Give time for response to be sent
-      setTimeout(() => {
-        console.log(`\nInstalling update using ${pm}...`);
-        console.log(`Running: ${updateCmd}`);
-
-        // Create a script that will:
-        // 1. Wait for current process to exit
-        // 2. Run the update
-        // 3. Restart the server with original options
-        const shell = isWindows ? (process.env.ComSpec || 'cmd.exe') : 'sh';
-        const shellFlag = isWindows ? '/c' : '-c';
-        const script = isWindows
-          ? `
-            timeout /t 2 /nobreak >nul
-            ${updateCmd}
-            if %ERRORLEVEL% EQU 0 (
-              echo Update successful, restarting OpenAurora...
-              ${restartCmd}
-            ) else (
-              echo Update failed
-              exit /b 1
-            )
-          `
-          : `
-            sleep 2
-            ${updateCmd}
-            if [ $? -eq 0 ]; then
-              echo "Update successful, restarting OpenAurora..."
-              ${restartCmd}
-            else
-              echo "Update failed"
-              exit 1
-            fi
-          `;
-
-        // Spawn detached shell to run update after we exit.
-        // Capture output to disk so restart failures are diagnosable.
-        const updateLogPath = path.join(OPENAURORA_DATA_DIR, 'update-install.log');
-        let logFd = null;
-        try {
-          fs.mkdirSync(path.dirname(updateLogPath), { recursive: true });
-          logFd = fs.openSync(updateLogPath, 'a');
-        } catch (logError) {
-          console.warn('Failed to open update log file, continuing without log capture:', logError);
-        }
-
-        const child = spawnChild(shell, [shellFlag, script], {
-          detached: true,
-          stdio: logFd !== null ? ['ignore', logFd, logFd] : 'ignore',
-          env: process.env,
-        });
-        child.unref();
-
-        if (logFd !== null) {
-          try {
-            fs.closeSync(logFd);
-          } catch {
-            // ignore
-          }
-        }
-
-        console.log('Update process spawned, shutting down server...');
-
-        // Give child process time to start, then exit
-        setTimeout(() => {
-          process.exit(0);
-        }, 500);
-      }, 500);
-    } catch (error) {
-      console.error('Failed to install update:', error);
-      res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to install update',
-      });
-    }
+  app.post('/api/ridge/update-install', async (_req, res) => {
+    res.status(501).json({
+      success: false,
+      error: 'Updates are disabled in Ridge.',
+      autoRestart: false,
+    });
   });
+
 
   app.get('/api/openaurora/models-metadata', async (req, res) => {
     const now = Date.now();
@@ -7620,7 +7491,7 @@ async function main(options = {}) {
 
   app.get('/api/config/settings', async (_req, res) => {
     try {
-      const settings = await ensureStarterProjectBootstrapped();
+      const settings = await ensureDefaultProjectInitialized();
       res.json(formatSettingsResponse(settings));
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -7651,23 +7522,43 @@ async function main(options = {}) {
     }
   });
 
-  app.post('/api/projects/create-from-template', async (req, res) => {
+  app.get('/api/projects/templates', async (_req, res) => {
     try {
-      const projectName = normalizeProjectTemplateName(req.body?.projectName);
-      if (!isExplicitDirectoryInput(req.body?.parentDirectory)) {
-        return res.status(400).json({ success: false, error: 'Parent directory must be an absolute path' });
+      const templates = await listManagedProjectTemplates();
+      res.json({ templates });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to load project templates',
+      });
+    }
+  });
+
+  app.post('/api/projects/create-managed', async (req, res) => {
+    try {
+      if (typeof req.body?.projectName !== 'string' || req.body.projectName.trim().length === 0) {
+        return res.status(400).json({ success: false, error: 'Project name is required' });
+      }
+      if (typeof req.body?.templateId !== 'string' || req.body.templateId.trim().length === 0) {
+        return res.status(400).json({ success: false, error: 'Template id is required' });
       }
 
-      const parentDirectory = resolveDirectoryCandidate(req.body?.parentDirectory);
-      if (!parentDirectory) {
-        return res.status(400).json({ success: false, error: 'Parent directory is required' });
-      }
-
-      const targetDirectory = path.join(parentDirectory, projectName);
-      const created = await createBundledProjectFromTemplate(targetDirectory);
+      const projectName = normalizeProjectTemplateName(req.body.projectName);
+      const templateId = req.body.templateId.trim();
       const settings = await readSettingsFromDiskMigrated();
       const projects = sanitizeProjects(settings.projects) || [];
-      const projectEntry = createProjectRegistryEntry(created.targetDirectory, projectName);
+      const targetDirectory = path.join(getManagedProjectsRootPath(), normalizeManagedProjectDirectoryName(projectName));
+      const duplicate = projects.find((project) => path.resolve(project.path) === path.resolve(targetDirectory));
+      if (duplicate) {
+        return res.status(409).json({
+          success: false,
+          error: 'Project already exists in the registry',
+        });
+      }
+      const { created, projectEntry } = await createManagedProject({
+        projectName,
+        templateId,
+        source: 'managed',
+      });
       const updatedSettings = await persistSettings({
         projects: [...projects, projectEntry],
         activeProjectId: projectEntry.id,
@@ -7686,7 +7577,7 @@ async function main(options = {}) {
         : 500;
       res.status(statusCode).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to create project from template',
+        error: error instanceof Error ? error.message : 'Failed to create managed project',
       });
     }
   });

@@ -1,6 +1,6 @@
 # Docs Authoring Guide
 
-This package is docs content source-of-truth for OpenChamber.
+This package is docs content source-of-truth for Ridge.
 
 ## Add a new docs page
 
@@ -11,7 +11,7 @@ This package is docs content source-of-truth for OpenChamber.
    ```mdx
    ---
    title: Remote Access
-   description: Access OpenChamber from outside your local network.
+   description: Access Ridge from outside your local network.
    ---
    ```
 

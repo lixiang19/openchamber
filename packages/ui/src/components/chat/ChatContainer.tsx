@@ -211,11 +211,12 @@ export const ChatContainer: React.FC = () => {
         </Button>
     ) : null;
 
-    const weChatSessionButton = currentSession ? (
+    const weChatSessionButton = currentSession && isMobile ? (
         <WeChatSessionDialog
             sessionId={currentSession.id}
             sessionTitle={currentSession.title?.trim() || 'Untitled session'}
             sessionCwd={currentSession.path}
+            triggerClassName="absolute right-3 top-3 z-20"
         />
     ) : null;
 

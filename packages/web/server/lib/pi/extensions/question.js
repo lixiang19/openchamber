@@ -1,23 +1,87 @@
 import { Type } from '@sinclair/typebox';
 
+const QuestionOptionSchema = Type.Object({
+  label: Type.String({ description: 'Option label shown in the UI' }),
+  description: Type.Optional(Type.String({ description: 'Optional helper text shown under the option' })),
+});
+
 const QuestionItemSchema = Type.Object({
   header: Type.Optional(Type.String({ description: 'Header or topic of the question' })),
   question: Type.String({ description: 'The question text to ask the user' }),
-  options: Type.Optional(Type.Array(Type.String(), { description: 'Optional list of choices for the user' })),
+  options: Type.Optional(Type.Array(QuestionOptionSchema, { description: 'Optional list of structured choices for the user' })),
   multiple: Type.Optional(Type.Boolean({ description: 'Whether the user can select multiple options' })),
+  allowCustom: Type.Optional(Type.Boolean({ description: 'Whether the user may answer with free-form text' })),
 });
 
 const QuestionParamsSchema = Type.Object({
   questions: Type.Array(QuestionItemSchema, { description: 'A list of questions to ask the user.' }),
 });
 
+const normalizeQuestionOptions = (options) => {
+  if (!Array.isArray(options)) {
+    return [];
+  }
+
+  return options.flatMap((option) => {
+    if (!option || typeof option !== 'object') {
+      return [];
+    }
+
+    const label = typeof option.label === 'string' ? option.label.trim() : '';
+    if (!label) {
+      return [];
+    }
+
+    const description = typeof option.description === 'string' ? option.description : undefined;
+    return [{ label, ...(description ? { description } : {}) }];
+  });
+};
+
+const normalizeQuestions = (questions) => questions.flatMap((question) => {
+  if (!question || typeof question !== 'object') {
+    return [];
+  }
+
+  const prompt = typeof question.question === 'string' ? question.question.trim() : '';
+  if (!prompt) {
+    return [];
+  }
+
+  const options = normalizeQuestionOptions(question.options);
+  const allowCustom = options.length === 0
+    ? true
+    : question.allowCustom === true;
+
+  return [{
+    ...(typeof question.header === 'string' && question.header.trim() ? { header: question.header.trim() } : {}),
+    question: prompt,
+    options,
+    multiple: question.multiple === true,
+    allowCustom,
+  }];
+});
+
+const normalizeQuestionAnswers = (response) => {
+  if (Array.isArray(response) && Array.isArray(response[0])) {
+    return response.map((group) => Array.isArray(group) ? group.filter((value) => typeof value === 'string') : []);
+  }
+  if (Array.isArray(response)) {
+    return [response.filter((value) => typeof value === 'string')];
+  }
+  if (typeof response === 'string' && response.trim()) {
+    return [[response.trim()]];
+  }
+  return [];
+};
+
 const buildQuestionOutput = (questions, response) => {
-  const answers = Array.isArray(response) ? response : [response];
+  const answers = normalizeQuestionAnswers(response);
   let output = 'User has answered your questions:\n';
 
   questions.forEach((question, index) => {
-    const fallback = answers[0] || 'No answer';
-    const answerText = answers[index] !== undefined ? answers[index] : fallback;
+    const fallback = answers[0] || [];
+    const answerGroup = answers[index] !== undefined ? answers[index] : fallback;
+    const answerText = answerGroup.length > 0 ? answerGroup.join(', ') : 'No answer';
     output += `"${question.question}"="${answerText}"\n`;
   });
 
@@ -34,12 +98,13 @@ export function createQuestionToolDefinition(createInteractiveRequest) {
     promptGuidelines: [
       'Use the question tool when you cannot proceed without user input.',
       'Ask clear, concise questions.',
-      'Group multiple related questions into a single tool call when possible.',
+      'Model the prompt exactly as the UI should render it: options, multi-select, and free-form answers are explicit.',
     ],
     parameters: QuestionParamsSchema,
 
     async execute(_toolCallId, params) {
-      if (!Array.isArray(params.questions) || params.questions.length === 0) {
+      const normalizedQuestions = normalizeQuestions(Array.isArray(params.questions) ? params.questions : []);
+      if (normalizedQuestions.length === 0) {
         return {
           content: [{ type: 'text', text: 'Error: No questions provided.' }],
           details: { questions: [], answer: null },
@@ -49,32 +114,33 @@ export function createQuestionToolDefinition(createInteractiveRequest) {
 
       try {
         const response = await createInteractiveRequest('question', {
-          title: params.questions[0].header || 'Input Needed',
-          message: params.questions[0].question,
-          questions: params.questions,
-          options: Array.isArray(params.questions[0].options) ? params.questions[0].options : [],
+          title: normalizedQuestions[0].header || 'Input Needed',
+          message: normalizedQuestions[0].question,
+          questions: normalizedQuestions,
           bridgeKind: 'question',
+          webSupport: 'supported',
         });
 
         if (response === undefined || response === null) {
           return {
             content: [{ type: 'text', text: 'User cancelled or dismissed the question.' }],
-            details: { questions: params.questions, answer: null, cancelled: true },
+            details: { questions: normalizedQuestions, answer: null, cancelled: true },
             isError: true,
           };
         }
 
+        const answers = normalizeQuestionAnswers(response);
         return {
-          content: [{ type: 'text', text: buildQuestionOutput(params.questions, response) }],
+          content: [{ type: 'text', text: buildQuestionOutput(normalizedQuestions, answers) }],
           details: {
-            questions: params.questions,
-            answer: response,
+            questions: normalizedQuestions,
+            answer: answers,
           },
         };
       } catch (error) {
         return {
           content: [{ type: 'text', text: error instanceof Error ? error.message : 'Failed to ask question.' }],
-          details: { questions: params.questions, answer: null },
+          details: { questions: normalizedQuestions, answer: null },
           isError: true,
         };
       }

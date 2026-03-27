@@ -1,6 +1,6 @@
-# OpenChamber Docs Source
+# Ridge Docs Source
 
-This package is the source-of-truth for OpenChamber public docs content.
+This package is the source-of-truth for Ridge public docs content.
 
 ## Layout
 

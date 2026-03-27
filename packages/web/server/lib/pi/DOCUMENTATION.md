@@ -1,14 +1,14 @@
 # Pi Bridge Module Documentation
 
 ## Purpose
-This module is the server-side Pi SDK bridge for OpenChamber. It keeps the existing HTTP and SSE contracts stable while the backend runtime is driven directly by `@mariozechner/pi-coding-agent` instead of spawning the external `pi` CLI.
+This module is the server-side Pi SDK bridge for Ridge. It keeps the existing HTTP and SSE contracts stable while the backend runtime is driven directly by `@mariozechner/pi-coding-agent` instead of spawning the external `pi` CLI.
 
 ## Entrypoints and structure
 - `packages/web/server/lib/pi/index.js`: public exports for bridge schema and message projection helpers.
 - `packages/web/server/lib/pi/bridge-schema.js`: normalized event catalog plus envelope and message normalizers.
 - `packages/web/server/lib/pi/providers.js`: Pi model/provider discovery built directly on `AuthStorage`, `ModelRegistry`, and `SettingsManager`.
 - `packages/web/server/lib/pi/sdk-host.js`: in-memory Pi session host backed by `createAgentSession()`.
-- `packages/web/server/lib/pi/extensions/question.js`: adapts Pi extension UI requests into the existing Web question flow.
+- `packages/web/server/lib/pi/extensions/question.js`: defines the UI-native `question` tool contract that the Web `QuestionCard` renders directly.
 - `packages/web/server/lib/pi/extensions/subagent.js`: SDK-backed subagent tool that creates nested in-memory Pi sessions instead of spawning `pi` subprocesses.
 - `packages/web/server/lib/pi/agents.js`: discovers `.pi/agents/*.md` definitions and parses their frontmatter.
 - `packages/web/server/lib/pi/permissions.js`: normalizes OpenCode-style permission rules, compiles runtime policies, and provides the shared `tool_call` gate.
@@ -18,7 +18,7 @@ This module is the server-side Pi SDK bridge for OpenChamber. It keeps the exist
 - `PI_BRIDGE_EVENT_CATALOG`: canonical list of Pi agent events, assistant stream events, message roles, and extension UI methods that the bridge recognizes.
 - `normalizePiRpcEnvelope(value)`: normalizes SDK event payloads into bridge envelopes (`agent-event`, `extension-ui-request`, `unknown`).
 - `normalizePiMessage(value)`: normalizes Pi core/custom message roles into a stable server shape.
-- `normalizePiExtensionUiRequest(value)`: tags extension UI requests with bridge intent (`question`, `status`, `widget`, etc.) plus support level metadata.
+- `normalizePiExtensionUiRequest(value)`: normalizes extension UI requests into the bridge event model; only native `question` dialogs are treated as supported interactive requests in Web mode.
 - `AGENT_RUNTIME_PI`: runtime marker written into projected assistant messages.
 - `mapPiUiRequestToQuestionRequest(sessionRecord, request)`: maps Pi extension UI requests into the existing `QuestionCard`-compatible request shape.
 - `translatePiMessagesToOpenCodeMessages(sessionRecord, messages)`: projects Pi message history into the OpenCode `info + parts[]` shape consumed by the current Web client.
@@ -35,14 +35,15 @@ This module is the server-side Pi SDK bridge for OpenChamber. It keeps the exist
 - Extension UI requests: `input`, `select`, `confirm`, `editor`, `notify`, `setStatus`, `setWidget`, `setTitle`, `set_editor_text`
 
 ## Bridge intent mapping
-- Priority interactive bridge targets: `input`, `select`, `confirm` -> normalized as `question` requests.
-- Explicit downgrade path: `editor` -> rendered as an unsupported `QuestionCard` prompt so the user can cancel it deliberately instead of the bridge dropping it silently.
+- The Web product supports exactly one blocking interactive contract: native `question` requests.
+- Legacy extension dialog methods (`input`, `select`, `confirm`, `editor`) are not product-supported in Web mode and are left as unsupported bridge payloads instead of being collapsed into `QuestionCard` requests.
 - Passive/degraded UI: `notify` -> normalized as `notification`.
 - Deferred UI follow-ups: `setStatus`, `setWidget` -> normalized but marked deferred for later Web support.
 - Unsupported for now: `setTitle`, `set_editor_text`.
 
 ## Notes for contributors
 - The active server routes use `sdk-host.js` and `providers.js`; they do not rely on the external `pi` binary or RPC mode.
+- `sdk-host.js` is the source of truth for interactive dialogs in Web mode: internally it emits only native `question` requests. `ctx.ui.input()` / `select()` / `confirm()` / `editor()` are explicitly unsupported in the Web host and callers must use the custom `question` tool instead.
 - Model/provider discovery must stay separate from session bootstrap. `providers.js` reads Pi's `ModelRegistry` directly instead of creating throwaway sessions.
 - Subagents are also SDK-backed. Agent frontmatter now uses the Pi-native subset: `description`, `mode`, `model`, `thinking`, `steps`, `permission`, `enabled`, `display_name`, plus markdown body prompt.
 - Agent `permission` now accepts OpenCode-style rule values for `edit` (for example `edit: deny` or `edit: { "*": "deny", "**/*.md": "allow" }`). `permissions.js` compiles those rules into `activeToolNames` plus a shared `tool_call` gate that both `sdk-host.js` and `extensions/subagent.js` inject through `DefaultResourceLoader` extension factories.

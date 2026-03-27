@@ -96,7 +96,7 @@
       },
     },
     "packages/desktop": {
-      "name": "@openchamber/desktop",
+      "name": "@ridge/desktop",
       "version": "1.9.0",
       "devDependencies": {
         "@tauri-apps/cli": "^2",
@@ -105,7 +105,7 @@
       },
     },
     "packages/ui": {
-      "name": "@openchamber/ui",
+      "name": "@ridge/ui",
       "version": "1.9.0",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.0",
@@ -208,10 +208,10 @@
       },
     },
     "packages/web": {
-      "name": "@openchamber/web",
+      "name": "@ridge/web",
       "version": "1.9.0",
       "bin": {
-        "opchat": "./bin/cli.js",
+        "ridge": "./bin/cli.js",
       },
       "dependencies": {
         "@clack/prompts": "^1.1.0",
@@ -886,11 +886,11 @@
 
     "@octokit/types": ["@octokit/types@16.0.0", "", { "dependencies": { "@octokit/openapi-types": "^27.0.0" } }, "sha512-sKq+9r1Mm4efXW1FCk7hFSeJo4QKreL/tTbR0rz/qx/r1Oa2VV83LTA/H/MuCOX7uCIJmQVRKBcbmWoySjAnSg=="],
 
-    "@openchamber/desktop": ["@openchamber/desktop@workspace:packages/desktop"],
+    "@ridge/desktop": ["@ridge/desktop@workspace:packages/desktop"],
 
-    "@openchamber/ui": ["@openchamber/ui@workspace:packages/ui"],
+    "@ridge/ui": ["@ridge/ui@workspace:packages/ui"],
 
-    "@openchamber/web": ["@openchamber/web@workspace:packages/web"],
+    "@ridge/web": ["@ridge/web@workspace:packages/web"],
 
     "@pierre/diffs": ["@pierre/diffs@1.1.0-beta.13", "", { "dependencies": { "@shikijs/transformers": "^3.0.0", "diff": "8.0.3", "hast-util-to-html": "9.0.5", "lru_map": "0.4.1", "shiki": "^3.0.0" }, "peerDependencies": { "react": "^18.3.1 || ^19.0.0", "react-dom": "^18.3.1 || ^19.0.0" } }, "sha512-D35rxDu5V7XHX5aVGU6PF12GhscL+I+9QYgxK/i3h0d2XSirAxDdVNm49aYwlOhgmdvL0NbS1IHxPswVB5yJvw=="],
 
@@ -3060,7 +3060,7 @@
 
     "@mariozechner/pi-tui/marked": ["marked@15.0.12", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-8dD6FusOQSrpv9Z1rdNMdlSgQOIP880DHqnohobOmYLElGEqAL/JvxvuxZO16r4HtjTlfPRDC1hbvxC9dPN2nA=="],
 
-    "@openchamber/ui/ghostty-web": ["ghostty-web@0.4.0", "", {}, "sha512-0puDBik2qapbD/QQBW9o5ZHfXnZBqZWx/ctBiVtKZ6ZLds4NYb+wZuw1cRLXZk9zYovIQ908z3rvFhexAvc5Hg=="],
+    "@ridge/ui/ghostty-web": ["ghostty-web@0.4.0", "", {}, "sha512-0puDBik2qapbD/QQBW9o5ZHfXnZBqZWx/ctBiVtKZ6ZLds4NYb+wZuw1cRLXZk9zYovIQ908z3rvFhexAvc5Hg=="],
 
     "@radix-ui/react-collection/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
 

@@ -215,7 +215,7 @@ export const debugUtils = {
     })();
 
     const runtimeApis = typeof window !== 'undefined'
-      ? (window as any).__OPENCHAMBER_RUNTIME_APIS__
+      ? (window as any).__RIDGE_RUNTIME_APIS__
       : null;
     const isTauriShell = typeof window !== 'undefined' && Boolean((window as any).__TAURI__);
 
@@ -358,7 +358,7 @@ export const debugUtils = {
         projectInfo,
         health: opencodeHealth,
       },
-      openchamber: {
+      ridge: {
         settingsInfo,
       },
     };

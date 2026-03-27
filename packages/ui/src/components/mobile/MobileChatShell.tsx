@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { DiffIcon } from '@/components/icons/DiffIcon';
 import { MobileChatShellProvider } from '@/components/mobile/MobileChatShellContext';
+import { CreateProjectDialog } from '@/components/session/CreateProjectDialog';
 import { ChatView } from '@/components/views';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
 import { isDesktopLocalOriginActive, isTauriShell, requestDirectoryAccess } from '@/lib/desktop';
@@ -238,6 +239,7 @@ const MobileProjectsPage: React.FC<{
   const homeDirectory = useDirectoryStore((state) => state.homeDirectory);
   const [creatingWorktreeFor, setCreatingWorktreeFor] = React.useState<string | null>(null);
   const tauriIpcAvailable = React.useMemo(() => isTauriShell(), []);
+  const [createProjectDialogOpen, setCreateProjectDialogOpen] = React.useState(false);
 
   const sortedProjects = React.useMemo(() => {
     return [...projects].sort((a, b) => {
@@ -306,7 +308,13 @@ const MobileProjectsPage: React.FC<{
   }, [onOpenChat, setActiveProject]);
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <>
+      <CreateProjectDialog
+        open={createProjectDialogOpen}
+        onOpenChange={setCreateProjectDialogOpen}
+      />
+
+      <div className="flex h-full flex-col bg-background">
       <div className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur">
         <div className="px-4 pb-3 pt-4" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
           <div className="flex items-center justify-between gap-3">
@@ -315,6 +323,10 @@ const MobileProjectsPage: React.FC<{
               <h1 className="typography-ui-header truncate text-foreground">项目</h1>
             </div>
             <div className="flex items-center gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={() => setCreateProjectDialogOpen(true)}>
+                <RiAddLine className="size-4" />
+                创建
+              </Button>
               <Button type="button" size="sm" variant="outline" onClick={handleAddProject}>
                 <RiFolderAddLine className="size-4" />
                 添加
@@ -415,6 +427,7 @@ const MobileProjectsPage: React.FC<{
         )}
       </div>
     </div>
+    </>
   );
 };
 

@@ -73,20 +73,20 @@ fn eval_in_focused_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>, script: 
 }
 
 fn dispatch_menu_action<R: tauri::Runtime>(app: &tauri::AppHandle<R>, action: &str) {
-    let _ = app.emit("openchamber:menu-action", action);
+    let _ = app.emit("ridge:menu-action", action);
 
-    let event = serde_json::to_string("openchamber:menu-action")
-        .unwrap_or_else(|_| "\"openchamber:menu-action\"".into());
+    let event = serde_json::to_string("ridge:menu-action")
+        .unwrap_or_else(|_| "\"ridge:menu-action\"".into());
     let detail = serde_json::to_string(action).unwrap_or_else(|_| "\"\"".into());
     let script = format!("window.dispatchEvent(new CustomEvent({event}, {{ detail: {detail} }}));");
     eval_in_focused_window(app, &script);
 }
 
 fn dispatch_check_for_updates<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    let _ = app.emit("openchamber:check-for-updates", ());
+    let _ = app.emit("ridge:check-for-updates", ());
 
-    let event = serde_json::to_string("openchamber:check-for-updates")
-        .unwrap_or_else(|_| "\"openchamber:check-for-updates\"".into());
+    let event = serde_json::to_string("ridge:check-for-updates")
+        .unwrap_or_else(|_| "\"ridge:check-for-updates\"".into());
     let script = format!("window.dispatchEvent(new Event({event}));");
     eval_in_all_windows(app, &script);
 }
@@ -144,10 +144,10 @@ const MENU_ITEM_CLEAR_CACHE_ID: &str = "menu_clear_cache";
 
 #[cfg(target_os = "macos")]
 const GITHUB_BUG_REPORT_URL: &str =
-    "https://github.com/btriapitsyn/openchamber/issues/new?template=bug_report.yml";
+    "https://github.com/btriapitsyn/ridge/issues/new?template=bug_report.yml";
 #[cfg(target_os = "macos")]
 const GITHUB_FEATURE_REQUEST_URL: &str =
-    "https://github.com/btriapitsyn/openchamber/issues/new?template=feature_request.yml";
+    "https://github.com/btriapitsyn/ridge/issues/new?template=feature_request.yml";
 #[cfg(target_os = "macos")]
 const DISCORD_INVITE_URL: &str = "https://discord.gg/ZYRSdnwwKA";
 
@@ -945,7 +945,7 @@ fn installed_apps_cache_path() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"));
     home.join(".config")
-        .join("openchamber")
+        .join("ridge")
         .join(INSTALLED_APPS_CACHE_FILE)
 }
 
@@ -1000,8 +1000,8 @@ fn build_installed_apps(
 
 #[cfg(target_os = "macos")]
 fn dispatch_installed_apps_update(app: &tauri::AppHandle, apps: &[InstalledAppInfo]) {
-    let event = serde_json::to_string("openchamber:installed-apps-updated")
-        .unwrap_or_else(|_| "\"openchamber:installed-apps-updated\"".into());
+    let event = serde_json::to_string("ridge:installed-apps-updated")
+        .unwrap_or_else(|_| "\"ridge:installed-apps-updated\"".into());
     let detail = serde_json::to_string(apps).unwrap_or_else(|_| "[]".into());
     let script = format!("window.dispatchEvent(new CustomEvent({event}, {{ detail: {detail} }}));");
     eval_in_all_windows(app, &script);
@@ -1106,7 +1106,7 @@ fn icon_to_data_url(icon_path: &Path, app_name: &str) -> Option<String> {
         .duration_since(UNIX_EPOCH)
         .map(|value| value.as_millis())
         .unwrap_or(0);
-    let tmp_path = env::temp_dir().join(format!("openchamber-icon-{sanitized}-{timestamp}.png"));
+    let tmp_path = env::temp_dir().join(format!("ridge-icon-{sanitized}-{timestamp}.png"));
 
     let status = Command::new("sips")
         .args([
@@ -1172,8 +1172,8 @@ fn is_app_bundle_installed(bundle_name: &str) -> bool {
     false
 }
 
-const SIDECAR_NAME: &str = "openchamber-server";
-const SIDECAR_NOTIFY_PREFIX: &str = "[OpenChamberDesktopNotify] ";
+const SIDECAR_NAME: &str = "ridge-server";
+const SIDECAR_NOTIFY_PREFIX: &str = "[RidgeDesktopNotify] ";
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(20);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const LOCAL_SIDECAR_HEALTH_TIMEOUT: Duration = Duration::from_secs(8);
@@ -1322,7 +1322,7 @@ fn build_health_url(base_url: &str) -> Option<String> {
 }
 
 fn settings_file_path() -> PathBuf {
-    if let Ok(dir) = env::var("OPENCHAMBER_DATA_DIR") {
+    if let Ok(dir) = env::var("RIDGE_DATA_DIR") {
         if !dir.trim().is_empty() {
             return PathBuf::from(dir.trim()).join("settings.json");
         }
@@ -1330,7 +1330,7 @@ fn settings_file_path() -> PathBuf {
     let home = env::var("HOME").unwrap_or_default();
     PathBuf::from(home)
         .join(".config")
-        .join("openchamber")
+        .join("ridge")
         .join("settings.json")
 }
 
@@ -1606,7 +1606,7 @@ fn is_nonempty_string(value: &str) -> bool {
 }
 
 const CHANGELOG_URL: &str =
-    "https://raw.githubusercontent.com/btriapitsyn/openchamber/main/CHANGELOG.md";
+    "https://raw.githubusercontent.com/btriapitsyn/ridge/main/CHANGELOG.md";
 
 fn parse_semver_num(value: &str) -> Option<u32> {
     let trimmed = value.trim().trim_start_matches('v');
@@ -1724,7 +1724,7 @@ fn maybe_show_sidecar_notification(app: &tauri::AppHandle, payload: SidecarNotif
     let title = payload
         .title
         .filter(|t| is_nonempty_string(t))
-        .unwrap_or_else(|| "OpenChamber".to_string());
+        .unwrap_or_else(|| "Ridge".to_string());
     let body = payload.body.filter(|b| is_nonempty_string(b));
     let _tag = payload.tag;
 
@@ -1799,14 +1799,14 @@ fn build_local_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}")
 }
 
-/// Kills any stale openchamber-server processes that may be lingering from
+/// Kills any stale ridge-server processes that may be lingering from
 /// previous app sessions or incomplete shutdowns. This ensures a clean
 /// startup and prevents port conflicts.
 fn kill_stale_sidecar_processes() {
     let process_name = if cfg!(windows) {
-        "openchamber-server.exe"
+        "ridge-server.exe"
     } else {
-        "openchamber-server"
+        "ridge-server"
     };
 
     let result = if cfg!(target_os = "macos") {
@@ -1876,7 +1876,7 @@ async fn spawn_local_server(app: &tauri::AppHandle) -> Result<String> {
     });
 
     let opencode_binary_from_settings: Option<String> = (|| {
-        let data_dir = env::var("OPENCHAMBER_DATA_DIR")
+        let data_dir = env::var("RIDGE_DATA_DIR")
             .ok()
             .and_then(|v| {
                 let t = v.trim().to_string();
@@ -1889,7 +1889,7 @@ async fn spawn_local_server(app: &tauri::AppHandle) -> Result<String> {
             .or_else(|| {
                 resolved_home_dir_path
                     .as_ref()
-                    .map(|home| home.join(".config").join("openchamber"))
+                    .map(|home| home.join(".config").join("ridge"))
             });
         let data_dir = data_dir?;
         let settings_path = data_dir.join("settings.json");
@@ -1941,8 +1941,8 @@ async fn spawn_local_server(app: &tauri::AppHandle) -> Result<String> {
     }
 
     for var in [
-        "OPENCHAMBER_OPENCODE_PATH",
-        "OPENCHAMBER_OPENCODE_BIN",
+        "RIDGE_OPENCODE_PATH",
+        "RIDGE_OPENCODE_BIN",
         "OPENCODE_PATH",
         "OPENCODE_BINARY",
     ] {
@@ -1995,10 +1995,10 @@ async fn spawn_local_server(app: &tauri::AppHandle) -> Result<String> {
             .sidecar(SIDECAR_NAME)
             .map_err(|err| anyhow!("Failed to resolve sidecar '{SIDECAR_NAME}': {err}"))?
             .args(["--port", &port.to_string()])
-            .env("OPENCHAMBER_HOST", "127.0.0.1")
-            .env("OPENCHAMBER_DIST_DIR", dist_dir.clone())
-            .env("OPENCHAMBER_RUNTIME", "desktop")
-            .env("OPENCHAMBER_DESKTOP_NOTIFY", "true")
+            .env("RIDGE_HOST", "127.0.0.1")
+            .env("RIDGE_DIST_DIR", dist_dir.clone())
+            .env("RIDGE_RUNTIME", "desktop")
+            .env("RIDGE_DESKTOP_NOTIFY", "true")
             .env("PATH", augmented_path.clone())
             .env("NO_PROXY", no_proxy)
             .env("no_proxy", no_proxy);
@@ -2128,7 +2128,7 @@ fn desktop_notify(
     let mut builder = app
         .notification()
         .builder()
-        .title(payload.title.unwrap_or_else(|| "OpenChamber".to_string()));
+        .title(payload.title.unwrap_or_else(|| "Ridge".to_string()));
 
     if let Some(body) = payload.body {
         if is_nonempty_string(&body) {
@@ -2155,83 +2155,23 @@ async fn desktop_check_for_updates(
     app: tauri::AppHandle,
     pending: tauri::State<'_, PendingUpdate>,
 ) -> Result<DesktopUpdateInfo, String> {
-    let updater = app.updater().map_err(|err| err.to_string())?;
-    let update = updater.check().await.map_err(|err| err.to_string())?;
-
-    let current_version = app.package_info().version.to_string();
-
-    let info = if let Some(update) = update {
-        *pending.0.lock().expect("pending update mutex") = Some(update.clone());
-        let mut body = update.body.clone();
-        if is_placeholder_release_notes(&body) {
-            if let Some(notes) = fetch_changelog_notes(&current_version, &update.version).await {
-                body = Some(notes);
-            }
-        }
-        DesktopUpdateInfo {
-            available: true,
-            current_version,
-            version: Some(update.version.clone()),
-            body,
-            date: update.date.map(|date| date.to_string()),
-        }
-    } else {
-        *pending.0.lock().expect("pending update mutex") = None;
-        DesktopUpdateInfo {
-            available: false,
-            current_version,
-            version: None,
-            body: None,
-            date: None,
-        }
-    };
-
-    Ok(info)
+    *pending.0.lock().expect("pending update mutex") = None;
+    Ok(DesktopUpdateInfo {
+        available: false,
+        current_version: app.package_info().version.to_string(),
+        version: None,
+        body: Some("Updates are disabled in Ridge.".to_string()),
+        date: None,
+    })
 }
 
 #[tauri::command]
 async fn desktop_download_and_install_update(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     pending: tauri::State<'_, PendingUpdate>,
 ) -> Result<(), String> {
-    let Some(update) = pending.0.lock().expect("pending update mutex").take() else {
-        return Err("No pending update".to_string());
-    };
-
-    let mut downloaded: u64 = 0;
-    let mut total: Option<u64> = None;
-    let mut started = false;
-
-    update
-        .download_and_install(
-            |chunk_length, content_length| {
-                if !started {
-                    total = content_length;
-                    let _ = app.emit(
-                        "openchamber:update-progress",
-                        UpdateProgressEvent::Started { content_length },
-                    );
-                    started = true;
-                }
-
-                downloaded = downloaded.saturating_add(chunk_length as u64);
-                let _ = app.emit(
-                    "openchamber:update-progress",
-                    UpdateProgressEvent::Progress {
-                        chunk_length,
-                        downloaded,
-                        total,
-                    },
-                );
-            },
-            || {
-                let _ = app.emit("openchamber:update-progress", UpdateProgressEvent::Finished);
-            },
-        )
-        .await
-        .map_err(|err| err.to_string())?;
-
-    Ok(())
+    *pending.0.lock().expect("pending update mutex") = None;
+    Err("Updates are disabled in Ridge.".to_string())
 }
 
 #[tauri::command]
@@ -2398,7 +2338,7 @@ fn build_init_script(local_origin: &str) -> String {
     let local_json = serde_json::to_string(local_origin).unwrap_or_else(|_| "\"\"".into());
 
     let mut init_script = format!(
-        "(function(){{try{{window.__OPENCHAMBER_HOME__={home_json};window.__OPENCHAMBER_MACOS_MAJOR__={macos_major};window.__OPENCHAMBER_LOCAL_ORIGIN__={local_json};}}catch(_e){{}}}})();"
+        "(function(){{try{{window.__RIDGE_HOME__={home_json};window.__RIDGE_MACOS_MAJOR__={macos_major};window.__RIDGE_LOCAL_ORIGIN__={local_json};}}catch(_e){{}}}})();"
     );
 
     // Cleanup: older builds injected a native-ish Instance switcher button into pages.
@@ -2625,7 +2565,7 @@ fn create_window(
     };
 
     let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(parsed))
-        .title("OpenChamber")
+        .title("Ridge")
         .inner_size(1280.0, 800.0)
         .min_inner_size(MIN_WINDOW_WIDTH as f64, MIN_WINDOW_HEIGHT as f64)
         .decorations(true)
@@ -2688,7 +2628,7 @@ fn create_startup_window(app: &tauri::AppHandle, restore_geometry: bool) -> Resu
     let splash_script = build_startup_splash_script();
 
     let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-        .title("OpenChamber")
+        .title("Ridge")
         .inner_size(1280.0, 800.0)
         .min_inner_size(MIN_WINDOW_WIDTH as f64, MIN_WINDOW_HEIGHT as f64)
         .decorations(true)
@@ -3223,7 +3163,7 @@ fn main() {
                     .unwrap_or_else(|| local_ui_url.clone());
 
                 // Selected host: env override first, then desktop default host, else local.
-                let env_target = std::env::var("OPENCHAMBER_SERVER_URL")
+                let env_target = std::env::var("RIDGE_SERVER_URL")
                     .ok()
                     .and_then(|raw| normalize_server_url(&raw));
 
@@ -3335,7 +3275,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("clock drift")
             .as_nanos();
-        std::env::temp_dir().join(format!("openchamber-{test_name}-{nanos}-settings.json"))
+        std::env::temp_dir().join(format!("ridge-{test_name}-{nanos}-settings.json"))
     }
 
     #[test]

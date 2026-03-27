@@ -99,7 +99,7 @@ function parseSettingsPath(params: URLSearchParams): string | null {
   }
 
   // Handle common aliases
-  if (normalized === 'openchamber' || normalized === 'general' || normalized === 'preferences') {
+  if (normalized === 'ridge' || normalized === 'general' || normalized === 'preferences') {
     return 'home';
   }
 

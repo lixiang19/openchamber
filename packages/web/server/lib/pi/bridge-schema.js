@@ -39,27 +39,27 @@ const PI_EXTENSION_UI_REQUEST_CATALOG = Object.freeze({
     milestone: 'm3',
   }),
   input: Object.freeze({
-    bridgeKind: 'question',
+    bridgeKind: 'unsupported',
     expectedReply: 'value',
-    webSupport: 'priority',
-    milestone: 'm3',
+    webSupport: 'unsupported',
+    milestone: null,
   }),
   select: Object.freeze({
-    bridgeKind: 'question',
+    bridgeKind: 'unsupported',
     expectedReply: 'value',
-    webSupport: 'priority',
-    milestone: 'm3',
+    webSupport: 'unsupported',
+    milestone: null,
   }),
   confirm: Object.freeze({
-    bridgeKind: 'question',
+    bridgeKind: 'unsupported',
     expectedReply: 'confirmed',
-    webSupport: 'priority',
-    milestone: 'm3',
+    webSupport: 'unsupported',
+    milestone: null,
   }),
   editor: Object.freeze({
-    bridgeKind: 'editor',
+    bridgeKind: 'unsupported',
     expectedReply: 'value',
-    webSupport: 'deferred',
+    webSupport: 'unsupported',
     milestone: null,
   }),
   notify: Object.freeze({
@@ -136,6 +136,60 @@ const normalizeStringArray = (value) => {
   return value
     .map((entry) => normalizeNonEmptyString(entry))
     .filter(Boolean);
+};
+
+const normalizeQuestionOptionArray = (value) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    if (typeof entry === 'string') {
+      const label = normalizeNonEmptyString(entry);
+      return label ? [{ label }] : [];
+    }
+
+    const record = normalizeObject(entry);
+    if (!record) {
+      return [];
+    }
+
+    const label = normalizeNonEmptyString(record.label);
+    if (!label) {
+      return [];
+    }
+
+    const description = normalizeNonEmptyString(record.description);
+    return [{ label, ...(description ? { description } : {}) }];
+  });
+};
+
+const normalizeQuestionList = (value, fallbackHeader) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    const record = normalizeObject(entry);
+    if (!record) {
+      return [];
+    }
+
+    const question = normalizeNonEmptyString(record.question);
+    if (!question) {
+      return [];
+    }
+
+    const header = normalizeNonEmptyString(record.header) ?? fallbackHeader ?? undefined;
+    const options = normalizeQuestionOptionArray(record.options);
+    return [{
+      ...(header ? { header } : {}),
+      question,
+      options,
+      multiple: record.multiple === true,
+      allowCustom: options.length === 0 ? true : record.allowCustom === true,
+    }];
+  });
 };
 
 const normalizePiContentBlock = (value) => {
@@ -408,38 +462,12 @@ export const normalizePiExtensionUiRequest = (value) => {
     milestone: base.milestone,
   };
 
-  if (method === 'input') {
+  if (method === 'question') {
+    const title = typeof record.title === 'string' ? record.title : '';
     return {
       ...normalized,
-      title: typeof record.title === 'string' ? record.title : '',
-      placeholder: normalizeNonEmptyString(record.placeholder),
-      timeout: normalizeNumber(record.timeout),
-    };
-  }
-
-  if (method === 'select') {
-    return {
-      ...normalized,
-      title: typeof record.title === 'string' ? record.title : '',
-      options: normalizeStringArray(record.options),
-      timeout: normalizeNumber(record.timeout),
-    };
-  }
-
-  if (method === 'confirm') {
-    return {
-      ...normalized,
-      title: typeof record.title === 'string' ? record.title : '',
-      message: typeof record.message === 'string' ? record.message : '',
-      timeout: normalizeNumber(record.timeout),
-    };
-  }
-
-  if (method === 'editor') {
-    return {
-      ...normalized,
-      title: typeof record.title === 'string' ? record.title : '',
-      prefill: typeof record.prefill === 'string' ? record.prefill : '',
+      title,
+      questions: normalizeQuestionList(record.questions, normalizeNonEmptyString(title) ?? undefined),
     };
   }
 

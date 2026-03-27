@@ -142,7 +142,7 @@ export type DesktopSettings = {
   // Message limit — controls fetch, trim, and Load More chunk size (default: 200)
   messageLimit?: number;
 
-  // User-added skills catalogs (persisted to ~/.config/openchamber/settings.json)
+  // User-added skills catalogs (persisted to ~/.config/ridge/settings.json)
   skillCatalogs?: SkillCatalogConfig[];
 };
 
@@ -204,7 +204,7 @@ const isLoopbackHost = (host: string): boolean => {
 
 export const isDesktopLocalOriginActive = (): boolean => {
   if (typeof window === 'undefined') return false;
-  const local = typeof window.__OPENCHAMBER_LOCAL_ORIGIN__ === 'string' ? window.__OPENCHAMBER_LOCAL_ORIGIN__ : '';
+  const local = typeof window.__RIDGE_LOCAL_ORIGIN__ === 'string' ? window.__RIDGE_LOCAL_ORIGIN__ : '';
   const localUrl = parseUrl(local);
   const currentUrl = parseUrl(window.location.origin);
 
@@ -233,7 +233,7 @@ export const isDesktopLocalOriginActive = (): boolean => {
 // (Remote pages can temporarily lose window.__TAURI__ if URL doesn't match remote allowlist.)
 export const isDesktopShell = (): boolean => {
   if (typeof window === 'undefined') return false;
-  if (typeof window.__OPENCHAMBER_LOCAL_ORIGIN__ === 'string' && window.__OPENCHAMBER_LOCAL_ORIGIN__.length > 0) {
+  if (typeof window.__RIDGE_LOCAL_ORIGIN__ === 'string' && window.__RIDGE_LOCAL_ORIGIN__.length > 0) {
     return true;
   }
   return isTauriShell();
@@ -241,13 +241,13 @@ export const isDesktopShell = (): boolean => {
 
 export const isVSCodeRuntime = (): boolean => {
   if (typeof window === "undefined") return false;
-  const apis = (window as { __OPENCHAMBER_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } }).__OPENCHAMBER_RUNTIME_APIS__;
+  const apis = (window as { __RIDGE_RUNTIME_APIS__?: { runtime?: { isVSCode?: boolean } } }).__RIDGE_RUNTIME_APIS__;
   return apis?.runtime?.isVSCode === true;
 };
 
 export const isWebRuntime = (): boolean => {
   if (typeof window === "undefined") return false;
-  const apis = (window as { __OPENCHAMBER_RUNTIME_APIS__?: { runtime?: { platform?: string } } }).__OPENCHAMBER_RUNTIME_APIS__;
+  const apis = (window as { __RIDGE_RUNTIME_APIS__?: { runtime?: { platform?: string } } }).__RIDGE_RUNTIME_APIS__;
   const platform = apis?.runtime?.platform;
   if (platform === 'web') {
     return true;
@@ -261,7 +261,7 @@ export const isWebRuntime = (): boolean => {
 
 export const getDesktopHomeDirectory = async (): Promise<string | null> => {
   if (typeof window !== 'undefined') {
-    const embedded = window.__OPENCHAMBER_HOME__;
+    const embedded = window.__RIDGE_HOME__;
     if (embedded && embedded.length > 0) {
       return embedded;
     }
@@ -344,7 +344,7 @@ export const sendAssistantCompletionNotification = async (
         payload: {
           title: payload?.title,
           body: payload?.body,
-          tag: 'openchamber-agent-complete',
+          tag: 'ridge-agent-complete',
         },
       });
       return true;
@@ -358,80 +358,16 @@ export const sendAssistantCompletionNotification = async (
 };
 
 export const checkForDesktopUpdates = async (): Promise<UpdateInfo | null> => {
-  if (!isTauriShell() || !isDesktopLocalOriginActive()) {
-    return null;
-  }
-
-  try {
-    const tauri = (window as unknown as { __TAURI__?: TauriGlobal }).__TAURI__;
-    const info = await tauri?.core?.invoke?.('desktop_check_for_updates');
-    return info as UpdateInfo;
-  } catch (error) {
-    console.warn('Failed to check for updates (tauri)', error);
-    return null;
-  }
+  // Ridge ships without in-app update checks.
+  return null;
 };
 
 export const downloadDesktopUpdate = async (
   onProgress?: (progress: UpdateProgress) => void
 ): Promise<boolean> => {
-  if (!isTauriShell() || !isDesktopLocalOriginActive()) {
-    return false;
-  }
-
-  const tauri = (window as unknown as { __TAURI__?: TauriGlobal }).__TAURI__;
-  let unlisten: null | (() => void | Promise<void>) = null;
-  let downloaded = 0;
-  let total: number | undefined;
-
-  try {
-    if (typeof onProgress === 'function' && tauri?.event?.listen) {
-      unlisten = await tauri.event.listen('openchamber:update-progress', (evt) => {
-        const payload = evt?.payload;
-        if (!payload || typeof payload !== 'object') return;
-        const data = payload as { event?: unknown; data?: unknown };
-        const eventName = typeof data.event === 'string' ? data.event : null;
-        const eventData = data.data && typeof data.data === 'object' ? (data.data as Record<string, unknown>) : null;
-
-        if (eventName === 'Started') {
-          downloaded = 0;
-          total = typeof eventData?.contentLength === 'number' ? (eventData.contentLength as number) : undefined;
-          onProgress({ downloaded, total });
-          return;
-        }
-
-        if (eventName === 'Progress') {
-          const d = eventData?.downloaded;
-          const t = eventData?.total;
-          if (typeof d === 'number') downloaded = d;
-          if (typeof t === 'number') total = t;
-          onProgress({ downloaded, total });
-          return;
-        }
-
-        if (eventName === 'Finished') {
-          onProgress({ downloaded, total });
-        }
-      });
-    }
-
-    await tauri?.core?.invoke?.('desktop_download_and_install_update');
-    return true;
-  } catch (error) {
-    console.warn('Failed to download update (tauri)', error);
-    return false;
-  } finally {
-    if (unlisten) {
-      try {
-        const result = unlisten();
-        if (result instanceof Promise) {
-          await result;
-        }
-      } catch {
-        // ignored
-      }
-    }
-  }
+  void onProgress;
+  console.warn('Desktop updates are disabled in Ridge.');
+  return false;
 };
 
 export const restartToApplyUpdate = async (): Promise<boolean> => {

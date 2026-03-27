@@ -347,30 +347,65 @@ export const projectPiSessionToRuntimeMessages = (session: PiClientSessionState 
   return entries;
 };
 
+const projectQuestionOptions = (options: unknown): Array<{ label: string; description?: string }> => {
+  if (!Array.isArray(options)) {
+    return [];
+  }
+
+  return options.flatMap((option) => {
+    if (typeof option === 'string') {
+      return [{ label: option, description: '' }];
+    }
+    if (!option || typeof option !== 'object') {
+      return [];
+    }
+
+    const candidate = option as { label?: unknown; description?: unknown };
+    const label = typeof candidate.label === 'string' ? candidate.label.trim() : '';
+    if (!label) {
+      return [];
+    }
+
+    const description = typeof candidate.description === 'string' ? candidate.description : undefined;
+    return [{ label, ...(description ? { description } : {}) }];
+  });
+};
+
+const questionAllowsCustom = (input: { allowCustom?: boolean; options?: unknown } | null | undefined): boolean => {
+  if (!input) {
+    return false;
+  }
+  if (projectQuestionOptions(input.options).length === 0) {
+    return true;
+  }
+  return input.allowCustom === true;
+};
+
+const projectRequestQuestions = (request: PiInteractiveRequestViewState): QuestionRequest['questions'] => {
+  if (Array.isArray(request.questions) && request.questions.length > 0) {
+    return request.questions.map((question) => ({
+      header: question.header || request.title || 'Input needed',
+      question: question.question,
+      options: projectQuestionOptions(question.options),
+      multiple: question.multiple === true,
+      allowCustom: questionAllowsCustom(question),
+    }));
+  }
+
+  return [{
+    header: request.title || 'Input needed',
+    question: request.message || request.title || 'Agent is waiting for your input',
+    options: [],
+    multiple: false,
+    allowCustom: true,
+  }];
+};
+
 export const projectPiInteractiveRequestToQuestionRequest = (request: PiInteractiveRequestViewState): QuestionRequest => ({
   id: request.id,
   sessionID: request.sessionId,
-  questions: Array.isArray(request.questions) && request.questions.length > 0
-    ? request.questions.map((question) => ({
-        header: question.header || request.title || 'Input needed',
-        question: question.question,
-        options: Array.isArray(question.options)
-          ? question.options.map((option) => ({ label: option, description: '' }))
-          : [],
-        multiple: question.multiple === true,
-      }))
-    : [{
-        header: request.title || 'Input needed',
-        question: request.message || request.placeholder || 'Agent is waiting for your input',
-        options: request.method === 'confirm'
-          ? [{ label: 'Confirm', description: 'Confirm and continue' }]
-          : request.options.map((option) => ({ label: option, description: '' })),
-        multiple: false,
-      }],
+  questions: projectRequestQuestions(request),
   metadata: {
-    bridgeMethod: request.method,
-    placeholder: request.placeholder,
-    prefill: request.prefill,
     bridgeKind: request.bridgeKind,
     webSupport: request.webSupport,
   },

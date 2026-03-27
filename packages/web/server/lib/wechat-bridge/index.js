@@ -5,8 +5,8 @@ import path from 'node:path';
 
 import { WeChatBot, stripMarkdown } from '@wechatbot/wechatbot';
 
-const OPENCHAMBER_CONFIG_DIR = path.join(os.homedir(), '.config', 'openchamber');
-const WECHAT_BRIDGE_STATE_FILE = path.join(OPENCHAMBER_CONFIG_DIR, 'wechat-bridge.json');
+const RIDGE_CONFIG_DIR = path.join(os.homedir(), '.config', 'ridge');
+const WECHAT_BRIDGE_STATE_FILE = path.join(RIDGE_CONFIG_DIR, 'wechat-bridge.json');
 const WECHATBOT_STORAGE_DIR = path.join(os.homedir(), '.wechatbot');
 
 const DEFAULT_STATE = {
@@ -258,7 +258,7 @@ export const createWechatBridgeService = ({ piHost, defaultCwd = process.cwd() }
   const userMessageQueues = new Map();
 
   const persistState = async () => {
-    await fsPromises.mkdir(OPENCHAMBER_CONFIG_DIR, { recursive: true });
+    await fsPromises.mkdir(RIDGE_CONFIG_DIR, { recursive: true });
     const payload = {
       enabled: state.enabled,
       defaultSessionId: state.defaultSessionId,

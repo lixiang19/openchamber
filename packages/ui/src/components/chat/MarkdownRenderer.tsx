@@ -85,7 +85,7 @@ const useMarkdownShikiThemes = (): readonly [string | object, string | object] =
       return fallbackThemes;
     }
 
-    const provided = window.__OPENCHAMBER_VSCODE_SHIKI_THEMES__;
+    const provided = window.__RIDGE_VSCODE_SHIKI_THEMES__;
     if (provided?.light && provided?.dark) {
       const light = withStableStringId(
         { ...(provided.light as Record<string, unknown>) },
@@ -115,14 +115,14 @@ const useMarkdownShikiThemes = (): readonly [string | object, string | object] =
     if (!isVSCode) return;
 
     const handler = (event: Event) => {
-      // Rely on the canonical `window.__OPENCHAMBER_VSCODE_SHIKI_THEMES__` that the webview updates
+      // Rely on the canonical `window.__RIDGE_VSCODE_SHIKI_THEMES__` that the webview updates
       // before dispatching this event, so we always apply stable cache keys and avoid stale token reuse.
       void event;
       setThemes(getThemes());
     };
 
-    window.addEventListener('openchamber:vscode-shiki-themes', handler as EventListener);
-    return () => window.removeEventListener('openchamber:vscode-shiki-themes', handler as EventListener);
+    window.addEventListener('ridge:vscode-shiki-themes', handler as EventListener);
+    return () => window.removeEventListener('ridge:vscode-shiki-themes', handler as EventListener);
   }, [getThemes, isVSCode]);
 
   return isVSCode ? themes : fallbackThemes;
@@ -185,7 +185,7 @@ const useExternalLinkInteractions = ({
         return;
       }
 
-      if (anchor.getAttribute('data-openchamber-file-link') === 'true') {
+      if (anchor.getAttribute('data-ridge-file-link') === 'true') {
         return;
       }
 
@@ -741,7 +741,7 @@ interface MarkdownRendererProps {
 }
 
 const MERMAID_BLOCK_SELECTOR = '[data-streamdown="mermaid-block"]';
-const FILE_LINK_SELECTOR = '[data-openchamber-file-link="true"]';
+const FILE_LINK_SELECTOR = '[data-ridge-file-link="true"]';
 
 type ParsedFileReference = {
   path: string;
@@ -1080,9 +1080,9 @@ const useFileReferenceInteractions = ({
     };
 
     const clearCandidateLinkAttrs = (candidate: HTMLElement) => {
-      candidate.removeAttribute('data-openchamber-file-link');
-      candidate.removeAttribute('data-openchamber-file-ref');
-      candidate.removeAttribute('data-openchamber-file-path');
+      candidate.removeAttribute('data-ridge-file-link');
+      candidate.removeAttribute('data-ridge-file-ref');
+      candidate.removeAttribute('data-ridge-file-path');
       if (candidate.getAttribute('title') === 'Open file') {
         candidate.removeAttribute('title');
       }
@@ -1093,9 +1093,9 @@ const useFileReferenceInteractions = ({
     };
 
     const applyCandidateLinkAttrs = (candidate: HTMLElement, rawCandidate: string, resolvedPath: string) => {
-      candidate.setAttribute('data-openchamber-file-link', 'true');
-      candidate.setAttribute('data-openchamber-file-ref', rawCandidate);
-      candidate.setAttribute('data-openchamber-file-path', resolvedPath);
+      candidate.setAttribute('data-ridge-file-link', 'true');
+      candidate.setAttribute('data-ridge-file-ref', rawCandidate);
+      candidate.setAttribute('data-ridge-file-path', resolvedPath);
       candidate.setAttribute('title', 'Open file');
       if (candidate.tagName.toLowerCase() !== 'a') {
         candidate.setAttribute('role', 'button');
@@ -1174,7 +1174,7 @@ const useFileReferenceInteractions = ({
     };
 
     const openFileReference = async (sourceElement: HTMLElement): Promise<boolean> => {
-      const raw = sourceElement.getAttribute('data-openchamber-file-ref') || extractPathCandidateFromElement(sourceElement);
+      const raw = sourceElement.getAttribute('data-ridge-file-ref') || extractPathCandidateFromElement(sourceElement);
       const resolved = getResolvedReference(raw, effectiveDirectory);
       if (!resolved) {
         return false;
@@ -1182,9 +1182,9 @@ const useFileReferenceInteractions = ({
 
       const isResolvable = await isPathResolvable(resolved.resolvedPath);
       if (!isResolvable) {
-        sourceElement.removeAttribute('data-openchamber-file-link');
-        sourceElement.removeAttribute('data-openchamber-file-ref');
-        sourceElement.removeAttribute('data-openchamber-file-path');
+        sourceElement.removeAttribute('data-ridge-file-link');
+        sourceElement.removeAttribute('data-ridge-file-ref');
+        sourceElement.removeAttribute('data-ridge-file-path');
         if (sourceElement.getAttribute('title') === 'Open file') {
           sourceElement.removeAttribute('title');
         }
@@ -1244,7 +1244,7 @@ const useFileReferenceInteractions = ({
       }
 
       const target = event.target;
-      if (!(target instanceof HTMLElement) || target.getAttribute('data-openchamber-file-link') !== 'true') {
+      if (!(target instanceof HTMLElement) || target.getAttribute('data-ridge-file-link') !== 'true') {
         return;
       }
 

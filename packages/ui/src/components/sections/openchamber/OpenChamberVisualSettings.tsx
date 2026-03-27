@@ -93,11 +93,11 @@ const MERMAID_RENDERING_OPTIONS: Option<'svg' | 'ascii'>[] = [
     },
 ];
 
-const DEFAULT_PWA_INSTALL_NAME = 'OpenChamber - AI Coding Assistant';
+const DEFAULT_PWA_INSTALL_NAME = 'Ridge - AI Coding Assistant';
 
 type PwaInstallNameWindow = Window & {
-    __OPENCHAMBER_SET_PWA_INSTALL_NAME__?: (value: string) => string;
-    __OPENCHAMBER_UPDATE_PWA_MANIFEST__?: () => void;
+    __RIDGE_SET_PWA_INSTALL_NAME__?: (value: string) => string;
+    __RIDGE_UPDATE_PWA_MANIFEST__?: () => void;
 };
 
 const USER_MESSAGE_RENDERING_OPTIONS: Option<'markdown' | 'plain'>[] = [
@@ -340,14 +340,14 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
 
         await updateDesktopSettings({ pwaAppName: persistedValue });
 
-        if (typeof win.__OPENCHAMBER_SET_PWA_INSTALL_NAME__ === 'function') {
-            const resolved = win.__OPENCHAMBER_SET_PWA_INSTALL_NAME__(persistedValue);
+        if (typeof win.__RIDGE_SET_PWA_INSTALL_NAME__ === 'function') {
+            const resolved = win.__RIDGE_SET_PWA_INSTALL_NAME__(persistedValue);
             setPwaInstallName(resolved);
             return;
         }
 
         setPwaInstallName(persistedValue || DEFAULT_PWA_INSTALL_NAME);
-        win.__OPENCHAMBER_UPDATE_PWA_MANIFEST__?.();
+        win.__RIDGE_UPDATE_PWA_MANIFEST__?.();
     }, []);
 
     React.useEffect(() => {

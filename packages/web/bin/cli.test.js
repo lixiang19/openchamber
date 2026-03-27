@@ -5,11 +5,11 @@ import { pathToFileURL } from 'url';
 import { isModuleCliExecution, normalizeCliEntryPath } from './cli-entry.js';
 
 describe('cli entry detection', () => {
-  const modulePath = '/tmp/opchat/bin/cli.js';
+  const modulePath = '/tmp/ridge/bin/cli.js';
   const moduleUrl = pathToFileURL(modulePath).href;
 
   it('resolves symlinked entry paths before comparing', () => {
-    const symlinkPath = '/usr/local/bin/opchat';
+    const symlinkPath = '/usr/local/bin/ridge';
     const realpath = (filePath) => {
       if (filePath === path.resolve(symlinkPath)) {
         return modulePath;
@@ -41,8 +41,8 @@ describe('cli entry detection', () => {
   });
 
   it('accepts wrapper binary name fallback when requested', () => {
-    const wrapperPath = '/home/user/.local/bin/opchat';
-    expect(isModuleCliExecution(wrapperPath, moduleUrl, undefined, 'opchat')).toBe(true);
+    const wrapperPath = '/home/user/.local/bin/ridge';
+    expect(isModuleCliExecution(wrapperPath, moduleUrl, undefined, 'ridge')).toBe(true);
   });
 
   it('normalizes direct paths when realpath fails', () => {

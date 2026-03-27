@@ -139,3 +139,5 @@
 
 # pi的要求
 只允许使用sdk的接入，禁止rpc模式
+
+# 产品名称从 OpenChamber 改为ridge

@@ -124,9 +124,9 @@ export function useGitPolling() {
             });
         };
 
-        window.addEventListener('openchamber:git-refresh-hint', handleGitRefreshHint as EventListener);
+        window.addEventListener('ridge:git-refresh-hint', handleGitRefreshHint as EventListener);
         return () => {
-            window.removeEventListener('openchamber:git-refresh-hint', handleGitRefreshHint as EventListener);
+            window.removeEventListener('ridge:git-refresh-hint', handleGitRefreshHint as EventListener);
         };
     }, [FORCE_DIFF_REFRESH_TOOLS, queueImmediateStatusRefresh]);
 

@@ -16,7 +16,7 @@
     "baseUrl": "./src",
     "paths": {
       "@/*": ["./*"],
-      "@openchamber/ui/*": ["./*"]
+      "@ridge/ui/*": ["./*"]
     }
   },
   "include": ["src"]
