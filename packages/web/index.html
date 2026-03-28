@@ -24,8 +24,8 @@
     <!-- Web app manifest (endpoint-first with data URL fallback) -->
     <script>
       const baseUrl = location.origin;
-      const defaultAppName = 'OpenAurora - AI Coding Assistant';
-      const defaultShortName = 'OpenAurora';
+      const defaultAppName = 'ridge - AI 编程助手';
+      const defaultShortName = 'ridge';
       const pwaNameStorageKey = 'openaurora.pwaName';
       const pwaRecentSessionsStorageKey = 'openaurora.pwaRecentSessions';
 
@@ -136,9 +136,9 @@
       const buildShortcuts = (recentSessions) => {
         const shortcuts = [
           {
-            name: 'Appearance Settings',
-            short_name: 'Settings',
-            description: 'Open appearance settings',
+            name: '外观设置',
+            short_name: '设置',
+            description: '打开外观设置',
             url: `${baseUrl}/?settings=appearance`,
             icons: [{ src: `${baseUrl}/pwa-192.png`, sizes: '192x192', type: 'image/png' }],
           },
@@ -149,7 +149,7 @@
           shortcuts.push({
             name: sessionTitle,
             short_name: sessionTitle,
-            description: 'Open recent session',
+            description: '打开最近会话',
             url: `${baseUrl}/?session=${encodeURIComponent(session.sessionId)}`,
             icons: [{ src: `${baseUrl}/pwa-192.png`, sizes: '192x192', type: 'image/png' }],
           });
@@ -163,7 +163,7 @@
         return {
           name: appName,
           short_name: shortName,
-          description: 'Pi-native coding workspace and chat interface',
+          description: 'Pi 原生编程工作空间和聊天界面',
           id: `${baseUrl}/`,
           start_url: `${baseUrl}/`,
           scope: `${baseUrl}/`,
@@ -183,7 +183,7 @@
           ],
           shortcuts: buildShortcuts(recentSessions),
           categories: ['developer', 'tools', 'productivity'],
-          lang: 'en',
+          lang: 'zh-CN',
         };
       };
 
@@ -364,10 +364,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="OpenAurora" />
 
-    <title>OpenAurora - Pi Native Coding Assistant</title>
-    <meta name="description" content="Pi-native coding workspace and chat interface" />
-    <meta name="application-name" content="OpenAurora" />
-    <meta name="apple-mobile-web-app-title" content="OpenAurora" />
+    <title>ridge - Pi 原生编程助手</title>
+    <meta name="description" content="Pi 原生编程工作空间和聊天界面" />
+    <meta name="application-name" content="ridge" />
+    <meta name="apple-mobile-web-app-title" content="ridge" />
 
     <!-- Inline CSS for loading screen and Nerd Fonts (before Tailwind loads) -->
     <style>
@@ -462,7 +462,7 @@
       <!-- Loading fallback while React initializes -->
       <div id="initial-loading">
         <div style="display: flex; align-items: center; justify-content: center;">
-          <svg width="120" height="120" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OpenAurora loading icon">
+          <svg width="120" height="120" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ridge 加载图标">
             <!-- Isometric cube: edge=48, centerY=50 -->
             <!-- Points: top(50,2), left(8.432,26), right(91.568,26), center(50,50), bottomLeft(8.432,74), bottomRight(91.568,74), bottom(50,98) -->
 

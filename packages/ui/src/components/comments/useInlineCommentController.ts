@@ -100,7 +100,7 @@ export function useInlineCommentController<TRange extends LineRangeBase>(
     if (!targetRange || !trimmedText || !fileLabel) return;
 
     if (!sessionKey) {
-      toast.error('Select a session to save comment');
+      toast.error('选择要保存评论的会话');
       return;
     }
 

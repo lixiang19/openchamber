@@ -276,7 +276,7 @@ const MobileProjectsPage: React.FC<{
           return;
         }
 
-        if (result.error && result.error !== 'Directory selection cancelled') {
+        if (result.error && result.error !== '目录选择已取消') {
           toast.error('选择目录失败', {
             description: result.error,
           });

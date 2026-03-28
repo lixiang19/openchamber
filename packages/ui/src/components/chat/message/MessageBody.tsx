@@ -1066,7 +1066,7 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
                     document.body.removeChild(link);
                 }
 
-                toast.success('Image saved');
+                toast.success('图片已保存');
             } catch (error) {
                 console.error('Failed to generate image:', error);
                 toast.error('Failed to generate image');

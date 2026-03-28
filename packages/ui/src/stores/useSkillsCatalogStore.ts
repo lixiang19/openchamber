@@ -158,7 +158,7 @@ export const useSkillsCatalogStore = create<SkillsCatalogState>()(
 
               const payload = (await response.json().catch(() => null)) as SkillsCatalogResponse | null;
               if (!response.ok || !payload?.ok) {
-                lastError = payload?.error || { kind: 'unknown', message: `Failed to load catalog (${response.status})` };
+                lastError = payload?.error || { kind: 'unknown', message: `加载目录失败 (${response.status})` };
                 throw new Error(lastError.message);
               }
 
@@ -196,7 +196,7 @@ export const useSkillsCatalogStore = create<SkillsCatalogState>()(
               pageInfoBySource: previous.pageInfoBySource,
               loadedSourceIds: previous.loadedSourceIds,
               clawdhubHasMoreBySource: previous.clawdhubHasMoreBySource,
-              lastCatalogError: lastError || { kind: 'unknown', message: 'Failed to load catalog' },
+              lastCatalogError: lastError || { kind: 'unknown', message: '加载目录失败' },
             });
 
             return false;
@@ -365,13 +365,13 @@ export const useSkillsCatalogStore = create<SkillsCatalogState>()(
 
           const payload = (await response.json().catch(() => null)) as SkillsRepoScanResponse | null;
           if (!response.ok || !payload) {
-            const error = payload?.error || { kind: 'unknown', message: 'Failed to scan repository' };
+            const error = payload?.error || { kind: 'unknown', message: '扫描仓库失败' };
             set({ lastScanError: error });
             return { ok: false, error };
           }
 
           if (!payload.ok) {
-            set({ lastScanError: payload.error || { kind: 'unknown', message: 'Failed to scan repository' } });
+            set({ lastScanError: payload.error || { kind: 'unknown', message: '扫描仓库失败' } });
             return payload;
           }
 
@@ -401,16 +401,16 @@ export const useSkillsCatalogStore = create<SkillsCatalogState>()(
 
           const payload = (await response.json().catch(() => null)) as SkillsInstallResponse | null;
           if (!payload) {
-            const error = { kind: 'unknown', message: 'Failed to install skills' } as SkillsInstallError;
+            const error = { kind: 'unknown', message: '安装技能失败' } as SkillsInstallError;
             set({ lastInstallError: error });
-            updateConfigUpdateMessage('Failed to install skills. Please retry.');
+            updateConfigUpdateMessage('安装技能失败. Please retry.');
             return { ok: false, error };
           }
 
           if (!response.ok || !payload.ok) {
-            const error = payload.error || ({ kind: 'unknown', message: 'Failed to install skills' } as SkillsInstallError);
+            const error = payload.error || ({ kind: 'unknown', message: '安装技能失败' } as SkillsInstallError);
             set({ lastInstallError: error });
-            updateConfigUpdateMessage(error.message || 'Failed to install skills. Please retry.');
+            updateConfigUpdateMessage(error.message || '安装技能失败. Please retry.');
             return { ok: false, error };
           }
 
@@ -429,7 +429,7 @@ export const useSkillsCatalogStore = create<SkillsCatalogState>()(
         } catch (error) {
           const err = { kind: 'unknown', message: error instanceof Error ? error.message : String(error) } as SkillsInstallError;
           set({ lastInstallError: err });
-          updateConfigUpdateMessage('Failed to install skills. Please retry.');
+          updateConfigUpdateMessage('安装技能失败. Please retry.');
           return { ok: false, error: err };
         } finally {
           set({ isInstalling: false });

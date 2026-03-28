@@ -58,162 +58,162 @@ export const HelpDialog: React.FC = () => {
 
   const shortcuts: ShortcutSection[] = [
     {
-      category: "Navigation & Commands",
+      category: "导航与命令",
       items: [
         {
           id: 'open_command_palette',
-          description: "Open Command Palette",
+          description: "打开命令面板",
           icon: RiCommandLine,
           keys: '',
         },
         {
           id: 'open_help',
-          description: "Show Keyboard Shortcuts (this dialog)",
+          description: "显示键盘快捷键（本对话框）",
           icon: RiQuestionLine,
           keys: '',
         },
         {
           id: 'toggle_sidebar',
-          description: "Toggle Session Sidebar",
+          description: "切换会话侧边栏",
           icon: RiLayoutLeftLine,
           keys: '',
         },
         {
           keys: ["Tab"],
-          description: "Cycle Agent (chat input)",
+          description: "切换智能体（聊天输入）",
           icon: RiAiAgentLine,
         },
         {
           id: 'open_model_selector',
-          description: "Open Model Selector",
+          description: "打开模型选择器",
           icon: RiAiGenerate2,
           keys: '',
         },
         {
           id: 'cycle_thinking_variant',
-          description: "Cycle Thinking Variant",
+          description: "切换思考模式",
           icon: RiBrainAi3Line,
           keys: '',
         },
         {
           keys: [`Shift + Alt + ${mod} + N`],
-          description: "New Window (desktop only)",
+          description: "新建窗口（仅桌面版）",
           icon: RiWindowLine,
         },
       ],
     },
     {
-      category: "Session Management",
+      category: "会话管理",
       items: [
         {
           id: 'new_chat',
-          description: "Create New Session",
+          description: "创建新会话",
           icon: RiAddLine,
           keys: '',
         },
         {
           id: 'new_chat_worktree',
-          description: "Create New Session in Worktree",
+          description: "在工作树中创建新会话",
           icon: RiGitBranchLine,
           keys: '',
         },
-        { id: 'focus_input', description: "Focus Chat Input", icon: RiText, keys: '' },
+        { id: 'focus_input', description: "聚焦聊天输入", icon: RiText, keys: '' },
         {
           id: 'abort_run',
-          description: "Abort active run (double press)",
+          description: "中止当前运行（双击）",
           icon: RiCloseCircleLine,
           keys: '',
         },
       ],
     },
     {
-      category: "Panels",
+      category: "面板",
       items: [
         {
           id: 'toggle_right_sidebar',
-          description: 'Toggle Right Sidebar',
+          description: '切换右侧边栏',
           icon: RiLayoutRightLine,
           keys: '',
         },
         {
           id: 'open_right_sidebar_git',
-          description: 'Open Right Sidebar Git Tab',
+          description: '打开右侧边栏 Git 标签',
           icon: RiGitBranchLine,
           keys: '',
         },
         {
           id: 'open_right_sidebar_files',
-          description: 'Open Right Sidebar Files Tab',
+          description: '打开右侧边栏文件标签',
           icon: RiLayoutRightLine,
           keys: '',
         },
         {
           id: 'open_right_sidebar_todo',
-          description: 'Open Right Sidebar Todo Tab',
+          description: '打开右侧边栏待办标签',
           icon: RiCheckboxMultipleLine,
           keys: '',
         },
         {
           id: 'cycle_right_sidebar_tab',
-          description: 'Cycle Right Sidebar Tab',
+          description: '切换右侧边栏标签',
           icon: RiLayoutRightLine,
           keys: '',
         },
         {
           id: 'toggle_terminal',
-          description: 'Toggle Terminal Dock',
+          description: '切换终端面板',
           icon: RiWindowLine,
           keys: '',
         },
         {
           id: 'toggle_terminal_expanded',
-          description: 'Toggle Terminal Expanded',
+          description: '切换终端展开状态',
           icon: RiWindowLine,
           keys: '',
         },
         {
           id: 'toggle_context_plan',
-          description: 'Toggle Plan Context Panel',
+          description: '切换计划上下文面板',
           icon: RiTimeLine,
           keys: '',
         },
       ],
     },
     {
-      category: "Interface",
+      category: "界面",
       items: [
         {
           id: 'cycle_theme',
-          description: "Cycle Theme (Light → Dark → System)",
+          description: "切换主题（浅色 → 深色 → 系统）",
           icon: RiPaletteLine,
           keys: '',
         },
         {
           keys: [`${mod} + 1...9`],
-          description: "Switch Project",
+          description: "切换项目",
           icon: RiLayoutLeftLine,
         },
         {
           id: 'open_timeline',
-          description: "Open Timeline",
+          description: "打开时间线",
           icon: RiTimeLine,
           keys: '',
         },
         {
           id: 'toggle_services_menu',
-          description: 'Toggle Services Menu',
+          description: '切换服务菜单',
           icon: RiStackLine,
           keys: '',
         },
         {
           id: 'cycle_services_tab',
-          description: 'Cycle Services Tab',
+          description: '切换服务标签',
           icon: RiStackLine,
           keys: '',
         },
         {
           id: 'open_settings',
-          description: "Open Settings",
+          description: "打开设置",
           icon: RiSettings3Line,
           keys: '',
         },
@@ -227,10 +227,10 @@ export const HelpDialog: React.FC = () => {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RiSettings3Line className="h-5 w-5" />
-            Keyboard Shortcuts
+            键盘快捷键
           </DialogTitle>
           <DialogDescription>
-            Use these keyboard shortcuts to navigate OpenChamber efficiently
+            使用这些键盘快捷键高效地操作 ridge
           </DialogDescription>
         </DialogHeader>
 

@@ -31,11 +31,11 @@ export const FileAttachmentButton = memo(() => {
         }
       } catch (error) {
         console.error('File attach failed', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to attach file');
+        toast.error(error instanceof Error ? error.message : '附加文件失败');
       }
     }
     if (attachedCount > 0) {
-      toast.success(`Attached ${attachedCount} file${attachedCount > 1 ? 's' : ''}`);
+      toast.success(`已附加 ${attachedCount} 个文件`);
     }
   };
 
@@ -58,7 +58,7 @@ export const FileAttachmentButton = memo(() => {
 
       if (skipped.length > 0) {
         const summary = skipped.map((s: { name?: string; reason?: string }) => `${s?.name || 'file'}: ${s?.reason || 'skipped'}`).join('\n');
-        toast.error(`Some files were skipped:\n${summary}`);
+        toast.error(`部分文件被跳过:\n${summary}`);
       }
 
       const asFiles = picked
@@ -110,13 +110,13 @@ export const FileAttachmentButton = memo(() => {
               'hover:bg-muted text-muted-foreground',
               buttonSizeClass
             )}
-            aria-label="Attach files"
+            aria-label="附加文件"
           >
             <RiAttachment2 className={iconSizeClass} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top">
-          <p>Attach files</p>
+          <p>附加文件</p>
         </TooltipContent>
       </Tooltip>
     </>

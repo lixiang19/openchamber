@@ -983,7 +983,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                 normalized === 'failed to send message';
 
             if (normalized.includes('payload too large') || normalized.includes('413') || normalized.includes('entity too large')) {
-                toast.error('Attachments are too large to send. Please try reducing the number or size of images.');
+                toast.error('附件太大无法发送。请尝试减少图片数量或大小。');
                 if (allAttachments.length > 0) {
                     useFileStore.setState({ attachedFiles: allAttachments });
                 }
@@ -993,7 +993,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
             if (isSoftNetworkError) {
                 if (allAttachments.length > 0) {
                     useFileStore.setState({ attachedFiles: allAttachments });
-                    toast.error('Failed to send attachments. Try fewer files or smaller images.');
+                    toast.error('发送附件失败。请尝试减少文件数量或缩小图片。');
                 }
                 return;
             }
@@ -2479,7 +2479,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
 
     const handlePermissionAutoAcceptToggle = React.useCallback(() => {
         if (!permissionScopeSessionId) {
-            toast.error('Open a session first');
+            toast.error('请先打开会话');
             return;
         }
 
@@ -2936,7 +2936,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                     </button>
                                 </div>
                                 <p className="mt-2 typography-ui-label text-muted-foreground">
-                                    {dragIntent === 'insert-path' ? 'Drop here to insert @path' : 'Drop files here to attach'}
+                                    {dragIntent === 'insert-path' ? '拖放到此处插入 @路径' : '拖放文件到此处附加'}
                                 </p>
                             </div>
                         </div>
@@ -3057,9 +3057,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                             onSelect={updateAutocompleteOverlayPosition}
                             placeholder={currentSessionId || newSessionDraftOpen
                                 ? inputMode === 'shell'
-                                    ? "Enter shell command..."
-                                    : "@ for files/agents; / for prompts; ! for shell"
-                                : "Select or create a session to start chatting"}
+                                    ? "输入 shell 命令..."
+                                    : "@ 选择文件/智能体；/ 选择提示词；! 执行 shell"
+                                : "选择或创建会话开始聊天"}
                             disabled={!currentSessionId && !newSessionDraftOpen}
                             autoCorrect={isMobile ? "on" : "off"}
                             autoCapitalize={isMobile ? "sentences" : "off"}

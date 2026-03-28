@@ -345,7 +345,7 @@ export const RemoteInstancesPage: React.FC = () => {
     const normalized = normalizeForSave(draft);
 
     if (!normalized.sshCommand.trim()) {
-      toast.error('SSH command is required');
+      toast.error('需要 SSH 命令');
       return;
     }
 
@@ -384,9 +384,9 @@ export const RemoteInstancesPage: React.FC = () => {
 
     try {
       await upsertInstance(normalized);
-      toast.success('SSH instance saved');
+      toast.success('SSH 实例已保存');
     } catch (error) {
-      toast.error('Failed to save SSH instance', {
+      toast.error('保存 SSH 实例失败', {
         description: error instanceof Error ? error.message : String(error),
       });
     }
@@ -398,10 +398,10 @@ export const RemoteInstancesPage: React.FC = () => {
       try {
         await createFromCommand(id, `ssh ${destination}`, host);
         setSelectedId(id);
-        toast.success('SSH instance created');
+        toast.success('SSH 实例已创建');
         return true;
       } catch (error) {
-        toast.error('Failed to create SSH instance', {
+        toast.error('创建 SSH 实例失败', {
           description: error instanceof Error ? error.message : String(error),
         });
         return false;
@@ -437,7 +437,7 @@ export const RemoteInstancesPage: React.FC = () => {
       return;
     }
     if (!destination) {
-      toast.error('Destination is required');
+      toast.error('需要目标地址');
       return;
     }
 
@@ -478,7 +478,7 @@ export const RemoteInstancesPage: React.FC = () => {
 
       await upsertInstance(nextInstance);
       await connect(nextInstance.id);
-      toast.success('Retried with a random local port');
+      toast.success('已使用随机本地端口重试');
     }
   }, [connect, selectedInstance, upsertInstance]);
 
@@ -538,12 +538,12 @@ export const RemoteInstancesPage: React.FC = () => {
 
   const handleCopyAllLogs = React.useCallback(() => {
     if (!logLinesText.trim()) {
-      toast.error('No logs to copy');
+      toast.error('没有日志可复制');
       return;
     }
     void copyTextToClipboard(logLinesText).then((result) => {
       if (result.ok) {
-        toast.success('Logs copied');
+        toast.success('日志已复制');
       }
     });
   }, [logLinesText]);
@@ -555,9 +555,9 @@ export const RemoteInstancesPage: React.FC = () => {
     try {
       await desktopSshLogsClear(draft.id);
       setLogDialogLines([]);
-      toast.success('Logs cleared');
+      toast.success('日志已清除');
     } catch (error) {
-      toast.error('Failed to clear logs', {
+      toast.error('清除日志失败', {
         description: error instanceof Error ? error.message : String(error),
       });
     }
@@ -565,13 +565,13 @@ export const RemoteInstancesPage: React.FC = () => {
 
   const handleOpenCurrentInstance = React.useCallback(async () => {
     if (!status?.localUrl) {
-      toast.error('Instance URL is not available yet');
+      toast.error('实例 URL 尚不可用');
       return;
     }
 
     const target = status.localUrl.trim();
     if (!target) {
-      toast.error('Instance URL is not available yet');
+      toast.error('实例 URL 尚不可用');
       return;
     }
 
@@ -1487,7 +1487,7 @@ export const RemoteInstancesPage: React.FC = () => {
                 onClick={() => {
                   void copyTextToClipboard(status.localUrl || '').then((result) => {
                     if (result.ok) {
-                      toast.success('Local URL copied');
+                      toast.success('本地 URL 已复制');
                     }
                   });
                 }}

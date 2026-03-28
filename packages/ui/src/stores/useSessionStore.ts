@@ -991,7 +991,7 @@ export const useSessionStore = create<SessionStore>()(
                     await get().revertToMessage(sessionId, targetMessage.id);
 
                     const { toast } = await import('sonner');
-                    toast.success(`Undid to: ${preview}`);
+                    toast.success(`已撤销至: ${preview}`);
                 },
 
                 handleSlashRedo: async (sessionId: string) => {
@@ -1032,7 +1032,7 @@ export const useSessionStore = create<SessionStore>()(
                         await get().revertToMessage(sessionId, targetMessage.id);
 
                         const { toast } = await import('sonner');
-                        toast.success(`Redid to: ${preview}`);
+                        toast.success(`已重做至: ${preview}`);
                     } else {
                         // Full unrevert: restore all
                         const session = await runtimeClient.unrevertSession(sessionId);
@@ -1040,7 +1040,7 @@ export const useSessionStore = create<SessionStore>()(
                         await get().loadMessages(sessionId);
 
                         const { toast } = await import('sonner');
-                        toast.success('Restored all messages');
+                        toast.success('已恢复所有消息');
                     }
                 },
 
@@ -1055,7 +1055,7 @@ export const useSessionStore = create<SessionStore>()(
 
                         if (!result || !result.id) {
                             const { toast } = await import('sonner');
-                            toast.error('Failed to fork session');
+                            toast.error('分叉会话失败');
                             return;
                         }
 
@@ -1066,7 +1066,7 @@ export const useSessionStore = create<SessionStore>()(
 
                         if (!foundPiMessage && !fallbackMessage) {
                             const { toast } = await import('sonner');
-                            toast.error('Message not found');
+                            toast.error('未找到消息');
                             return;
                         }
 
@@ -1094,11 +1094,11 @@ export const useSessionStore = create<SessionStore>()(
                         await get().loadMessages(result.id);
 
                         const { toast } = await import('sonner');
-                        toast.success(`Forked from ${existingSession.title}`);
+                        toast.success(`从 ${existingSession.title} 分叉成功`);
                     } catch (error) {
                         console.error('Failed to fork session:', error);
                         const { toast } = await import('sonner');
-                        toast.error('Failed to fork session');
+                        toast.error('分叉会话失败');
                     }
                 },
 

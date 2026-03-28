@@ -91,10 +91,10 @@ export const GitPage: React.FC = () => {
     const next = defaultGitIdentityId === profileId ? null : profileId;
     const ok = await setDefaultGitIdentityId(next);
     if (!ok) {
-      toast.error('Failed to update default identity');
+      toast.error('更新默认身份失败');
       return;
     }
-    toast.success(next ? 'Default identity updated' : 'Default identity unset');
+    toast.success(next ? '默认身份已更新' : '默认身份已取消设置');
   };
 
   const handleConfirmDelete = async () => {

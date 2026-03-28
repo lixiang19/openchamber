@@ -447,8 +447,8 @@ export const SortableTabsStrip: React.FC<SortableTabsStripProps> = ({
                           ? 'text-muted-foreground hover:bg-interactive-hover/60 hover:text-foreground'
                           : 'text-muted-foreground opacity-0 hover:bg-interactive-hover/80 hover:text-foreground group-hover:opacity-100')
                     )}
-                    aria-label={item.closeLabel ?? `Close ${item.label} tab`}
-                    title={item.closeLabel ?? `Close ${item.label} tab`}
+                    aria-label={item.closeLabel ?? `关闭 ${item.label} 标签`}
+                    title={item.closeLabel ?? `关闭 ${item.label} 标签`}
                   >
                     <RiCloseLine className="h-3 w-3" />
                   </button>

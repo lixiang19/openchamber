@@ -281,10 +281,10 @@ export const requestDirectoryAccess = async (
       const selected = await tauri?.dialog?.open?.({
         directory: true,
         multiple: false,
-        title: 'Select Working Directory',
+        title: '选择工作目录',
       });
       if (!selected || typeof selected !== 'string') {
-        return { success: false, error: 'Directory selection cancelled' };
+        return { success: false, error: '目录选择已取消' };
       }
       return { success: true, path: selected };
     } catch (error) {
@@ -305,7 +305,7 @@ export const requestFileAccess = async (
       const selected = await tauri?.dialog?.open?.({
         directory: false,
         multiple: false,
-        title: 'Select File',
+        title: '选择文件',
         ...(options?.filters ? { filters: options.filters } : {}),
       });
       if (!selected || typeof selected !== 'string') {

@@ -692,7 +692,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
               description: 'Please select a valid directory.',
             });
           }
-        } else if (result.error && result.error !== 'Directory selection cancelled') {
+        } else if (result.error && result.error !== '目录选择已取消') {
           toast.error('Failed to select directory', {
             description: result.error,
           });

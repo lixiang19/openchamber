@@ -74,14 +74,14 @@ export const useMenuActions = (
       .then(() => {
         const { available, error } = useUpdateStore.getState();
         if (error) {
-          toast.error('Failed to check for updates', {
+          toast.error('检查更新失败', {
             description: error,
           });
           return;
         }
 
         if (!available) {
-          toast.success('You are on the latest version');
+          toast.success('已是最新版本');
         }
       })
       .finally(() => {
@@ -94,8 +94,8 @@ export const useMenuActions = (
       requestAccess('')
         .then(async (result) => {
           if (!result.success || !result.path) {
-            if (result.error && result.error !== 'Directory selection cancelled') {
-              toast.error('Failed to select directory', {
+            if (result.error && result.error !== '目录选择已取消') {
+              toast.error('选择目录失败', {
                 description: result.error,
               });
             }
@@ -104,22 +104,22 @@ export const useMenuActions = (
 
           const accessResult = await startAccessing(result.path);
           if (!accessResult.success) {
-            toast.error('Failed to open directory', {
-              description: accessResult.error || 'Desktop could not grant file access.',
+            toast.error('打开目录失败', {
+              description: accessResult.error || '桌面无法授予文件访问权限。',
             });
             return;
           }
 
           const added = addProject(result.path, { id: result.projectId });
           if (!added) {
-            toast.error('Failed to add project', {
-              description: 'Please select a valid directory path.',
+            toast.error('添加项目失败', {
+              description: '请选择有效的目录路径。',
             });
           }
         })
         .catch((error) => {
           console.error('Desktop: Error selecting directory:', error);
-          toast.error('Failed to select directory');
+          toast.error('选择目录失败');
         });
     }
 

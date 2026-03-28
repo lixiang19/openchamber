@@ -529,7 +529,7 @@ const MermaidBlock: React.FC<{ source: string; mode: 'svg' | 'ascii' }> = ({ sou
       setDownloaded(true);
       setTimeout(() => setDownloaded(false), 2000);
     } catch {
-      toast.error('Failed to download diagram');
+      toast.error('下载图表失败');
     }
   };
 

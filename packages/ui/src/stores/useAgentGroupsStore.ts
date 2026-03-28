@@ -594,7 +594,7 @@ export const useAgentGroupsStore = create<AgentGroupsStore>()(
             worktreePaths: group.sessions.map((s) => s.path),
           });
           if (failedIds.length > 0) {
-            set({ error: 'Failed to delete some sessions' });
+            set({ error: '删除某些会话失败' });
           }
 
           if (get().selectedGroupName === groupName) {
@@ -636,7 +636,7 @@ export const useAgentGroupsStore = create<AgentGroupsStore>()(
             worktreePaths: [normalizedWorktreePath],
           });
           if (failedIds.length > 0) {
-            set({ error: 'Failed to delete some sessions' });
+            set({ error: '删除某些会话失败' });
           }
 
           await get().loadGroups();
@@ -659,7 +659,7 @@ export const useAgentGroupsStore = create<AgentGroupsStore>()(
 
           return failedIds.length === 0;
         } catch (err) {
-          set({ error: err instanceof Error ? err.message : 'Failed to delete worktree' });
+          set({ error: err instanceof Error ? err.message : '删除工作树失败' });
           return false;
         } finally {
           set({ isLoading: false });
@@ -697,7 +697,7 @@ export const useAgentGroupsStore = create<AgentGroupsStore>()(
             worktreePaths: toDelete,
           });
           if (failedIds.length > 0) {
-            set({ error: 'Failed to delete some sessions' });
+            set({ error: '删除某些会话失败' });
           }
 
           await get().loadGroups();

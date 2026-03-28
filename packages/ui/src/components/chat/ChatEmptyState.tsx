@@ -4,22 +4,22 @@ import { TextLoop } from '@/components/ui/TextLoop';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
 
 const phrases = [
-    "Fix the failing tests",
-    "Refactor this to be more readable",
-    "Add form validation",
-    "Optimize this function",
-    "Write tests for this",
-    "Explain how this works",
-    "Add a new feature",
-    "Help me debug this",
-    "Review my code",
-    "Simplify this logic",
-    "Add error handling",
-    "Create a new component",
-    "Update the documentation",
-    "Find the bug here",
-    "Improve performance",
-    "Add type definitions",
+    "修复失败的测试",
+    "重构代码使其更易读",
+    "添加表单验证",
+    "优化这个函数",
+    "为这段代码编写测试",
+    "解释这段代码的工作原理",
+    "添加新功能",
+    "帮我调试这个问题",
+    "审查我的代码",
+    "简化这个逻辑",
+    "添加错误处理",
+    "创建一个新组件",
+    "更新文档",
+    "找出这里的 bug",
+    "提升性能",
+    "添加类型定义",
 ];
 
 const ChatEmptyState: React.FC = () => {

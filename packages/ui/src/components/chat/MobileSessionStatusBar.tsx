@@ -489,7 +489,7 @@ function SessionStatusHeader({
                   <div
                     key={child.session.id}
                     className="flex-shrink-0"
-                    title={`Sub-session: ${child.session.title || 'Untitled'}`}
+                    title={`子会话: ${child.session.title || '未命名'}`}
                   >
                     <RiLoader4Line
                       className="h-2.5 w-2.5 animate-spin"
@@ -1536,11 +1536,11 @@ export const MobileSessionStatusBar: React.FC<MobileSessionStatusBarProps> = ({
         if (result.success && result.path) {
           const added = addProject(result.path, { id: result.projectId });
           if (!added) {
-            toast.error('Failed to add project', {
+            toast.error('添加项目失败', {
               description: 'Please select a valid directory.',
             });
           }
-        } else if (result.error && result.error !== 'Directory selection cancelled') {
+        } else if (result.error && result.error !== '目录选择已取消') {
           toast.error('Failed to select directory', {
             description: result.error,
           });

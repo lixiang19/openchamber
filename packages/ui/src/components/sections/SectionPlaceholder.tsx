@@ -36,7 +36,7 @@ export const SectionPlaceholder: React.FC<SectionPlaceholderProps> = ({ sectionI
                     {SIDEBAR_SECTION_DESCRIPTIONS[sectionId]}
                 </p>
             </div>
-            <p className="typography-meta text-muted-foreground/60">Coming soon...</p>
+            <p className="typography-meta text-muted-foreground/60">即将推出...</p>
         </div>
     );
 };

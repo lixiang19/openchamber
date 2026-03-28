@@ -123,7 +123,7 @@ export const RemoteInstancesSidebar: React.FC<RemoteInstancesSidebarProps> = ({ 
 
       await upsertInstance(nextInstance);
       await connect(nextInstance.id);
-      toast.success('Retried with a random local port');
+      toast.success('已使用随机本地端口重试');
     }
   }, [connect, upsertInstance]);
 
@@ -186,7 +186,7 @@ export const RemoteInstancesSidebar: React.FC<RemoteInstancesSidebarProps> = ({ 
                 onClick: () => {
                   if (!canRetry) return;
                   void retry(instance.id).catch((error) => {
-                    toast.error('Failed to retry connection', {
+                    toast.error('重试连接失败', {
                       description: error instanceof Error ? error.message : String(error),
                     });
                   });
@@ -203,7 +203,7 @@ export const RemoteInstancesSidebar: React.FC<RemoteInstancesSidebarProps> = ({ 
                       setSelectedId(next?.id || null);
                     }
                   }).catch((error) => {
-                    toast.error('Failed to remove instance', {
+                    toast.error('移除实例失败', {
                       description: error instanceof Error ? error.message : String(error),
                     });
                   });
