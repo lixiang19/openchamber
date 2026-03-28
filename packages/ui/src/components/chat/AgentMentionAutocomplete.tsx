@@ -16,7 +16,7 @@ export interface AgentMentionAutocompleteHandle {
   handleKeyDown: (key: string) => void;
 }
 
-type AutocompleteTab = 'commands' | 'agents' | 'files';
+type AutocompleteTab = 'prompts' | 'agents' | 'files';
 
 const isMentionableAgentMode = (mode?: string | null): boolean => {
   return Boolean(mode);
@@ -187,7 +187,7 @@ export const AgentMentionAutocomplete = React.forwardRef<AgentMentionAutocomplet
         <div className="px-2 pt-2 pb-1 border-b border-border/60">
           <div className="flex items-center gap-1 rounded-lg bg-[var(--surface-elevated)] p-1">
             {([
-              { id: 'commands' as const, label: 'Commands' },
+              { id: 'prompts' as const, label: 'Prompts' },
               { id: 'agents' as const, label: 'Agents' },
               { id: 'files' as const, label: 'Files' },
             ]).map((tab) => (

@@ -327,7 +327,7 @@ export const PermissionCard: React.FC<PermissionCardProps> = ({
                 </span>
                 {isFromSubagent ? (
                   <span className="typography-micro text-muted-foreground px-1.5 py-0.5 rounded bg-foreground/5">
-                    From subagent
+                    From task
                   </span>
                 ) : null}
               </div>

@@ -33,7 +33,7 @@ export const piClient = {
     const payload = await parseResponse<{ commands?: PiSlashCommandInfo[] }>(response);
     return Array.isArray(payload?.commands) ? payload.commands : [];
   },
-  async createSession(payload?: { cwd?: string; title?: string }): Promise<PiSessionViewState> {
+  async createSession(payload?: { cwd?: string; title?: string; parentID?: string | null; thinking?: string }): Promise<PiSessionViewState> {
     const response = await fetch(`${API_BASE}/sessions`, {
       method: 'POST',
       headers: {

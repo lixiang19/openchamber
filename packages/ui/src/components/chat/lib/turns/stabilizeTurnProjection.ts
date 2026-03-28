@@ -1,12 +1,31 @@
 import { projectTurnIndexes } from './projectTurnIndexes';
 import type { TurnProjectionResult, TurnRecord } from './types';
 
+const buildMessagePartsSignature = (turn: TurnRecord): string => {
+    return turn.assistantMessages
+        .map((message) => {
+            const messageId = message.info.id;
+            const partsSignature = message.parts
+                .map((part) => {
+                    if (part.type === 'tool') {
+                        const toolName = (part as { tool?: unknown }).tool;
+                        return `tool:${typeof toolName === 'string' ? toolName : ''}`;
+                    }
+                    return part.type;
+                })
+                .join(',');
+            return `${messageId}[${partsSignature}]`;
+        })
+        .join(';');
+};
+
 const buildTurnSignature = (turn: TurnRecord): string => {
     const assistantIds = turn.assistantMessageIds.join(',');
     return [
         turn.turnId,
         turn.headerMessageId ?? '',
         assistantIds,
+        buildMessagePartsSignature(turn),
         turn.summaryText ?? '',
         turn.stream.isStreaming ? '1' : '0',
         turn.stream.isRetrying ? '1' : '0',

@@ -1,9 +1,9 @@
 /**
- * Built-in subagent extension for Pi Web runtime.
+ * Built-in task extension for Ridge Pi runtime.
  *
- * Registers a "subagent" tool that delegates tasks to specialized agents
+ * Registers a "task" tool that delegates work to specialized task agents
  * discovered from ~/.pi/agent/agents and the nearest .pi/agents directory,
- * using agents with mode: "subagent" | "all".
+ * using agents with mode: "task" | "all".
  *
  * Supports three invocation modes:
  *   - Single: { agent: "name", task: "..." }
@@ -61,9 +61,9 @@ const themeStub = new Proxy({}, {
 });
 
 const createUnsupportedUiError = (method) =>
-  new Error(`Subagent interactive UI is not supported for method: ${method}`);
+  new Error(`Task interactive UI is not supported for method: ${method}`);
 
-const createSubagentUiContext = (onPartialUpdate) => {
+const createTaskUiContext = (onPartialUpdate) => {
   const emitText = (text) => {
     const normalized = normalizeString(text);
     if (normalized && onPartialUpdate) {
@@ -119,7 +119,7 @@ const createSubagentUiContext = (onPartialUpdate) => {
       return undefined;
     },
     setTheme() {
-      return { success: false, error: 'Theme switching is not implemented for subagent sessions' };
+      return { success: false, error: 'Theme switching is not implemented for task sessions' };
     },
     getToolsExpanded() {
       return false;
@@ -160,7 +160,7 @@ const normalizePositiveInteger = (value) => {
   return undefined;
 };
 
-const resolveSubagentTools = (cwd, toolNames) => {
+const resolveTaskTools = (cwd, toolNames) => {
   if (!Array.isArray(toolNames) || toolNames.length === 0) {
     return undefined;
   }
@@ -172,7 +172,7 @@ const resolveSubagentTools = (cwd, toolNames) => {
   return allowed.map((toolName) => TOOL_FACTORIES[toolName](cwd));
 };
 
-const buildSubagentPrompt = (agent) => {
+const buildTaskAgentPrompt = (agent) => {
   const sections = [];
   const prompt = normalizeString(agent?.systemPrompt);
   if (prompt) {
@@ -191,7 +191,7 @@ const buildSubagentPrompt = (agent) => {
   return sections.join('\n\n');
 };
 
-const resolveSubagentModel = async (modelRegistry, modelSpec) => {
+const resolveTaskAgentModel = async (modelRegistry, modelSpec) => {
   const normalizedSpec = normalizeString(modelSpec);
   if (!normalizedSpec) {
     return null;
@@ -203,11 +203,11 @@ const resolveSubagentModel = async (modelRegistry, modelSpec) => {
   if (normalizedSpec.includes('/')) {
     const [providerID, modelID, ...rest] = normalizedSpec.split('/');
     if (!providerID || !modelID || rest.length > 0) {
-      throw new Error(`Invalid subagent model: ${normalizedSpec}`);
+      throw new Error(`Invalid task agent model: ${normalizedSpec}`);
     }
     const exact = availableModels.find((model) => model.provider === providerID && model.id === modelID);
     if (!exact) {
-      throw new Error(`Subagent model not available: ${normalizedSpec}`);
+      throw new Error(`Task agent model not available: ${normalizedSpec}`);
     }
     return exact;
   }
@@ -218,31 +218,44 @@ const resolveSubagentModel = async (modelRegistry, modelSpec) => {
   }
   if (matches.length > 1) {
     const options = matches.map((model) => `${model.provider}/${model.id}`).join(', ');
-    throw new Error(`Ambiguous subagent model "${normalizedSpec}". Use one of: ${options}`);
+    throw new Error(`Ambiguous task agent model "${normalizedSpec}". Use one of: ${options}`);
   }
 
-  throw new Error(`Subagent model not available: ${normalizedSpec}`);
+  throw new Error(`Task agent model not available: ${normalizedSpec}`);
+};
+
+const buildTaskSessionTitle = (agentName, task) => {
+  const normalizedTask = normalizeString(task).replace(/\s+/g, ' ');
+  const preview = Array.from(normalizedTask).slice(0, 48).join('').trim();
+  if (preview) {
+    return `${agentName}: ${preview}`;
+  }
+  return `${agentName} task`;
 };
 
 /**
  * @param {import('./agents.js').discoverAgents} discoverAgentsFn
  * @param {string} cwd
+ * @param {{
+ *   getParentSessionId?: () => string | null,
+ *   registerSession?: (info: { session: import('@mariozechner/pi-coding-agent').AgentSession, cwd: string, title: string, parentID: string | null, createdAt: number, updatedAt: number }) => Promise<unknown>,
+ * }} [options]
  * @returns {import('@mariozechner/pi-coding-agent').ToolDefinition}
  */
-export function createSubagentToolDefinition(discoverAgentsFn, cwd) {
+export function createTaskToolDefinition(discoverAgentsFn, cwd, options = {}) {
   return {
-    name: 'subagent',
-    label: 'Subagent',
+    name: 'task',
+    label: 'Task',
     description: [
-      'Delegate tasks to specialized subagents with isolated context.',
+      'Delegate work to specialized task agents with isolated session context.',
       'Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).',
-      'Reads agents from ~/.pi/agent/agents and the nearest .pi/agents directory. Each agent has a mode: primary, subagent, or all.',
-      'Only agents with mode "subagent" or "all" can be invoked as subagents.',
+      'Reads agents from ~/.pi/agent/agents and the nearest .pi/agents directory. Each agent has a mode: primary, task, or all.',
+      'Only agents with mode "task" or "all" can be invoked from the task tool.',
     ].join(' '),
-    promptSnippet: 'subagent: Delegate tasks to specialized subagents discovered from user and project agent directories',
+    promptSnippet: 'task: Delegate work to specialized task agents discovered from user and project agent directories',
     promptGuidelines: [
-      'Use the subagent tool to delegate complex or specialized tasks to purpose-built agents.',
-      'Each subagent runs in an isolated context with its own system prompt.',
+      'Use the task tool to delegate complex or specialized work to purpose-built task agents.',
+      'Each task runs in an isolated session context with its own system prompt.',
       'For sequential workflows where each step depends on the previous, use chain mode with {previous} placeholder.',
       'For independent tasks that can run concurrently, use parallel mode.',
     ],
@@ -265,7 +278,7 @@ export function createSubagentToolDefinition(discoverAgentsFn, cwd) {
             properties: {
               agent: { type: 'string', description: 'Name of the agent to invoke' },
               task: { type: 'string', description: 'Task to delegate to the agent' },
-              cwd: { type: 'string', description: 'Working directory for the agent session' },
+              cwd: { type: 'string', description: 'Working directory for the task session' },
             },
             required: ['agent', 'task'],
           },
@@ -278,21 +291,25 @@ export function createSubagentToolDefinition(discoverAgentsFn, cwd) {
             properties: {
               agent: { type: 'string', description: 'Name of the agent to invoke' },
               task: { type: 'string', description: 'Task with optional {previous} placeholder for prior output' },
-              cwd: { type: 'string', description: 'Working directory for the agent session' },
+              cwd: { type: 'string', description: 'Working directory for the task session' },
             },
             required: ['agent', 'task'],
           },
         },
         cwd: {
           type: 'string',
-          description: 'Working directory for the agent session (single mode)',
+          description: 'Working directory for the task session (single mode)',
         },
       },
     },
 
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
+    async execute(toolCallId, params, signal, onUpdate) {
+      void toolCallId;
       const agents = await discoverAgentsFn(cwd);
-      const callableAgents = agents.filter((a) => a.mode === 'subagent' || a.mode === 'all');
+      const callableAgents = agents.filter((a) => a.mode === 'task' || a.mode === 'all');
+      const parentSessionId = typeof options.getParentSessionId === 'function'
+        ? normalizeString(options.getParentSessionId()) || null
+        : null;
 
       const hasChain = Array.isArray(params.chain) && params.chain.length > 0;
       const hasTasks = Array.isArray(params.tasks) && params.tasks.length > 0;
@@ -302,7 +319,7 @@ export function createSubagentToolDefinition(discoverAgentsFn, cwd) {
       if (modeCount !== 1) {
         const available = callableAgents.map((a) => `${a.name}: ${a.description || '(no description)'}`).join(', ') || 'none';
         return {
-          content: [{ type: 'text', text: `Invalid parameters. Provide exactly one mode (single, parallel, or chain).\nAvailable subagents: ${available}` }],
+          content: [{ type: 'text', text: `Invalid parameters. Provide exactly one mode (single, parallel, or chain).\nAvailable task agents: ${available}` }],
           isError: true,
         };
       }
@@ -315,7 +332,7 @@ export function createSubagentToolDefinition(discoverAgentsFn, cwd) {
           const step = params.chain[i];
           const taskWithContext = step.task.replace(/\{previous\}/g, previousOutput);
 
-          const result = await runSingleAgent(
+          const result = await runSingleTask(
             cwd,
             callableAgents,
             step.agent,
@@ -328,6 +345,10 @@ export function createSubagentToolDefinition(discoverAgentsFn, cwd) {
                   content: [{ type: 'text', text: partial.text || `Chain step ${i + 1}/${params.chain.length}: running...` }],
                 });
               }
+            },
+            {
+              parentSessionId,
+              registerSession: options.registerSession,
             },
           );
           results.push(result);
@@ -358,7 +379,19 @@ export function createSubagentToolDefinition(discoverAgentsFn, cwd) {
         }
 
         const results = await mapWithConcurrencyLimit(params.tasks, MAX_CONCURRENCY, async (taskItem) => {
-          return runSingleAgent(cwd, callableAgents, taskItem.agent, taskItem.task, taskItem.cwd, signal);
+          return runSingleTask(
+            cwd,
+            callableAgents,
+            taskItem.agent,
+            taskItem.task,
+            taskItem.cwd,
+            signal,
+            undefined,
+            {
+              parentSessionId,
+              registerSession: options.registerSession,
+            },
+          );
         });
 
         const successCount = results.filter((result) => !result.isError).length;
@@ -372,7 +405,7 @@ export function createSubagentToolDefinition(discoverAgentsFn, cwd) {
       }
 
       if (hasSingle) {
-        const result = await runSingleAgent(
+        const result = await runSingleTask(
           cwd,
           callableAgents,
           params.agent,
@@ -382,9 +415,13 @@ export function createSubagentToolDefinition(discoverAgentsFn, cwd) {
           (partial) => {
             if (onUpdate) {
               onUpdate({
-                content: [{ type: 'text', text: partial.text || 'Running subagent...' }],
+                content: [{ type: 'text', text: partial.text || 'Running task...' }],
               });
             }
+          },
+          {
+            parentSessionId,
+            registerSession: options.registerSession,
           },
         );
 
@@ -412,7 +449,7 @@ export function createSubagentToolDefinition(discoverAgentsFn, cwd) {
 
 /**
  * Build a <task_metadata> block that the frontend ToolPart.tsx can parse.
- * This is the key contract between backend extension and frontend UI.
+ * This is the key contract between backend task execution and frontend UI.
  */
 function buildTaskMetadata(result) {
   const entries = (result.toolCalls || []).map((toolCall, index) => ({
@@ -434,9 +471,9 @@ function buildTaskMetadata(result) {
 }
 
 /**
- * Run a single subagent through the Pi SDK.
+ * Run a single task agent through the Pi SDK.
  */
-async function runSingleAgent(defaultCwd, agents, agentName, task, cwdOverride, signal, onPartialUpdate) {
+async function runSingleTask(defaultCwd, agents, agentName, task, cwdOverride, signal, onPartialUpdate, options = {}) {
   const agent = agents.find((candidate) => candidate.name === agentName);
 
   if (!agent) {
@@ -445,13 +482,14 @@ async function runSingleAgent(defaultCwd, agents, agentName, task, cwdOverride, 
       agent: agentName,
       output: '',
       isError: true,
-      errorMessage: `Unknown agent: "${agentName}". Available subagents: ${available}.`,
+      errorMessage: `Unknown agent: "${agentName}". Available task agents: ${available}.`,
       toolCalls: [],
       sessionId: null,
     };
   }
 
   const effectiveCwd = normalizeString(cwdOverride) || defaultCwd;
+  const parentSessionId = normalizeString(options.parentSessionId) || null;
   const result = {
     agent: agentName,
     output: '',
@@ -468,7 +506,7 @@ async function runSingleAgent(defaultCwd, agents, agentName, task, cwdOverride, 
   const authStorage = AuthStorage.create();
   const modelRegistry = new ModelRegistry(authStorage);
   const settingsManager = SettingsManager.create(effectiveCwd);
-  const appendedPrompt = buildSubagentPrompt(agent);
+  const appendedPrompt = buildTaskAgentPrompt(agent);
   const permissionPolicy = compileAgentPermission(effectiveCwd, agent.permission, Object.keys(TOOL_FACTORIES));
   const resourceLoader = new DefaultResourceLoader({
     cwd: effectiveCwd,
@@ -482,25 +520,45 @@ async function runSingleAgent(defaultCwd, agents, agentName, task, cwdOverride, 
   });
   await resourceLoader.reload();
 
-  const tools = resolveSubagentTools(effectiveCwd, permissionPolicy.activeToolNames);
-  const model = await resolveSubagentModel(modelRegistry, agent.model);
+  const tools = resolveTaskTools(effectiveCwd, permissionPolicy.activeToolNames);
+  const model = await resolveTaskAgentModel(modelRegistry, agent.model);
   const thinkingLevel = normalizeThinkingLevel(agent.thinking);
+  const sessionCreatedAt = Date.now();
   const { session } = await createAgentSession({
     cwd: effectiveCwd,
     authStorage,
     modelRegistry,
     resourceLoader,
     settingsManager,
-    sessionManager: SessionManager.inMemory(),
+    sessionManager: SessionManager.create(effectiveCwd),
     ...(tools ? { tools } : {}),
     ...(model ? { model } : {}),
     ...(thinkingLevel ? { thinkingLevel } : {}),
   });
 
+  const sessionTitle = buildTaskSessionTitle(agentName, task);
+  if (sessionTitle) {
+    session.setSessionName(sessionTitle);
+  }
+
+  let registeredSession = false;
+  let registeredRecord = null;
+  if (typeof options.registerSession === 'function') {
+    registeredRecord = await options.registerSession({
+      session,
+      cwd: effectiveCwd,
+      title: sessionTitle,
+      parentID: parentSessionId,
+      createdAt: sessionCreatedAt,
+      updatedAt: sessionCreatedAt,
+    });
+    registeredSession = true;
+  }
+
   result.sessionId = session.sessionId;
 
   const toolCallsById = new Map();
-  const uiContext = createSubagentUiContext(onPartialUpdate);
+  const uiContext = createTaskUiContext(onPartialUpdate);
   await session.bindExtensions({ uiContext });
 
   const unsubscribe = session.subscribe((event) => {
@@ -576,12 +634,21 @@ async function runSingleAgent(defaultCwd, agents, agentName, task, cwdOverride, 
   });
 
   let abortHandler = null;
+  let externalAbortHandler = null;
   let wasAborted = false;
+  let externalAbortReject = null;
+  const externalAbortPromise = new Promise((_, reject) => {
+    externalAbortReject = reject;
+  });
 
   try {
     if (signal) {
       abortHandler = () => {
         wasAborted = true;
+        if (externalAbortReject) {
+          externalAbortReject(new Error('Task was aborted'));
+          externalAbortReject = null;
+        }
         void session.abort().catch(() => {});
       };
       if (signal.aborted) {
@@ -591,30 +658,44 @@ async function runSingleAgent(defaultCwd, agents, agentName, task, cwdOverride, 
       }
     }
 
+    if (registeredRecord?.externalAbortListeners instanceof Set) {
+      externalAbortHandler = () => {
+        wasAborted = true;
+        if (externalAbortReject) {
+          externalAbortReject(new Error('Task was aborted'));
+          externalAbortReject = null;
+        }
+      };
+      registeredRecord.externalAbortListeners.add(externalAbortHandler);
+    }
+
     if (wasAborted) {
       result.isError = true;
-      result.errorMessage = 'Subagent was aborted';
+      result.errorMessage = 'Task was aborted';
       return result;
     }
 
-    await session.prompt(`Task: ${task}`, { source: 'interactive' });
+    await Promise.race([
+      session.prompt(`Task: ${task}`, { source: 'interactive' }),
+      externalAbortPromise,
+    ]);
 
     if (wasAborted || turnBudgetExceeded) {
       result.isError = true;
-      result.errorMessage = turnBudgetExceeded ? 'Subagent turn budget exhausted' : 'Subagent was aborted';
+      result.errorMessage = turnBudgetExceeded ? 'Task turn budget exhausted' : 'Task was aborted';
       return result;
     }
 
     if (result.stopReason === 'error' && !result.errorMessage) {
       result.isError = true;
-      result.errorMessage = 'Subagent execution failed';
+      result.errorMessage = 'Task execution failed';
     }
 
     return result;
   } catch (error) {
     result.isError = true;
     result.errorMessage = wasAborted
-      ? 'Subagent was aborted'
+      ? 'Task was aborted'
       : error instanceof Error
         ? error.message
         : String(error);
@@ -623,8 +704,13 @@ async function runSingleAgent(defaultCwd, agents, agentName, task, cwdOverride, 
     if (signal && abortHandler) {
       signal.removeEventListener('abort', abortHandler);
     }
+    if (registeredRecord?.externalAbortListeners instanceof Set && externalAbortHandler) {
+      registeredRecord.externalAbortListeners.delete(externalAbortHandler);
+    }
     unsubscribe();
-    session.dispose();
+    if (!registeredSession) {
+      session.dispose();
+    }
   }
 }
 

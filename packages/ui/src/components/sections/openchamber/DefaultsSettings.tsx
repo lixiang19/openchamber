@@ -6,8 +6,16 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { updateDesktopSettings } from '@/lib/persistence';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useUIStore } from '@/stores/useUIStore';
-import { getRegisteredRuntimeAPIs } from '@/contexts/runtimeAPIRegistry';
 import { cn } from '@/lib/utils';
+
+const THINKING_LEVELS = [
+  { value: 'off', label: 'off' },
+  { value: 'minimal', label: 'minimal' },
+  { value: 'low', label: 'low' },
+  { value: 'medium', label: 'medium' },
+  { value: 'high', label: 'high' },
+  { value: 'xhigh', label: 'xhigh' },
+] as const;
 
 const getDisplayModel = (
   storedModel: string | undefined
@@ -18,7 +26,6 @@ const getDisplayModel = (
       return { providerId: parts[0], modelId: parts[1] };
     }
   }
-
   return { providerId: '', modelId: '' };
 };
 
@@ -26,96 +33,22 @@ export const DefaultsSettings: React.FC = () => {
   const setProvider = useConfigStore((state) => state.setProvider);
   const setModel = useConfigStore((state) => state.setModel);
   const setAgent = useConfigStore((state) => state.setAgent);
-  const setCurrentVariant = useConfigStore((state) => state.setCurrentVariant);
   const setSettingsDefaultModel = useConfigStore((state) => state.setSettingsDefaultModel);
-  const setSettingsDefaultVariant = useConfigStore((state) => state.setSettingsDefaultVariant);
   const setSettingsDefaultAgent = useConfigStore((state) => state.setSettingsDefaultAgent);
+  const setSettingsDefaultThinkingLevel = useConfigStore((state) => state.setSettingsDefaultThinkingLevel);
   const showDeletionDialog = useUIStore((state) => state.showDeletionDialog);
   const setShowDeletionDialog = useUIStore((state) => state.setShowDeletionDialog);
   const providers = useConfigStore((state) => state.providers);
 
-  const [defaultModel, setDefaultModel] = React.useState<string | undefined>();
-  const [defaultVariant, setDefaultVariant] = React.useState<string | undefined>();
-  const [defaultAgent, setDefaultAgent] = React.useState<string | undefined>();
-  const [isLoading, setIsLoading] = React.useState(true);
+  const settingsDefaultModel = useConfigStore((state) => state.settingsDefaultModel);
+  const settingsDefaultAgent = useConfigStore((state) => state.settingsDefaultAgent);
+  const settingsDefaultThinkingLevel = useConfigStore((state) => state.settingsDefaultThinkingLevel);
 
-  const parsedModel = React.useMemo(() => getDisplayModel(defaultModel), [defaultModel]);
-
-  React.useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        let data: {
-          defaultModel?: string;
-          defaultVariant?: string;
-          defaultAgent?: string;
-        } | null = null;
-
-        if (!data) {
-          const runtimeSettings = getRegisteredRuntimeAPIs()?.settings;
-          if (runtimeSettings) {
-            try {
-              const result = await runtimeSettings.load();
-              const settings = result?.settings;
-              if (settings) {
-                data = {
-                  defaultModel: typeof settings.defaultModel === 'string' ? settings.defaultModel : undefined,
-                  defaultVariant:
-                    typeof (settings as Record<string, unknown>).defaultVariant === 'string'
-                      ? ((settings as Record<string, unknown>).defaultVariant as string)
-                      : undefined,
-                  defaultAgent: typeof settings.defaultAgent === 'string' ? settings.defaultAgent : undefined,
-                };
-              }
-            } catch {
-              // fall through
-            }
-          }
-        }
-
-        if (!data) {
-          const response = await fetch('/api/config/settings', {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-          });
-          if (response.ok) {
-            data = await response.json();
-          }
-        }
-
-        if (data) {
-          const model =
-            typeof data.defaultModel === 'string' && data.defaultModel.trim().length > 0
-              ? data.defaultModel.trim()
-              : undefined;
-          const variant =
-            typeof data.defaultVariant === 'string' && data.defaultVariant.trim().length > 0
-              ? data.defaultVariant.trim()
-              : undefined;
-          const agent =
-            typeof data.defaultAgent === 'string' && data.defaultAgent.trim().length > 0
-              ? data.defaultAgent.trim()
-              : undefined;
-
-          if (model !== undefined) setDefaultModel(model);
-          if (variant !== undefined) setDefaultVariant(variant);
-          if (agent !== undefined) setDefaultAgent(agent);
-        }
-      } catch (error) {
-        console.warn('Failed to load defaults settings:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadSettings();
-  }, []);
+  const parsedModel = React.useMemo(() => getDisplayModel(settingsDefaultModel), [settingsDefaultModel]);
 
   const handleModelChange = React.useCallback(
     async (providerId: string, modelId: string) => {
       const newValue = providerId && modelId ? `${providerId}/${modelId}` : undefined;
-      setDefaultModel(newValue);
-      setDefaultVariant(undefined);
-      setSettingsDefaultVariant(undefined);
-      setCurrentVariant(undefined);
       setSettingsDefaultModel(newValue);
 
       if (providerId && modelId) {
@@ -127,44 +60,41 @@ export const DefaultsSettings: React.FC = () => {
       }
 
       try {
-        await updateDesktopSettings({ defaultModel: newValue ?? '', defaultVariant: '' });
-        const response = await fetch('/api/config/settings', {
+        await updateDesktopSettings({ defaultModel: newValue ?? '' });
+        await fetch('/api/config/settings', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ defaultModel: newValue }),
         });
-        if (!response.ok) {
-          console.warn('Failed to save default model to server:', response.status, response.statusText);
-        }
       } catch (error) {
         console.warn('Failed to save default model:', error);
       }
     },
-    [providers, setCurrentVariant, setModel, setProvider, setSettingsDefaultModel, setSettingsDefaultVariant]
+    [providers, setModel, setProvider, setSettingsDefaultModel]
   );
 
-  const DEFAULT_VARIANT_VALUE = '__default__';
-
-  const handleVariantChange = React.useCallback(
-    async (variant: string) => {
-      const newValue = variant === DEFAULT_VARIANT_VALUE ? undefined : variant || undefined;
-      setDefaultVariant(newValue);
-      setSettingsDefaultVariant(newValue);
-      setCurrentVariant(newValue);
+  const handleThinkingLevelChange = React.useCallback(
+    async (level: string) => {
+      const newValue: typeof THINKING_LEVELS[number]['value'] | undefined = level === 'off' ? undefined : level as typeof THINKING_LEVELS[number]['value'];
+      setSettingsDefaultThinkingLevel(newValue);
 
       try {
-        await updateDesktopSettings({ defaultVariant: newValue ?? '' });
+        await updateDesktopSettings({ defaultThinkingLevel: newValue });
+        await fetch('/api/config/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ defaultThinkingLevel: newValue }),
+        });
       } catch (error) {
-        console.warn('Failed to save default variant:', error);
+        console.warn('Failed to save default thinking level:', error);
       }
     },
-    [setCurrentVariant, setSettingsDefaultVariant]
+    [setSettingsDefaultThinkingLevel]
   );
 
   const handleAgentChange = React.useCallback(
     async (agentName: string) => {
       const newValue = agentName || undefined;
-      setDefaultAgent(newValue);
       setSettingsDefaultAgent(newValue);
 
       if (agentName) {
@@ -180,34 +110,6 @@ export const DefaultsSettings: React.FC = () => {
     [setAgent, setSettingsDefaultAgent]
   );
 
-  const availableVariants = React.useMemo(() => {
-    if (!parsedModel.providerId || !parsedModel.modelId) return [];
-    const provider = providers.find((p) => p.id === parsedModel.providerId);
-    const model = provider?.models.find((m: Record<string, unknown>) => (m as { id?: string }).id === parsedModel.modelId) as
-      | { variants?: Record<string, unknown> }
-      | undefined;
-    const variants = model?.variants;
-    if (!variants) return [];
-    return Object.keys(variants);
-  }, [parsedModel.modelId, parsedModel.providerId, providers]);
-
-  const supportsVariants = availableVariants.length > 0;
-
-  React.useEffect(() => {
-    if (!supportsVariants && defaultVariant) {
-      setDefaultVariant(undefined);
-      setSettingsDefaultVariant(undefined);
-      setCurrentVariant(undefined);
-      updateDesktopSettings({ defaultVariant: '' }).catch(() => {
-        // best effort
-      });
-    }
-  }, [defaultVariant, setCurrentVariant, setSettingsDefaultVariant, supportsVariants]);
-
-  if (isLoading) {
-    return null;
-  }
-
   return (
     <div className="mb-6">
       <div className="mb-0.5 px-1">
@@ -222,15 +124,20 @@ export const DefaultsSettings: React.FC = () => {
           {parsedModel.providerId ? (
             <span className="text-foreground">
               {parsedModel.providerId}/{parsedModel.modelId}
-              {supportsVariants ? ` (${defaultVariant ?? 'default'})` : ''}
             </span>
           ) : (
-            <span className="text-foreground">opencode agent default</span>
+            <span className="text-foreground">pi agent default</span>
           )}
-          {defaultAgent && (
+          {settingsDefaultThinkingLevel && (
             <>
               {' / '}
-              <span className="text-foreground">{defaultAgent}</span>
+              <span className="text-foreground">thinking: {settingsDefaultThinkingLevel}</span>
+            </>
+          )}
+          {settingsDefaultAgent && (
+            <>
+              {' / '}
+              <span className="text-foreground">{settingsDefaultAgent}</span>
             </>
           )}
         </div>
@@ -249,15 +156,17 @@ export const DefaultsSettings: React.FC = () => {
             <span className="typography-ui-label text-foreground">Default Thinking</span>
           </div>
           <div className="flex items-center gap-2 sm:w-fit">
-            <Select value={defaultVariant ?? DEFAULT_VARIANT_VALUE} onValueChange={handleVariantChange} disabled={!supportsVariants}>
-              <SelectTrigger className="w-fit min-w-[120px]">
-                <SelectValue placeholder="Thinking" />
+            <Select 
+              value={settingsDefaultThinkingLevel ?? 'off'} 
+              onValueChange={handleThinkingLevelChange}
+            >
+              <SelectTrigger className="w-fit min-w-[140px]">
+                <SelectValue placeholder="Thinking level" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={DEFAULT_VARIANT_VALUE}>Default</SelectItem>
-                {availableVariants.map((variant) => (
-                  <SelectItem key={variant} value={variant}>
-                    {variant}
+                {THINKING_LEVELS.map((level) => (
+                  <SelectItem key={level.value} value={level.value}>
+                    {level.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -270,7 +179,7 @@ export const DefaultsSettings: React.FC = () => {
             <span className="typography-ui-label text-foreground">Default Agent</span>
           </div>
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:w-fit sm:flex-initial">
-            <AgentSelector agentName={defaultAgent || ''} onChange={handleAgentChange} />
+            <AgentSelector agentName={settingsDefaultAgent || ''} onChange={handleAgentChange} />
           </div>
         </div>
 

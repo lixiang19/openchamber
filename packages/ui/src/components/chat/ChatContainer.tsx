@@ -17,7 +17,6 @@ import { useDeviceInfo } from '@/lib/device';
 import { Button } from '@/components/ui/button';
 import { OverlayScrollbar } from '@/components/ui/OverlayScrollbar';
 import { TimelineDialog } from './TimelineDialog';
-import { WeChatSessionDialog } from './WeChatSessionDialog';
 import type { PermissionRequest } from '@/types/permission';
 import type { PiInteractiveRequestViewState } from '@/lib/pi/types';
 import { cn } from '@/lib/utils';
@@ -201,15 +200,6 @@ export const ChatContainer: React.FC = () => {
             <RiArrowLeftLine className="h-4 w-4" />
             Parent
         </Button>
-    ) : null;
-
-    const weChatSessionButton = currentSession && isMobile ? (
-        <WeChatSessionDialog
-            sessionId={currentSession.id}
-            sessionTitle={currentSession.title?.trim() || 'Untitled session'}
-            sessionCwd={currentSession.path}
-            triggerClassName="absolute right-3 top-3 z-20"
-        />
     ) : null;
 
     React.useEffect(() => {
@@ -420,7 +410,6 @@ export const ChatContainer: React.FC = () => {
                 style={isMobile ? { paddingBottom: 'var(--oc-keyboard-inset, 0px)' } : undefined}
             >
                 {returnToParentButton}
-                {weChatSessionButton}
                 <div className="flex-1 overflow-y-auto bg-background pt-6">
                     <div className="space-y-4">
                         {HYDRATING_SKELETON_ITEMS.map((item) => (
@@ -461,7 +450,6 @@ export const ChatContainer: React.FC = () => {
                 style={isMobile ? { paddingBottom: 'var(--oc-keyboard-inset, 0px)' } : undefined}
             >
                 {returnToParentButton}
-                {weChatSessionButton}
                 {!isDesktopExpandedInput ? (
                 <div className="flex-1 flex items-center justify-center">
                     <ChatEmptyState />
@@ -487,7 +475,6 @@ export const ChatContainer: React.FC = () => {
             style={isMobile ? { paddingBottom: 'var(--oc-keyboard-inset, 0px)' } : undefined}
         >
             {returnToParentButton}
-            {weChatSessionButton}
             <div
                 className={cn(
                     'relative min-h-0',

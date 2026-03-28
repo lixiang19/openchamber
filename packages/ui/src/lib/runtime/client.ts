@@ -92,6 +92,13 @@ export type FilesystemEntry = {
   isSymbolicLink?: boolean;
 };
 
+export type FilesystemPathStat = {
+  path: string;
+  exists: boolean;
+  isDirectory: boolean;
+  isFile: boolean;
+};
+
 export type ProjectFileSearchHit = {
   name: string;
   path: string;
@@ -682,6 +689,36 @@ class RuntimeService {
     }
   }
 
+  async statLocalPath(targetPath: string | null | undefined): Promise<FilesystemPathStat> {
+    const normalizedPath = typeof targetPath === 'string' ? normalizeFsPath(targetPath.trim()) : '';
+    if (!normalizedPath) {
+      return {
+        path: '',
+        exists: false,
+        isDirectory: false,
+        isFile: false,
+      };
+    }
+
+    const response = await fetch(`${this.baseUrl}/fs/stat?path=${encodeURIComponent(normalizedPath)}`, {
+      headers: { Accept: 'application/json' },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      const message = typeof error.error === 'string' ? error.error : 'Failed to stat path';
+      throw new Error(message);
+    }
+
+    const result = await response.json().catch(() => null) as Partial<FilesystemPathStat> | null;
+    return {
+      path: typeof result?.path === 'string' ? normalizeFsPath(result.path) : normalizedPath,
+      exists: result?.exists === true,
+      isDirectory: result?.isDirectory === true,
+      isFile: result?.isFile === true,
+    };
+  }
+
   // Session Management
   async listSessions(): Promise<Session[]> {
     const sessions = (await this.listPiSessions()).map((session) => projectPiSessionToRuntimeSession(session));
@@ -707,6 +744,7 @@ class RuntimeService {
       body: JSON.stringify({
         cwd: this.currentDirectory,
         title: params?.title,
+        parentID: params?.parentID ?? null,
       }),
     });
     return projectPiSessionToRuntimeSession(snapshot);
@@ -1139,8 +1177,11 @@ class RuntimeService {
   // Questions ("ask" tool)
   async replyToQuestion(requestId: string, answers: string[] | string[][]): Promise<boolean> {
     const request = await this.findPiInteractiveRequest(requestId);
-    if (!request || request.method !== 'question') {
-      return false;
+    if (!request) {
+      throw new Error(`Interactive request not found: ${requestId}`);
+    }
+    if (request.method !== 'question') {
+      throw new Error(`Invalid request method: ${request.method}, expected: question`);
     }
 
     const normalized = Array.isArray(answers) && Array.isArray(answers[0])

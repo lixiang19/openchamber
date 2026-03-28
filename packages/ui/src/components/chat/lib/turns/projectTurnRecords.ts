@@ -11,6 +11,88 @@ import type {
     TurnStreamState,
 } from './types';
 
+const isPiTextBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'text' }> => (
+    block.type === 'text' && 'text' in block
+);
+
+const isPiThinkingContentBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'thinking' }> => (
+    block.type === 'thinking' && 'thinking' in block
+);
+
+const isPiToolCallBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'toolCall' }> => (
+    block.type === 'toolCall' && 'id' in block && 'name' in block && 'arguments' in block
+);
+
+const normalizeTaskSessionId = (value: unknown): string | null => {
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+};
+
+const readTaskSessionIdFromText = (value: string): string | null => {
+    const metadataMatch = value.match(/<task_metadata>\s*([\s\S]*?)\s*<\/task_metadata>/i);
+    if (metadataMatch?.[1]) {
+        try {
+            const parsed = JSON.parse(metadataMatch[1]) as { sessionId?: unknown; sessionID?: unknown };
+            const sessionId = normalizeTaskSessionId(parsed.sessionId) ?? normalizeTaskSessionId(parsed.sessionID);
+            if (sessionId) {
+                return sessionId;
+            }
+        } catch {
+            // ignore malformed metadata block
+        }
+    }
+
+    return normalizeTaskSessionId(
+        value.match(/session[_\s-]?id\s*:\s*([^\s<"']+)/i)?.[1]
+        ?? value.match(/task_id\s*:\s*([^\s<"']+)/i)?.[1]
+    );
+};
+
+const readTaskSessionIdFromValue = (value: unknown): string | null => {
+    if (typeof value === 'string') {
+        return readTaskSessionIdFromText(value);
+    }
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const sessionId = readTaskSessionIdFromValue(item);
+            if (sessionId) {
+                return sessionId;
+            }
+        }
+        return null;
+    }
+    if (value && typeof value === 'object') {
+        const record = value as { sessionId?: unknown; sessionID?: unknown; content?: unknown; text?: unknown };
+        const directSessionId = normalizeTaskSessionId(record.sessionId) ?? normalizeTaskSessionId(record.sessionID);
+        if (directSessionId) {
+            return directSessionId;
+        }
+        const contentSessionId = readTaskSessionIdFromValue(record.content);
+        if (contentSessionId) {
+            return contentSessionId;
+        }
+        const textSessionId = readTaskSessionIdFromValue(record.text);
+        if (textSessionId) {
+            return textSessionId;
+        }
+    }
+    return null;
+};
+
+const readTaskSessionIdFromExecution = (execution: PiToolExecutionViewState | null | undefined, args: Record<string, unknown> | null | undefined): string | null => {
+    const fromArgs = normalizeTaskSessionId(args?.sessionId)
+        ?? normalizeTaskSessionId(args?.taskSessionId);
+    if (fromArgs) {
+        return fromArgs;
+    }
+
+    return readTaskSessionIdFromValue(execution?.result)
+        ?? readTaskSessionIdFromValue(execution?.partialResult);
+};
+
 /**
  * 从 Pi-native session 状态直接构建最小化的 ChatMessageEntry
  * 这是推进 Pi-native 化的过渡步骤：不再依赖 uiMessageProjection 的完整投影，
@@ -23,6 +105,16 @@ const buildMinimalMessageEntryFromPi = (
 ): ChatMessageEntry => {
     const messageId = message.id || `${sessionId}:msg:${Date.now()}`;
     const timestamp = message.timestamp ?? Date.now();
+    const rawParentId = (message as { parentId?: unknown }).parentId;
+    const parentId = typeof rawParentId === 'string' && rawParentId.trim().length > 0
+        ? rawParentId.trim()
+        : undefined;
+
+    // DEBUG: Log Pi message structure
+    if (message.role === 'assistant' && Array.isArray(message.content)) {
+        console.log('[DEBUG buildMinimalMessageEntryFromPi] Pi message blocks order:', 
+            message.content.map((b, i) => `${i}:${b.type}`).join(', '));
+    }
 
     // 用户消息
     if (message.role === 'user') {
@@ -36,6 +128,7 @@ const buildMinimalMessageEntryFromPi = (
                 role: 'user',
                 clientRole: 'user',
                 userMessageMarker: true,
+                ...(parentId ? { parentID: parentId } : {}),
                 time: { created: timestamp, completed: timestamp },
             } as Message,
             parts: contentText ? [{
@@ -51,91 +144,93 @@ const buildMinimalMessageEntryFromPi = (
 
     // Assistant 消息
     if (message.role === 'assistant') {
-        const textBlocks = message.content.filter((b): b is Extract<PiContentBlock, { type: 'text' }> => b.type === 'text');
-        const thinkingBlocks = message.content.filter((b): b is Extract<PiContentBlock, { type: 'thinking' }> => b.type === 'thinking');
-        const toolCallBlocks = message.content.filter((b): b is Extract<PiContentBlock, { type: 'toolCall' }> => b.type === 'toolCall');
-
         const parts: Part[] = [];
         let partIndex = 0;
 
-        // Text parts
-        for (const block of textBlocks) {
-            parts.push({
-                id: `${messageId}:text:${partIndex++}`,
-                type: 'text',
-                text: block.text,
-                sessionID: sessionId,
-                messageID: messageId,
-                time: { start: timestamp, end: timestamp },
-            } as Part);
-        }
+        // 保持原始 blocks 顺序，按顺序处理每个 block
+        for (const block of message.content) {
+            if (isPiTextBlock(block)) {
+                parts.push({
+                    id: `${messageId}:text:${partIndex++}`,
+                    type: 'text',
+                    text: block.text,
+                    sessionID: sessionId,
+                    messageID: messageId,
+                    time: { start: timestamp, end: timestamp },
+                } as Part);
+            } else if (isPiThinkingContentBlock(block)) {
+                parts.push({
+                    id: `${messageId}:reasoning:${partIndex++}`,
+                    type: 'reasoning',
+                    text: block.thinking,
+                    sessionID: sessionId,
+                    messageID: messageId,
+                    time: { start: timestamp, end: timestamp },
+                } as Part);
+            } else if (isPiToolCallBlock(block)) {
+                const toolCallId = block.id || `${messageId}:tool:${partIndex}`;
+                const execution = block.id ? toolExecutionsById.get(block.id) : undefined;
+                const toolName = execution?.toolName || block.name || 'tool';
+                const normalizedToolName = typeof toolName === 'string' ? toolName.trim().toLowerCase() : 'tool';
+                const status = execution?.status === 'running' ? 'running' : execution?.isError ? 'error' : 'completed';
+                const toolArgs = (execution?.args ?? block.arguments ?? {}) as Record<string, unknown>;
 
-        // Reasoning parts
-        for (const block of thinkingBlocks) {
-            parts.push({
-                id: `${messageId}:reasoning:${partIndex++}`,
-                type: 'reasoning',
-                text: block.thinking,
-                sessionID: sessionId,
-                messageID: messageId,
-                time: { start: timestamp, end: timestamp },
-            } as Part);
-        }
+                const outputChunks: string[] = [];
+                if (execution?.partialResult !== undefined && execution.partialResult !== null) {
+                    outputChunks.push(typeof execution.partialResult === 'string'
+                        ? execution.partialResult
+                        : JSON.stringify(execution.partialResult, null, 2));
+                }
+                if (execution?.result !== undefined && execution.result !== null) {
+                    outputChunks.push(typeof execution.result === 'string'
+                        ? execution.result
+                        : JSON.stringify(execution.result, null, 2));
+                }
+                const output = outputChunks.join('\n\n');
+                const taskSessionID = normalizedToolName === 'task'
+                    ? readTaskSessionIdFromExecution(execution, toolArgs)
+                    : null;
 
-        // Tool call parts - 直接从 toolExecutions 获取状态
-        for (const block of toolCallBlocks) {
-            const toolCallId = block.id || `${messageId}:tool:${partIndex}`;
-            const execution = block.id ? toolExecutionsById.get(block.id) : undefined;
-            const toolName = execution?.toolName || block.name || 'tool';
-            const status = execution?.status === 'running' ? 'running' : execution?.isError ? 'error' : 'completed';
-
-            const outputChunks: string[] = [];
-            if (execution?.partialResult !== undefined && execution.partialResult !== null) {
-                outputChunks.push(typeof execution.partialResult === 'string'
-                    ? execution.partialResult
-                    : JSON.stringify(execution.partialResult, null, 2));
-            }
-            if (execution?.result !== undefined && execution.result !== null) {
-                outputChunks.push(typeof execution.result === 'string'
-                    ? execution.result
-                    : JSON.stringify(execution.result, null, 2));
-            }
-            const output = outputChunks.join('\n\n');
-
-            parts.push({
-                id: toolCallId,
-                type: 'tool',
-                tool: toolName,
-                callID: toolCallId,
-                sessionID: sessionId,
-                messageID: messageId,
-                state: {
-                    status,
-                    input: (execution?.args ?? block.arguments ?? {}) as Record<string, unknown>,
-                    ...(output ? { output } : {}),
-                    ...(status === 'error' ? { error: output || `${toolName} failed` } : {}),
+                parts.push({
+                    id: toolCallId,
+                    type: 'tool',
+                    tool: toolName,
+                    callID: toolCallId,
+                    sessionID: sessionId,
+                    messageID: messageId,
+                    state: {
+                        status,
+                        input: toolArgs,
+                        ...(output ? { output } : {}),
+                        ...(status === 'error' ? { error: output || `${toolName} failed` } : {}),
+                        time: {
+                            start: timestamp,
+                            ...(status !== 'running' ? { end: timestamp } : {}),
+                        },
+                        metadata: {
+                            ...(taskSessionID ? { sessionId: taskSessionID } : {}),
+                            pi: {
+                                toolName,
+                                executionId: execution?.toolCallId,
+                            },
+                        },
+                    },
                     time: {
                         start: timestamp,
                         ...(status !== 'running' ? { end: timestamp } : {}),
                     },
-                    metadata: {
-                        pi: {
-                            toolName,
-                            executionId: execution?.toolCallId,
-                        },
-                    },
-                },
-                time: {
-                    start: timestamp,
-                    ...(status !== 'running' ? { end: timestamp } : {}),
-                },
-            } as Part);
+                } as Part);
+            }
         }
 
         // Assistant metadata
         const finish = message.stopReason === 'stop' || message.stopReason === 'endTurn'
             ? 'stop'
             : message.stopReason === 'toolUse' ? 'tool' : undefined;
+
+        // DEBUG: Log parts order
+        console.log('[DEBUG buildMinimalMessageEntryFromPi] Built parts order:', 
+            parts.map((p, i) => `${i}:${p.type}${p.type === 'tool' ? `(${p.tool})` : ''}`).join(', '));
 
         return {
             info: {
@@ -145,6 +240,7 @@ const buildMinimalMessageEntryFromPi = (
                 clientRole: 'assistant',
                 ...(message.provider ? { providerID: message.provider } : {}),
                 ...(message.model ? { modelID: message.model } : {}),
+                ...(parentId ? { parentID: parentId } : {}),
                 ...(finish ? { finish } : {}),
                 status: message.stopReason && message.stopReason !== 'toolUse' ? 'completed' : undefined,
                 time: { created: timestamp, completed: finish ? timestamp : undefined },
@@ -166,6 +262,7 @@ const buildMinimalMessageEntryFromPi = (
             sessionID: sessionId,
             role: message.role,
             clientRole: message.role,
+            ...(parentId ? { parentID: parentId } : {}),
             time: { created: timestamp, completed: timestamp },
         } as Message,
         parts: contentStr ? [{
@@ -446,6 +543,78 @@ const buildTurnStreamState = (
     };
 };
 
+const mergeAssistantMessageChain = (
+    turnId: string,
+    assistantMessages: ChatMessageEntry[],
+    piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
+): ChatMessageEntry => {
+    if (assistantMessages.length <= 1) {
+        return assistantMessages[0];
+    }
+
+    const firstMessage = assistantMessages[0];
+    const lastMessage = assistantMessages[assistantMessages.length - 1];
+    const createdAt = assistantMessages
+        .map((message) => getMessageCreatedAt(message))
+        .find((value): value is number => typeof value === 'number');
+    const completedAt = [...assistantMessages]
+        .reverse()
+        .map((message) => getMessageCompletedAt(message))
+        .find((value): value is number => typeof value === 'number');
+    const finish = getMessageFinish(lastMessage, piAssistantById);
+    const status = getMessageStatus(lastMessage, piAssistantById);
+    const sessionID = (firstMessage.info as { sessionID?: unknown }).sessionID
+        ?? (lastMessage.info as { sessionID?: unknown }).sessionID;
+    const mergedMessageId = `${turnId}:assistant:${firstMessage.info.id}:${lastMessage.info.id}`;
+
+    return {
+        info: {
+            ...firstMessage.info,
+            ...lastMessage.info,
+            id: mergedMessageId,
+            sessionID,
+            role: 'assistant',
+            clientRole: 'assistant',
+            piMergedAssistant: true,
+            sourceMessageIds: assistantMessages.map((message) => message.info.id),
+            ...(finish ? { finish } : {}),
+            ...(status ? { status } : {}),
+            time: {
+                ...(typeof createdAt === 'number' ? { created: createdAt } : {}),
+                ...(typeof completedAt === 'number' ? { completed: completedAt } : {}),
+            },
+        } as Message,
+        parts: assistantMessages.flatMap((message) => message.parts),
+    };
+};
+
+const collapseAssistantMessageChains = (
+    turnId: string,
+    assistantMessages: ChatMessageEntry[],
+    piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
+): ChatMessageEntry[] => {
+    if (assistantMessages.length <= 1) {
+        return assistantMessages;
+    }
+
+    const collapsed: ChatMessageEntry[] = [];
+    let currentChain: ChatMessageEntry[] = [];
+
+    assistantMessages.forEach((message, index) => {
+        currentChain.push(message);
+        const finish = getMessageFinish(message, piAssistantById);
+        const isLastMessage = index === assistantMessages.length - 1;
+        if (finish === 'tool' && !isLastMessage) {
+            return;
+        }
+
+        collapsed.push(mergeAssistantMessageChain(turnId, currentChain, piAssistantById));
+        currentChain = [];
+    });
+
+    return collapsed;
+};
+
 interface ProjectTurnRecordsOptions {
     previousProjection?: TurnProjectionResult | null;
     showTextJustificationActivity: boolean;
@@ -545,6 +714,14 @@ export const projectTurnRecords = (
     });
 
     turns.forEach((turn) => {
+        turn.assistantMessages = collapseAssistantMessageChains(turn.turnId, turn.assistantMessages, piAssistantById);
+        turn.assistantMessageIds = turn.assistantMessages.map((message) => message.info.id);
+        turn.headerMessageId = turn.assistantMessages[0]?.info.id;
+        turn.messages = [
+            createTurnMessageRecord(turn.userMessage, 0, piMessageById),
+            ...turn.assistantMessages.map((message, index) => createTurnMessageRecord(message, index + 1, piMessageById)),
+        ];
+
         const previousTurn = previousTurnsById.get(turn.turnId);
         const canReuseComputed = (() => {
             if (!previousTurn) {

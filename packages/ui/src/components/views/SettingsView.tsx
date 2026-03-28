@@ -3,7 +3,7 @@ import { cn, getModifierLabel } from '@/lib/utils';
 import { useUIStore } from '@/stores/useUIStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useAgentsStore } from '@/stores/useAgentsStore';
-import { useCommandsStore } from '@/stores/useCommandsStore';
+import { usePromptsStore } from '@/stores/usePromptsStore';
 import { useMcpConfigStore } from '@/stores/useMcpConfigStore';
 import { useSkillsStore } from '@/stores/useSkillsStore';
 import { useSkillsCatalogStore } from '@/stores/useSkillsCatalogStore';
@@ -34,8 +34,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { AgentsSidebar } from '@/components/sections/agents/AgentsSidebar';
 import { AgentsPage } from '@/components/sections/agents/AgentsPage';
-import { CommandsSidebar } from '@/components/sections/commands/CommandsSidebar';
-import { CommandsPage } from '@/components/sections/commands/CommandsPage';
+import { PromptsSidebar } from '@/components/sections/commands/PromptsSidebar';
+import { PromptsPage } from '@/components/sections/commands/PromptsPage';
 import { McpSidebar } from '@/components/sections/mcp/McpSidebar';
 import { McpPage } from '@/components/sections/mcp/McpPage';
 import { SkillsSidebar } from '@/components/sections/skills/SkillsSidebar';
@@ -89,7 +89,7 @@ const pageOrder: SettingsPageSlug[] = [
   'projects',
   'remote-instances',
   'agents',
-  'commands',
+  'prompts',
   'mcp',
   'providers',
   'usage',
@@ -133,7 +133,7 @@ function getSettingsNavIcon(slug: SettingsPageSlug): React.ComponentType<{ class
       return RiCloudLine;
     case 'agents':
       return RiAiAgentLine;
-    case 'commands':
+    case 'prompts':
       return RiSlashCommands2;
     case 'mcp':
       return McpIcon;
@@ -331,8 +331,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
       void useAgentsStore.getState().loadAgents();
       return;
     }
-    if (settingsSlug === 'commands') {
-      void useCommandsStore.getState().loadCommands();
+    if (settingsSlug === 'prompts') {
+      void usePromptsStore.getState().loadPrompts();
       return;
     }
     if (settingsSlug === 'mcp') {
@@ -395,8 +395,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
         return <RemoteInstancesSidebar onItemSelect={opts.onItemSelect} />;
       case 'agents':
         return <AgentsSidebar onItemSelect={opts.onItemSelect} />;
-      case 'commands':
-        return <CommandsSidebar onItemSelect={opts.onItemSelect} />;
+      case 'prompts':
+        return <PromptsSidebar onItemSelect={opts.onItemSelect} />;
       case 'mcp':
         return <McpSidebar onItemSelect={opts.onItemSelect} />;
       case 'skills.installed':
@@ -425,8 +425,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
         return <RemoteInstancesPage />;
       case 'agents':
         return <AgentsPage />;
-      case 'commands':
-        return <CommandsPage />;
+      case 'prompts':
+        return <PromptsPage />;
       case 'mcp':
         return <McpPage />;
       case 'skills.installed':

@@ -9,6 +9,7 @@ type Props = {
   onOpenAbout: () => void;
   onOpenUpdate: () => void;
   showUpdateButton?: boolean;
+  versionLabel?: string;
 };
 
 const footerButtonClassName = 'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-interactive-hover/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50';
@@ -19,6 +20,7 @@ export function SidebarFooter({
   onOpenAbout,
   onOpenUpdate,
   showUpdateButton = true,
+  versionLabel,
 }: Props): React.ReactNode {
   return (
     <div className="flex shrink-0 items-center justify-start gap-1 px-2.5 py-2">
@@ -40,12 +42,17 @@ export function SidebarFooter({
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" onClick={onOpenAbout} className={footerButtonClassName} aria-label="About OpenChamber">
+          <button type="button" onClick={onOpenAbout} className={footerButtonClassName} aria-label="About ridge">
             <RiInformationLine className="h-4.5 w-4.5" />
           </button>
         </TooltipTrigger>
-        <TooltipContent side="top" sideOffset={4}><p>About OpenChamber</p></TooltipContent>
+        <TooltipContent side="top" sideOffset={4}><p>About ridge</p></TooltipContent>
       </Tooltip>
+      {versionLabel ? (
+        <span className="typography-meta select-none text-muted-foreground/80">
+          {versionLabel}
+        </span>
+      ) : null}
       {showUpdateButton ? (
         <Button
           type="button"

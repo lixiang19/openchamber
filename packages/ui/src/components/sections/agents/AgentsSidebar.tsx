@@ -276,7 +276,7 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
         return <RiAiAgentLine className="h-3 w-3 text-primary" />;
       case 'all':
         return <RiAiAgentFill className="h-3 w-3 text-primary" />;
-      case 'subagent':
+      case 'task':
         return <RiRobotLine className="h-3 w-3 text-primary" />;
       default:
         return null;

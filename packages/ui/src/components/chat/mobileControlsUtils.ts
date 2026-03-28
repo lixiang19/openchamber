@@ -1,6 +1,6 @@
 import type { Agent } from '@/lib/runtime/types';
 
-export type MobileControlsPanel = 'model' | 'agent' | 'variant' | null;
+export type MobileControlsPanel = 'model' | 'agent' | 'variant' | 'thinking' | null;
 
 export const isPrimaryMode = (mode?: string) => mode === 'primary' || mode === 'all' || mode === undefined || mode === null;
 

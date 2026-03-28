@@ -1059,14 +1059,21 @@ const ToolOutputDialog: React.FC<ToolOutputDialogProps> = ({ popup, onOpenChange
                                                 {getInputValue('command')!}
                                             </SyntaxHighlighter>
                                         </div>
-                                    ) : meta.tool === 'task' && getInputValue('prompt') ? (
+                                    ) : meta.tool === 'task' && (
+                                        getInputValue('task')
+                                        || getInputValue('agent')
+                                        || input.tasks !== undefined
+                                        || input.chain !== undefined
+                                    ) ? (
                                         <div
                                             className="tool-input-surface bg-transparent rounded-xl border border-border/20 font-mono whitespace-pre-wrap text-foreground/90 mx-3"
                                             style={toolDisplayStyles.getPopupStyles()}
                                         >
-                                            {getInputValue('description') ? `Task: ${getInputValue('description')}\n` : ''}
-                                            {getInputValue('subagent_type') ? `Agent Type: ${getInputValue('subagent_type')}\n` : ''}
-                                            {`Instructions:\n${getInputValue('prompt')}`}
+                                            {getInputValue('agent') ? `Agent: ${getInputValue('agent')}\n` : ''}
+                                            {getInputValue('cwd') ? `Directory: ${getInputValue('cwd')}\n` : ''}
+                                            {getInputValue('task') ? `Task:\n${getInputValue('task')}\n` : ''}
+                                            {input.tasks !== undefined ? `Parallel Tasks:\n${JSON.stringify(input.tasks, null, 2)}\n` : ''}
+                                            {input.chain !== undefined ? `Chain:\n${JSON.stringify(input.chain, null, 2)}` : ''}
                                         </div>
                                     ) : meta.tool === 'write' && getInputValue('content') ? (
                                         <div className="tool-input-surface bg-transparent rounded-xl border border-border/20 mx-3">

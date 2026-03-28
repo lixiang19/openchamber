@@ -11,7 +11,7 @@ import {
 } from "@/lib/configUpdate";
 import { getSafeStorage } from "./utils/safeStorage";
 import { useConfigStore } from "@/stores/useConfigStore";
-import { useCommandsStore } from "@/stores/useCommandsStore";
+import { usePromptsStore } from "@/stores/usePromptsStore";
 import { useProjectsStore } from "@/stores/useProjectsStore";
 import { useSkillsCatalogStore } from "@/stores/useSkillsCatalogStore";
 import { useSkillsStore } from "@/stores/useSkillsStore";
@@ -94,7 +94,7 @@ export interface AgentConfig {
   thinking?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   steps?: number;
   prompt?: string;
-  mode?: "primary" | "subagent" | "all";
+  mode?: "primary" | "task" | "all";
   permission?: PermissionConfig | null;
   enabled?: boolean;
   display_name?: string;
@@ -160,7 +160,7 @@ export interface AgentDraft {
   thinking?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   steps?: number;
   prompt?: string;
-  mode?: "primary" | "subagent" | "all";
+  mode?: "primary" | "task" | "all";
   permission?: PermissionConfig;
   enabled?: boolean;
   display_name?: string;
@@ -312,7 +312,7 @@ export const useAgentsStore = create<AgentsStore>()(
             console.log('[AgentsStore] Creating agent:', config.name);
 
             const agentConfig: Record<string, unknown> = {
-              mode: config.mode || 'subagent',
+              mode: config.mode || 'task',
             };
 
             if (config.description) agentConfig.description = config.description;
@@ -592,14 +592,14 @@ async function performConfigRefresh(options: {
 
     const configStore = useConfigStore.getState();
     const agentConfigStore = useAgentsStore.getState();
-    const commandsStore = useCommandsStore.getState();
+    const promptsStore = usePromptsStore.getState();
     const skillsStore = useSkillsStore.getState();
     const skillsCatalogStore = useSkillsCatalogStore.getState();
 
     const refreshProviders = scopes.includes("all") || scopes.includes("providers");
     const refreshSdkAgents = scopes.includes("all") || scopes.includes("agents");
     const refreshAgentConfigs = scopes.includes("all") || scopes.includes("agents");
-    const refreshCommands = scopes.includes("all") || scopes.includes("commands");
+    const refreshPrompts = scopes.includes("all") || scopes.includes("prompts");
     const refreshSkills = scopes.includes("all") || scopes.includes("skills");
 
     const currentDirectory = getCurrentDirectory();
@@ -629,8 +629,8 @@ async function performConfigRefresh(options: {
     if (refreshAgentConfigs) {
       uiRefreshTasks.push(agentConfigStore.loadAgents().then(() => undefined));
     }
-    if (refreshCommands) {
-      uiRefreshTasks.push(commandsStore.loadCommands().then(() => undefined));
+    if (refreshPrompts) {
+      uiRefreshTasks.push(promptsStore.loadPrompts().then(() => undefined));
     }
     if (refreshSkills) {
       uiRefreshTasks.push(skillsStore.loadSkills().then(() => undefined));

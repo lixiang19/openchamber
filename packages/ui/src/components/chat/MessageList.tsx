@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Part } from '@/lib/runtime/types';
+import type { Message, Part } from '@/lib/runtime/types';
 import { flushSync } from 'react-dom';
 import { elementScroll, observeElementOffset, observeElementRect, Virtualizer } from '@tanstack/react-virtual';
 import { useShallow } from 'zustand/react/shallow';
@@ -283,6 +283,71 @@ const getShellBridgeAssistantDetails = (message: ChatMessageEntry, expectedParen
 };
 
 const readTaskSessionId = (toolPart: Part): string | null => {
+    const readTaskSessionIdFromValue = (value: unknown): string | null => {
+        if (typeof value === 'string') {
+            const metadataMatch = value.match(/<task_metadata>\s*([\s\S]*?)\s*<\/task_metadata>/i);
+            if (metadataMatch?.[1]) {
+                try {
+                    const parsed = JSON.parse(metadataMatch[1]) as { sessionId?: unknown; sessionID?: unknown };
+                    const sessionId = typeof parsed.sessionId === 'string'
+                        ? parsed.sessionId
+                        : (typeof parsed.sessionID === 'string' ? parsed.sessionID : null);
+                    if (sessionId && sessionId.trim().length > 0) {
+                        return sessionId.trim();
+                    }
+                } catch {
+                    // ignore malformed metadata block
+                }
+            }
+
+            const sessionMatch = value.match(/session[_\s-]?id\s*:\s*([^\s<"']+)/i);
+            if (sessionMatch?.[1]) {
+                return sessionMatch[1];
+            }
+
+            const taskMatch = value.match(/task_id\s*:\s*([^\s<"']+)/i);
+            if (taskMatch?.[1]) {
+                return taskMatch[1];
+            }
+
+            return null;
+        }
+
+        if (Array.isArray(value)) {
+            for (const item of value) {
+                const sessionId = readTaskSessionIdFromValue(item);
+                if (sessionId) {
+                    return sessionId;
+                }
+            }
+            return null;
+        }
+
+        if (value && typeof value === 'object') {
+            const record = value as { sessionId?: unknown; sessionID?: unknown; content?: unknown; text?: unknown };
+            const directSessionId = typeof record.sessionID === 'string' && record.sessionID.trim().length > 0
+                ? record.sessionID.trim()
+                : (typeof record.sessionId === 'string' && record.sessionId.trim().length > 0
+                    ? record.sessionId.trim()
+                    : null);
+            if (directSessionId) {
+                return directSessionId;
+            }
+
+            const contentSessionId = readTaskSessionIdFromValue(record.content);
+            if (contentSessionId) {
+                return contentSessionId;
+            }
+
+            const textSessionId = readTaskSessionIdFromValue(record.text);
+            if (textSessionId) {
+                return textSessionId;
+            }
+        }
+
+        return null;
+    };
+
     const partRecord = toolPart as unknown as {
         state?: {
             metadata?: {
@@ -302,87 +367,7 @@ const readTaskSessionId = (toolPart: Part): string | null => {
             : null);
     if (fromMetadata) return fromMetadata;
 
-    const output = partRecord.state?.output;
-    if (typeof output === 'string') {
-        const match = output.match(/task_id\s*:\s*([^\s<"']+)/i);
-        if (match?.[1]) {
-            return match[1];
-        }
-    }
-
-    return null;
-};
-
-const isSyntheticSubtaskBridgeAssistant = (message: ChatMessageEntry, piSession?: PiSessionViewState | null): { hide: boolean; taskSessionId: string | null } => {
-    if (resolveMessageRole(message, piSession) !== 'assistant') {
-        return { hide: false, taskSessionId: null };
-    }
-
-    const rawPiMessage = findPiMessageById(piSession, getMessageId(message));
-    const toolCallBlock = findPiToolCallBlock(rawPiMessage);
-    if (rawPiMessage?.role === 'assistant' && toolCallBlock) {
-        const toolName = typeof toolCallBlock.name === 'string'
-            ? toolCallBlock.name.toLowerCase()
-            : '';
-        if (toolName === 'task') {
-            const toolCallId = toolCallBlock.id;
-            const execution = toolCallId
-                ? piSession?.toolExecutions.find((entry) => entry.toolCallId === toolCallId)
-                : undefined;
-            const args = execution?.args && typeof execution.args === 'object' ? execution.args as Record<string, unknown> : null;
-            const taskSessionIdFromArgs = typeof args?.sessionId === 'string'
-                ? args.sessionId
-                : (typeof args?.taskSessionId === 'string' ? args.taskSessionId : null);
-            const taskSessionIdFromResult = typeof execution?.result === 'string'
-                ? (execution.result.match(/task_id\s*:\s*([^\s<"']+)/i)?.[1] ?? null)
-                : null;
-            return {
-                hide: true,
-                taskSessionId: taskSessionIdFromArgs ?? taskSessionIdFromResult,
-            };
-        }
-    }
-
-    if (message.parts.length !== 1) {
-        return { hide: false, taskSessionId: null };
-    }
-
-    const onlyPart = message.parts[0] as unknown as {
-        type?: unknown;
-        tool?: unknown;
-    };
-
-    if (onlyPart.type !== 'tool') {
-        return { hide: false, taskSessionId: null };
-    }
-
-    const toolName = typeof onlyPart.tool === 'string' ? onlyPart.tool.toLowerCase() : '';
-    if (toolName !== 'task') {
-        return { hide: false, taskSessionId: null };
-    }
-
-    return {
-        hide: true,
-        taskSessionId: readTaskSessionId(message.parts[0]),
-    };
-};
-
-const withSubtaskSessionId = (message: ChatMessageEntry, taskSessionId: string | null): ChatMessageEntry => {
-    if (!taskSessionId) return message;
-    const nextParts = message.parts.map((part) => {
-        if (part?.type !== 'subtask') return part;
-        const existing = (part as unknown as { taskSessionID?: unknown }).taskSessionID;
-        if (typeof existing === 'string' && existing.trim().length > 0) return part;
-        return {
-            ...part,
-            taskSessionID: taskSessionId,
-        } as Part;
-    });
-
-    return {
-        ...message,
-        parts: nextParts,
-    };
+    return readTaskSessionIdFromValue(partRecord.state?.output);
 };
 
 const withShellBridgeDetails = (message: ChatMessageEntry, details: ShellBridgeDetails | null): ChatMessageEntry => {
@@ -1045,7 +1030,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
             if (idsStable && changedCount === 1 && changedIndex === messages.length - 1) {
                 const changedMessage = messages[changedIndex];
                 const previousMessage = changedIndex > 0 ? messages[changedIndex - 1] : undefined;
-                const bridgeSensitive = isUserSubtaskMessage(previousMessage, currentPiSession) || isUserShellMarkerMessage(previousMessage, currentPiSession);
+                const bridgeSensitive = isUserShellMarkerMessage(previousMessage, currentPiSession);
 
                 if (changedMessage && isAssistantTextOnlyMessage(changedMessage, currentPiSession) && !bridgeSensitive) {
                     const outputIndex = cached.outputIndexById.get(changedMessage.info.id);
@@ -1082,14 +1067,6 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
         for (let index = 0; index < dedupedMessages.length; index += 1) {
             const current = dedupedMessages[index];
             const previous = output.length > 0 ? output[output.length - 1] : undefined;
-
-            if (isUserSubtaskMessage(previous, currentPiSession)) {
-                const bridge = isSyntheticSubtaskBridgeAssistant(current, currentPiSession);
-                if (bridge.hide) {
-                    output[output.length - 1] = withSubtaskSessionId(previous as ChatMessageEntry, bridge.taskSessionId);
-                    continue;
-                }
-            }
 
             if (isUserShellMarkerMessage(previous, currentPiSession)) {
                 const bridge = getShellBridgeAssistantDetails(current, getMessageId(previous), currentPiSession);

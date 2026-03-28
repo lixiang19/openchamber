@@ -1,7 +1,7 @@
 import { RiBrainAi3Line, RiChatAi3Line, RiCommandLine, RiGitBranchLine, RiSettings3Line, RiStackLine, RiBookLine, RiBarChart2Line, RiPlugLine } from '@remixicon/react';
 import type { ComponentType } from 'react';
 
-export type SidebarSection = 'sessions' | 'agents' | 'commands' | 'skills' | 'mcp' | 'providers' | 'usage' | 'git-identities' | 'settings';
+export type SidebarSection = 'sessions' | 'agents' | 'prompts' | 'skills' | 'mcp' | 'providers' | 'usage' | 'git-identities' | 'settings';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type IconComponent = ComponentType<any>;
@@ -27,9 +27,9 @@ export const SIDEBAR_SECTIONS: SidebarSectionConfig[] = [
         icon: RiBrainAi3Line,
     },
     {
-        id: 'commands',
-        label: 'Commands',
-        description: 'Create and maintain custom slash commands for the runtime.',
+        id: 'prompts',
+        label: 'Prompts',
+        description: 'Create and maintain custom prompt templates for Pi.',
         icon: RiCommandLine,
     },
     {

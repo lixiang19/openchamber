@@ -61,7 +61,7 @@ Hidden prompt
 
     writeAgent(projectAgentsDir, 'shared.md', `---
 description: project shared
-mode: subagent
+mode: task
 model: anthropic/claude-sonnet-4-5
 thinking: high
 steps: 12
@@ -88,7 +88,7 @@ Project shared prompt
       name: 'shared',
       description: 'project shared',
       sourceScope: 'project',
-      mode: 'subagent',
+      mode: 'task',
       model: 'anthropic/claude-sonnet-4-5',
       thinking: 'high',
       steps: 12,

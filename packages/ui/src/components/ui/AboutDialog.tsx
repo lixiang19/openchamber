@@ -4,7 +4,6 @@ import {
   DialogContent,
 } from '@/components/ui/dialog';
 import { OpenChamberLogo } from '@/components/ui/OpenChamberLogo';
-import { RiDiscordFill, RiGithubFill, RiTwitterXFill } from '@remixicon/react';
 import { debugUtils } from '@/lib/debug';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui';
@@ -114,26 +113,13 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
           <OpenChamberLogo width={64} height={64} />
 
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold">OpenChamber</h2>
+            <h2 className="text-lg font-semibold">ridge</h2>
             {displayVersion && (
               <p className="typography-meta text-muted-foreground">
                 Version {displayVersion}
               </p>
             )}
           </div>
-
-          <p className="typography-meta text-muted-foreground">
-            A fan-made interface for{' '}
-            <a
-              href="https://opencode.ai/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-            >
-              OpenCode
-            </a>{' '}
-            agent
-          </p>
 
           <div className="flex flex-col items-center gap-2 pt-2">
             <button
@@ -151,44 +137,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
                   ? 'Preparing diagnostics...'
                   : 'Copy diagnostics'}
             </button>
-            <p className="typography-micro text-muted-foreground">
-              Includes OpenChamber state, OpenCode health, directories, and projects.
-            </p>
           </div>
-
-          <div className="flex items-center gap-4 pt-2">
-            <a
-              href="https://github.com/btriapitsyn/openchamber"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 typography-meta text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <RiGithubFill className="h-4 w-4" />
-              <span>GitHub</span>
-            </a>
-            <a
-              href="https://discord.gg/ZYRSdnwwKA"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 typography-meta text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <RiDiscordFill className="h-4 w-4" />
-              <span>Discord</span>
-            </a>
-            <a
-              href="https://x.com/btriapitsyn"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 typography-meta text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <RiTwitterXFill className="h-4 w-4" />
-              <span>@btriapitsyn</span>
-            </a>
-          </div>
-
-          <p className="typography-meta text-muted-foreground/60 pt-2">
-            Made with love to comunity
-          </p>
         </div>
       </DialogContent>
     </Dialog>

@@ -1,7 +1,7 @@
 import path from 'path';
 
 const SIMPLE_PERMISSION_ACTIONS = new Set(['allow', 'deny']);
-const SIMPLE_PERMISSION_KEYS = new Set(['read', 'grep', 'find', 'ls', 'bash', 'question', 'subagent']);
+const SIMPLE_PERMISSION_KEYS = new Set(['read', 'grep', 'find', 'ls', 'bash', 'question', 'task']);
 const EDIT_PERMISSION_KEY = 'edit';
 const LEGACY_EDIT_TOOL_KEYS = new Set(['write']);
 const MUTATION_TOOL_NAMES = new Set(['edit', 'write']);

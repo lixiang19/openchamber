@@ -556,6 +556,9 @@ export interface SettingsPayload {
   gitProviderId?: string;
   gitModelId?: string;
   pwaAppName?: string;
+  defaultModel?: string;
+  defaultAgent?: string;
+  defaultThinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 
   [key: string]: unknown;
 }

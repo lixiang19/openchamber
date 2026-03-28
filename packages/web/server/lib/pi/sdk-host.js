@@ -4,9 +4,10 @@ import { DefaultResourceLoader, SessionManager, SettingsManager, createAgentSess
 
 import { discoverAgents } from './agents.js';
 import { normalizePiRpcEnvelope } from './bridge-schema.js';
-import { createSubagentToolDefinition } from './extensions/subagent.js';
+import { createTaskToolDefinition } from './extensions/task.js';
 import { createQuestionToolDefinition } from './extensions/question.js';
 import { compileAgentPermission, createPermissionGateExtension, normalizeAgentPermission } from './permissions.js';
+import { listTaskRelations, setTaskRelation } from './task-relations.js';
 
 const EVENT_HISTORY_LIMIT = 200;
 const COMMAND_CATALOG_CACHE_TTL_MS = 5000;
@@ -24,6 +25,16 @@ const cloneJson = (value) => {
 const normalizeString = (value) => {
   if (typeof value !== 'string') return '';
   return value.trim();
+};
+
+const normalizeSingleLineText = (value) => normalizeString(value).replace(/\s+/g, ' ');
+
+const deriveSessionTitleFromPrompt = (value) => {
+  const normalized = normalizeSingleLineText(value);
+  if (!normalized) {
+    return '';
+  }
+  return Array.from(normalized).slice(0, 10).join('').trim();
 };
 
 const normalizeThinkingLevel = (value) => {
@@ -46,18 +57,68 @@ const normalizePositiveInteger = (value) => {
   return null;
 };
 
-const buildAgentPromptAppend = (agent) => {
-  if (!agent) {
+const escapeXml = (value) => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&apos;');
+
+const getCallableTaskAgents = (agents) => {
+  if (!Array.isArray(agents)) {
     return [];
   }
+  return agents
+    .filter((agent) => agent && agent.enabled !== false && (agent.mode === 'task' || agent.mode === 'all'))
+    .sort((left, right) => left.name.localeCompare(right.name));
+};
 
+const buildAvailableTaskAgentsXml = (agents) => {
+  const callableAgents = getCallableTaskAgents(agents);
+  if (callableAgents.length === 0) {
+    return [
+      '<available_task_agents>',
+      '  <summary>No task agents are currently available.</summary>',
+      '</available_task_agents>',
+    ].join('\n');
+  }
+
+  const body = callableAgents.map((agent) => {
+    const parts = [`  <agent name="${escapeXml(agent.name)}">`];
+    if (normalizeString(agent.description)) {
+      parts.push(`    <description>${escapeXml(agent.description)}</description>`);
+    }
+    parts.push('  </agent>');
+    return parts.join('\n');
+  });
+
+  return [
+    '<available_task_agents>',
+    '  <summary>Use the exact agent name when calling the task tool.</summary>',
+    ...body,
+    '</available_task_agents>',
+  ].join('\n');
+};
+
+const getAvailableTaskAgentsSignature = (agents) => JSON.stringify(
+  getCallableTaskAgents(agents).map((agent) => ({
+    name: agent.name,
+    description: agent.description || '',
+    enabled: agent.enabled !== false,
+  })),
+);
+
+const buildAgentPromptAppend = (agent, availableAgents) => {
   const sections = [];
-  const prompt = normalizeString(agent.systemPrompt);
+
+  const prompt = normalizeString(agent?.systemPrompt);
   if (prompt) {
     sections.push(prompt);
   }
 
-  const steps = normalizePositiveInteger(agent.steps);
+  sections.push(buildAvailableTaskAgentsXml(availableAgents));
+
+  const steps = normalizePositiveInteger(agent?.steps);
   if (steps) {
     sections.push([
       `Turn budget: ${steps}.`,
@@ -214,6 +275,8 @@ export const createPiSdkHost = () => {
   const subscribers = new Set();
   const interactiveRequestIndex = new Map();
   const commandCatalogCache = new Map();
+  const persistedSessionIndex = new Map();
+  const sessionLoadInFlight = new Map();
 
   const emit = (payload) => {
     for (const listener of subscribers) {
@@ -228,6 +291,7 @@ export const createPiSdkHost = () => {
     id: record.id,
     title: record.title,
     cwd: record.cwd,
+    parentID: record.parentID ?? null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     status: record.status,
@@ -272,6 +336,21 @@ export const createPiSdkHost = () => {
     rememberEnvelope(record, envelope);
     emit(envelope);
     return envelope;
+  };
+
+  const updateRecordSessionName = (record, title, source) => {
+    const nextTitle = normalizeSingleLineText(title);
+    if (!nextTitle) {
+      return false;
+    }
+    record.title = nextTitle;
+    record.titleSource = source;
+    record.session.setSessionName(nextTitle);
+    emitEventEnvelope(record, 'pi_ui_event', {
+      kind: 'title',
+      title: nextTitle,
+    });
+    return true;
   };
 
   const emitNotification = (record, level, message) => {
@@ -496,6 +575,7 @@ export const createPiSdkHost = () => {
   const applySessionAgentSelection = async (record, requestedAgentName, requestedModel) => {
     const nextAgentName = normalizeString(requestedAgentName);
     const agents = await discoverAgents(record.cwd);
+    const nextAvailableAgentsSignature = getAvailableTaskAgentsSignature(agents);
     record.availableAgents = agents;
 
     const agent = nextAgentName
@@ -504,24 +584,23 @@ export const createPiSdkHost = () => {
 
     if (nextAgentName && !agent) {
       const available = agents
-        .filter((candidate) => candidate.mode !== 'subagent')
+        .filter((candidate) => candidate.mode !== 'task')
         .map((candidate) => candidate.name)
         .join(', ') || 'none';
       throw new Error(`Unknown Pi agent: ${nextAgentName}. Available agents: ${available}`);
     }
 
     const nextAgentSignature = getAgentConfigSignature(agent);
-    const shouldReload = nextAgentSignature !== (record.selectedAgentSignature || '');
+    const shouldReload = nextAgentSignature !== (record.selectedAgentSignature || '')
+      || nextAvailableAgentsSignature !== (record.availableAgentsSignature || '');
+
+    record.selectedAgentName = agent?.name || null;
+    record.selectedAgentConfig = agent || null;
+    record.selectedAgentSignature = nextAgentSignature;
+    record.availableAgentsSignature = nextAvailableAgentsSignature;
 
     if (shouldReload) {
-      record.selectedAgentName = agent?.name || null;
-      record.selectedAgentConfig = agent || null;
-      record.selectedAgentSignature = nextAgentSignature;
       await record.session.reload();
-    } else {
-      record.selectedAgentName = agent?.name || null;
-      record.selectedAgentConfig = agent || null;
-      record.selectedAgentSignature = nextAgentSignature;
     }
 
     const permissionPolicy = compileAgentPermission(record.cwd, agent?.permission, record.defaultToolNames);
@@ -685,6 +764,252 @@ export const createPiSdkHost = () => {
     });
   };
 
+  const toTimestamp = (value) => {
+    if (value instanceof Date) {
+      return value.getTime();
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Date.parse(value);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+    return Date.now();
+  };
+
+  const createSessionRecord = ({ session, cwd, title, createdAt, updatedAt, titleSource, parentID = null, availableAgents = [] }) => ({
+    id: session.sessionId,
+    title: normalizeSingleLineText(title) || session.sessionName || `Session ${sessions.size + 1}`,
+    titleSource,
+    cwd,
+    parentID,
+    createdAt,
+    updatedAt,
+    sequence: 0,
+    session,
+    status: 'idle',
+    lastError: null,
+    unsubscribe: null,
+    toolExecutions: new Map(),
+    interactiveRequests: new Map(),
+    statusEntries: new Map(),
+    widgets: new Map(),
+    workingMessage: null,
+    editorText: '',
+    eventHistory: [],
+    defaultToolNames: session.getActiveToolNames(),
+    selectedAgentName: null,
+    selectedAgentConfig: null,
+    selectedAgentSignature: '',
+    selectedPermissionPolicy: compileAgentPermission(cwd, undefined, session.getActiveToolNames()),
+    availableAgents,
+    availableAgentsSignature: getAvailableTaskAgentsSignature(availableAgents),
+    turnBudget: { maxTurns: null, usedTurns: 0, exhausted: false },
+    externalAbortListeners: new Set(),
+  });
+
+  const buildPersistedSessionSnapshot = (info) => ({
+    id: info.id,
+    title: normalizeString(info.name) || normalizeString(info.firstMessage) || 'Pi Session',
+    cwd: normalizeString(info.cwd) || process.cwd(),
+    parentID: normalizeString(info.parentID) || null,
+    createdAt: toTimestamp(info.created),
+    updatedAt: toTimestamp(info.modified),
+    status: 'idle',
+    lastError: null,
+    model: null,
+    thinkingLevel: 'medium',
+    isStreaming: false,
+    messages: [],
+    toolExecutions: [],
+    interactiveRequests: [],
+    statusEntries: [],
+    widgets: [],
+    workingMessage: null,
+    sequence: 0,
+  });
+
+  const refreshPersistedSessionIndex = async () => {
+    const [listed, taskRelations] = await Promise.all([
+      SessionManager.listAll(),
+      listTaskRelations(),
+    ]);
+    const normalizedListed = [];
+    persistedSessionIndex.clear();
+    for (const info of listed) {
+      if (!info || typeof info.id !== 'string' || info.id.trim().length === 0) {
+        continue;
+      }
+      const relation = taskRelations.get(info.id) ?? null;
+      const nextInfo = relation
+        ? { ...info, parentID: relation.parentID }
+        : info;
+      persistedSessionIndex.set(info.id, nextInfo);
+      normalizedListed.push(nextInfo);
+    }
+    return normalizedListed;
+  };
+
+  const getPersistedSessionInfo = async (sessionId) => {
+    const cached = persistedSessionIndex.get(sessionId);
+    if (cached) {
+      return cached;
+    }
+    await refreshPersistedSessionIndex();
+    return persistedSessionIndex.get(sessionId) || null;
+  };
+
+  const registerExternalSession = async ({ session, cwd, title, titleSource = 'provided', parentID = null, createdAt, updatedAt, persistTitle = false, availableAgents = [] }) => {
+    const normalizedCwd = normalizeString(cwd) || process.cwd();
+    const normalizedParentId = normalizeString(parentID) || null;
+    const existing = sessions.get(session.sessionId);
+    if (existing) {
+      if (normalizedParentId && existing.parentID !== normalizedParentId) {
+        existing.parentID = normalizedParentId;
+        await setTaskRelation(existing.id, { parentID: normalizedParentId, createdAt: existing.createdAt });
+      }
+      if (Array.isArray(availableAgents) && availableAgents.length > 0) {
+        existing.availableAgents = availableAgents;
+        existing.availableAgentsSignature = getAvailableTaskAgentsSignature(availableAgents);
+      }
+      return existing;
+    }
+    const record = createSessionRecord({
+      session,
+      cwd: normalizedCwd,
+      title,
+      titleSource,
+      parentID: normalizedParentId,
+      createdAt: typeof createdAt === 'number' ? createdAt : Date.now(),
+      updatedAt: typeof updatedAt === 'number' ? updatedAt : Date.now(),
+      availableAgents,
+    });
+
+    if (persistTitle && record.title) {
+      session.setSessionName(record.title);
+    }
+
+    sessions.set(record.id, record);
+
+    if (normalizedParentId) {
+      await setTaskRelation(record.id, { parentID: normalizedParentId, createdAt: record.createdAt });
+    }
+
+    await attachSession(record);
+    return record;
+  };
+
+  const createManagedSessionRecord = async ({ cwd, title, titleSource, sessionManager, createdAt, updatedAt, persistTitle = false, parentID = null }) => {
+    const normalizedCwd = normalizeString(cwd) || process.cwd();
+    const preloadedAgents = await discoverAgents(normalizedCwd);
+
+    const recordRef = { current: null };
+    const taskTool = createTaskToolDefinition(
+      () => discoverAgents(normalizedCwd),
+      normalizedCwd,
+      {
+        getParentSessionId: () => recordRef.current?.id ?? null,
+        registerSession: async (sessionInfo) => registerExternalSession({
+          ...sessionInfo,
+          titleSource: 'provided',
+          persistTitle: true,
+          availableAgents: preloadedAgents,
+        }),
+      },
+    );
+
+    const questionTool = createQuestionToolDefinition((method, payload) => {
+      if (!recordRef.current) throw new Error('Session record not initialized');
+      return createInteractiveRequest(recordRef.current, method, payload);
+    });
+
+    const settingsManager = SettingsManager.create(normalizedCwd);
+    const resourceLoader = new DefaultResourceLoader({
+      cwd: normalizedCwd,
+      settingsManager,
+      extensionFactories: [
+        createPermissionGateExtension(() => recordRef.current?.selectedPermissionPolicy || null),
+      ],
+      appendSystemPromptOverride: (base) => {
+        const agent = recordRef.current?.selectedAgentConfig;
+        const availableAgents = recordRef.current?.availableAgents ?? preloadedAgents;
+        const promptSections = buildAgentPromptAppend(agent, availableAgents);
+        if (promptSections.length === 0) {
+          return base;
+        }
+        return [...base, ...promptSections];
+      },
+    });
+    await resourceLoader.reload();
+
+    const { session } = await createAgentSession({
+      cwd: normalizedCwd,
+      settingsManager,
+      resourceLoader,
+      customTools: [taskTool, questionTool],
+      sessionManager,
+    });
+
+    const record = await registerExternalSession({
+      session,
+      cwd: normalizedCwd,
+      title,
+      titleSource,
+      parentID,
+      createdAt,
+      updatedAt,
+      persistTitle,
+      availableAgents: preloadedAgents,
+    });
+
+    recordRef.current = record;
+    return record;
+  };
+
+  const ensureSessionLoaded = async (sessionId) => {
+    const loaded = sessions.get(sessionId);
+    if (loaded) {
+      return loaded;
+    }
+
+    const existingTask = sessionLoadInFlight.get(sessionId);
+    if (existingTask) {
+      return existingTask;
+    }
+
+    const task = (async () => {
+      const info = await getPersistedSessionInfo(sessionId);
+      if (!info) {
+        throw new Error(`Unknown Pi session: ${sessionId}`);
+      }
+
+      const persistedTitle = normalizeString(info.name);
+      const firstMessageTitle = normalizeString(info.firstMessage);
+
+      return createManagedSessionRecord({
+        cwd: normalizeString(info.cwd) || process.cwd(),
+        title: persistedTitle || firstMessageTitle || 'Pi Session',
+        titleSource: persistedTitle ? 'provided' : (firstMessageTitle ? 'derived' : 'generated'),
+        sessionManager: SessionManager.open(info.path),
+        createdAt: toTimestamp(info.created),
+        updatedAt: toTimestamp(info.modified),
+        persistTitle: false,
+      });
+    })();
+
+    sessionLoadInFlight.set(sessionId, task);
+    try {
+      return await task;
+    } finally {
+      if (sessionLoadInFlight.get(sessionId) === task) {
+        sessionLoadInFlight.delete(sessionId);
+      }
+    }
+  };
+
   const listCommandsForCwd = async (cwd) => {
     const normalizedCwd = normalizeString(cwd) || process.cwd();
     const cacheKey = normalizedCwd;
@@ -735,88 +1060,38 @@ export const createPiSdkHost = () => {
       subscribers.add(listener);
       return () => subscribers.delete(listener);
     },
-    async createSession({ cwd, title } = {}) {
+    async createSession({ cwd, title, parentID } = {}) {
       const normalizedCwd = normalizeString(cwd) || process.cwd();
-
-      // Discover agents and build the subagent tool
-      const subagentTool = createSubagentToolDefinition(
-        () => discoverAgents(normalizedCwd),
-        normalizedCwd,
-      );
-
-      const recordRef = { current: null };
-      const questionTool = createQuestionToolDefinition((method, payload) => {
-        if (!recordRef.current) throw new Error('Session record not initialized');
-        return createInteractiveRequest(recordRef.current, method, payload);
-      });
-
-      const settingsManager = SettingsManager.create(normalizedCwd);
-      const resourceLoader = new DefaultResourceLoader({
+      const record = await createManagedSessionRecord({
         cwd: normalizedCwd,
-        settingsManager,
-        extensionFactories: [
-          createPermissionGateExtension(() => recordRef.current?.selectedPermissionPolicy || null),
-        ],
-        appendSystemPromptOverride: (base) => {
-          const agent = recordRef.current?.selectedAgentConfig;
-          const promptSections = buildAgentPromptAppend(agent);
-          if (promptSections.length === 0) {
-            return base;
-          }
-          return [...base, ...promptSections];
-        },
-      });
-      await resourceLoader.reload();
-
-      const { session } = await createAgentSession({
-        cwd: normalizedCwd,
-        settingsManager,
-        resourceLoader,
-        customTools: [subagentTool, questionTool],
-      });
-      const id = session.sessionId;
-      const record = {
-        id,
-        title: normalizeString(title) || session.sessionName || `Session ${sessions.size + 1}`,
-        cwd: normalizedCwd,
+        title,
+        titleSource: normalizeString(title) ? 'provided' : 'generated',
+        parentID: normalizeString(parentID) || null,
+        sessionManager: SessionManager.create(normalizedCwd),
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        sequence: 0,
-        session,
-        status: 'idle',
-        lastError: null,
-        unsubscribe: null,
-        toolExecutions: new Map(),
-        interactiveRequests: new Map(),
-        statusEntries: new Map(),
-        widgets: new Map(),
-        workingMessage: null,
-        editorText: '',
-        eventHistory: [],
-        defaultToolNames: session.getActiveToolNames(),
-        selectedAgentName: null,
-        selectedAgentConfig: null,
-        selectedAgentSignature: '',
-        selectedPermissionPolicy: compileAgentPermission(normalizedCwd, undefined, session.getActiveToolNames()),
-        availableAgents: [],
-        turnBudget: { maxTurns: null, usedTurns: 0, exhausted: false },
-      };
-      recordRef.current = record;
-      if (record.title) {
-        session.setSessionName(record.title);
-      }
-      sessions.set(id, record);
-      await attachSession(record);
+        persistTitle: true,
+      });
       emitEventEnvelope(record, 'pi_system', {
         kind: 'session_created',
         title: record.title,
       });
       return buildSessionSnapshot(record);
     },
-    listSessions() {
-      return Array.from(sessions.values())
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .map((record) => buildSessionSnapshot(record));
+    async listSessions() {
+      const listed = await refreshPersistedSessionIndex();
+      const merged = listed.map((info) => {
+        const loaded = sessions.get(info.id);
+        return loaded ? buildSessionSnapshot(loaded) : buildPersistedSessionSnapshot(info);
+      });
+
+      for (const [id, record] of sessions.entries()) {
+        if (!persistedSessionIndex.has(id)) {
+          merged.push(buildSessionSnapshot(record));
+        }
+      }
+
+      return merged.sort((a, b) => b.updatedAt - a.updatedAt);
     },
     async listAgents(cwd) {
       const normalizedCwd = normalizeString(cwd) || process.cwd();
@@ -844,35 +1119,21 @@ export const createPiSdkHost = () => {
         throw new Error('Failed to list Pi commands');
       }
     },
-    getSession(sessionId) {
-      const record = sessions.get(sessionId);
-      if (!record) {
-        throw new Error(`Unknown Pi session: ${sessionId}`);
-      }
+    async getSession(sessionId) {
+      const record = await ensureSessionLoaded(sessionId);
       return buildSessionSnapshot(record);
     },
-    renameSession(sessionId, { title } = {}) {
-      const record = sessions.get(sessionId);
-      if (!record) {
-        throw new Error(`Unknown Pi session: ${sessionId}`);
-      }
+    async renameSession(sessionId, { title } = {}) {
+      const record = await ensureSessionLoaded(sessionId);
       const nextTitle = normalizeString(title);
       if (!nextTitle) {
         throw new Error('Session title is required');
       }
-      record.title = nextTitle;
-      record.session.setSessionName(nextTitle);
-      emitEventEnvelope(record, 'pi_ui_event', {
-        kind: 'title',
-        title: nextTitle,
-      });
+      updateRecordSessionName(record, nextTitle, 'provided');
       return buildSessionSnapshot(record);
     },
     async prompt(sessionId, { text, model, agent, images } = {}) {
-      const record = sessions.get(sessionId);
-      if (!record) {
-        throw new Error(`Unknown Pi session: ${sessionId}`);
-      }
+      const record = await ensureSessionLoaded(sessionId);
       const promptText = normalizeString(text);
       const promptImages = Array.isArray(images)
         ? images
@@ -890,6 +1151,12 @@ export const createPiSdkHost = () => {
       record.status = 'streaming';
       emitSystemStatus(record, 'streaming');
       try {
+        if (record.titleSource === 'generated' && record.session.messages.length === 0) {
+          const derivedTitle = deriveSessionTitleFromPrompt(promptText);
+          if (derivedTitle) {
+            updateRecordSessionName(record, derivedTitle, 'derived');
+          }
+        }
         await applySessionAgentSelection(record, agent ?? record.selectedAgentName, model);
         record.turnBudget = {
           maxTurns: normalizePositiveInteger(record.selectedAgentConfig?.steps),
@@ -911,9 +1178,14 @@ export const createPiSdkHost = () => {
       }
     },
     async abort(sessionId) {
-      const record = sessions.get(sessionId);
-      if (!record) {
-        throw new Error(`Unknown Pi session: ${sessionId}`);
+      const record = await ensureSessionLoaded(sessionId);
+      if (record.externalAbortListeners instanceof Set) {
+        for (const listener of record.externalAbortListeners) {
+          try {
+            listener();
+          } catch {
+          }
+        }
       }
       await record.session.abort();
       updateStatusFromSession(record);
@@ -974,6 +1246,8 @@ export const createPiSdkHost = () => {
       }
       sessions.clear();
       interactiveRequestIndex.clear();
+      persistedSessionIndex.clear();
+      sessionLoadInFlight.clear();
     },
   };
 };

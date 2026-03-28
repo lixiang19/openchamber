@@ -53,6 +53,7 @@ import {
 import webPush from 'web-push';
 import { createPiProvidersService } from './lib/pi/providers.js';
 import { createPiSdkHost } from './lib/pi/sdk-host.js';
+import { discoverPrompts, savePrompt, deletePrompt } from './lib/pi/prompts.js';
 import { createWechatBridgeService } from './lib/wechat-bridge/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -5023,7 +5024,28 @@ const setCachedSessionParentId = (sessionId, parentID) => {
 };
 
 const fetchSessionParentId = async (sessionId) => {
-  return undefined;
+  if (!sessionId) {
+    return undefined;
+  }
+
+  const cached = getCachedSessionParentId(sessionId);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  try {
+    const sessions = await PI_SDK_HOST.listSessions();
+    const match = Array.isArray(sessions)
+      ? sessions.find((session) => session?.id === sessionId)
+      : null;
+    const parentID = typeof match?.parentID === 'string' && match.parentID.trim().length > 0
+      ? match.parentID.trim()
+      : null;
+    setCachedSessionParentId(sessionId, parentID);
+    return parentID;
+  } catch {
+    return undefined;
+  }
 };
 
 const extractSessionIdFromPayload = (payload) => {
@@ -6148,6 +6170,7 @@ async function main(options = {}) {
       const session = await PI_SDK_HOST.createSession({
         cwd: req.body?.cwd,
         title: req.body?.title,
+        parentID: req.body?.parentID,
       });
       res.json(session);
     } catch (error) {
@@ -6155,8 +6178,12 @@ async function main(options = {}) {
     }
   });
 
-  app.get('/api/pi/sessions', (_req, res) => {
-    res.json(PI_SDK_HOST.listSessions());
+  app.get('/api/pi/sessions', async (_req, res) => {
+    try {
+      res.json(await PI_SDK_HOST.listSessions());
+    } catch (error) {
+      res.status(500).json({ error: error?.message || 'Failed to list Pi sessions' });
+    }
   });
 
   app.post('/api/wechat-bridge/start', async (_req, res) => {
@@ -6178,6 +6205,9 @@ async function main(options = {}) {
   });
 
   app.get('/api/wechat-bridge/status', (_req, res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     res.json(WECHAT_BRIDGE.getStatus());
   });
 
@@ -6227,17 +6257,17 @@ async function main(options = {}) {
     }
   });
 
-  app.get('/api/pi/sessions/:sessionId', (req, res) => {
+  app.get('/api/pi/sessions/:sessionId', async (req, res) => {
     try {
-      res.json(PI_SDK_HOST.getSession(req.params.sessionId));
+      res.json(await PI_SDK_HOST.getSession(req.params.sessionId));
     } catch (error) {
       res.status(404).json({ error: error?.message || 'Session not found' });
     }
   });
 
-  app.put('/api/pi/sessions/:sessionId', (req, res) => {
+  app.put('/api/pi/sessions/:sessionId', async (req, res) => {
     try {
-      res.json(PI_SDK_HOST.renameSession(req.params.sessionId, { title: req.body?.title }));
+      res.json(await PI_SDK_HOST.renameSession(req.params.sessionId, { title: req.body?.title }));
     } catch (error) {
       const message = error?.message || 'Failed to update Pi session';
       const status = String(message).includes('Unknown Pi session') ? 404 : 400;
@@ -6333,6 +6363,7 @@ async function main(options = {}) {
     if (
       req.path.startsWith('/api/config/agents') ||
       req.path.startsWith('/api/config/commands') ||
+      req.path.startsWith('/api/config/prompts') ||
       req.path.startsWith('/api/config/mcp') ||
       req.path.startsWith('/api/config/opencode') ||
       req.path.startsWith('/api/config/settings') ||
@@ -6874,7 +6905,7 @@ async function main(options = {}) {
   app.get('/api/ridge/update-check', async (_req, res) => {
     res.json({
       available: false,
-      currentVersion: APP_VERSION,
+      currentVersion: OPENAURORA_VERSION,
       version: null,
       body: 'Updates are disabled in Ridge.',
       updateCommand: 'Updates are disabled in Ridge',
@@ -7567,6 +7598,90 @@ async function main(options = {}) {
       console.error(`[API:PUT /api/config/settings] Failed to save settings:`, error);
       console.error(`[API:PUT /api/config/settings] Error stack:`, error.stack);
       res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to save settings' });
+    }
+  });
+
+  // Prompt Templates API (pi standard)
+  app.get('/api/config/prompts', async (req, res) => {
+    try {
+      const directory = req.query?.directory || process.cwd();
+      const prompts = await discoverPrompts(directory, {});
+      res.json(prompts);
+    } catch (error) {
+      console.error('Failed to load prompts:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to load prompts' });
+    }
+  });
+
+  app.post('/api/config/prompts/:name', async (req, res) => {
+    try {
+      const { name } = req.params;
+      const directory = req.query?.directory || process.cwd();
+      const { template, description, scope } = req.body || {};
+
+      if (!template) {
+        return res.status(400).json({ error: 'Template is required' });
+      }
+
+      const result = await savePrompt(directory, name, { template, description, scope: scope || 'user' }, {});
+      if (!result.success) {
+        return res.status(500).json({ error: result.error || 'Failed to save prompt' });
+      }
+      res.json({ success: true, filePath: result.filePath });
+    } catch (error) {
+      console.error('Failed to create prompt:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create prompt' });
+    }
+  });
+
+  app.patch('/api/config/prompts/:name', async (req, res) => {
+    try {
+      const { name } = req.params;
+      const directory = req.query?.directory || process.cwd();
+      const { template, description } = req.body || {};
+
+      // For update, we need to find the existing prompt first to get its scope
+      const existingPrompts = await discoverPrompts(directory, {});
+      const existing = existingPrompts.find(p => p.name === name);
+      if (!existing) {
+        return res.status(404).json({ error: 'Prompt not found' });
+      }
+
+      const result = await savePrompt(directory, name, {
+        template: template !== undefined ? template : existing.template,
+        description: description !== undefined ? description : existing.description,
+        scope: existing.sourceScope,
+      }, {});
+
+      if (!result.success) {
+        return res.status(500).json({ error: result.error || 'Failed to update prompt' });
+      }
+      res.json({ success: true, filePath: result.filePath });
+    } catch (error) {
+      console.error('Failed to update prompt:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to update prompt' });
+    }
+  });
+
+  app.delete('/api/config/prompts/:name', async (req, res) => {
+    try {
+      const { name } = req.params;
+      const directory = req.query?.directory || process.cwd();
+
+      const existingPrompts = await discoverPrompts(directory, {});
+      const existing = existingPrompts.find(p => p.name === name);
+      if (!existing) {
+        return res.status(404).json({ error: 'Prompt not found' });
+      }
+
+      const result = await deletePrompt(existing.source);
+      if (!result.success) {
+        return res.status(500).json({ error: result.error || 'Failed to delete prompt' });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Failed to delete prompt:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to delete prompt' });
     }
   });
 
@@ -8673,6 +8788,40 @@ async function main(options = {}) {
     } catch (error) {
       console.error('Failed to resolve home directory:', error);
       res.status(500).json({ error: (error && error.message) || 'Failed to resolve home directory' });
+    }
+  });
+
+  app.get('/api/fs/stat', async (req, res) => {
+    const rawPath = typeof req.query.path === 'string' ? req.query.path.trim() : '';
+    if (!rawPath) {
+      return res.status(400).json({ error: 'Path is required' });
+    }
+
+    const resolvedPath = path.resolve(normalizeDirectoryPath(rawPath));
+
+    try {
+      const stats = await fsPromises.stat(resolvedPath);
+      return res.json({
+        path: resolvedPath,
+        exists: true,
+        isDirectory: stats.isDirectory(),
+        isFile: stats.isFile(),
+      });
+    } catch (error) {
+      const err = error;
+      if (err && typeof err === 'object' && err.code === 'ENOENT') {
+        return res.json({
+          path: resolvedPath,
+          exists: false,
+          isDirectory: false,
+          isFile: false,
+        });
+      }
+      if (err && typeof err === 'object' && err.code === 'EACCES') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      console.error('Failed to stat path:', error);
+      return res.status(500).json({ error: (error && error.message) || 'Failed to stat path' });
     }
   });
 
@@ -9993,6 +10142,16 @@ async function main(options = {}) {
           // Service workers should never be long-cached; iOS is especially sensitive.
           if (typeof filePath === 'string' && filePath.endsWith(`${path.sep}sw.js`)) {
             res.setHeader('Cache-Control', 'no-store');
+            return;
+          }
+          // Disable cache for HTML and assets during development (vite build --watch)
+          if (typeof filePath === 'string') {
+            const lowerPath = filePath.toLowerCase();
+            if (lowerPath.endsWith('.html') || lowerPath.includes('/assets/')) {
+              res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+              res.setHeader('Pragma', 'no-cache');
+              res.setHeader('Expires', '0');
+            }
           }
         },
       }));
@@ -10068,7 +10227,7 @@ async function main(options = {}) {
         };
 
         const listSessions = async (directory) => {
-          const sessions = PI_SDK_HOST.listSessions().map((session) => ({
+          const sessions = (await PI_SDK_HOST.listSessions()).map((session) => ({
             id: session.id,
             title: session.title,
             directory: session.cwd,

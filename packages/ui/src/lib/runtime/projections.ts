@@ -10,10 +10,11 @@ const normalizePath = (value?: string | null): string | null => {
   return normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized;
 };
 
-export const projectPiSessionToRuntimeSession = (session: Pick<PiSessionViewState, 'id' | 'title' | 'cwd' | 'createdAt' | 'updatedAt' | 'status'>): Session => ({
+export const projectPiSessionToRuntimeSession = (session: Pick<PiSessionViewState, 'id' | 'title' | 'cwd' | 'parentID' | 'createdAt' | 'updatedAt' | 'status'>): Session => ({
   id: session.id,
   title: session.title || 'Pi Session',
   directory: normalizePath(session.cwd),
+  parentID: typeof session.parentID === 'string' && session.parentID.trim().length > 0 ? session.parentID.trim() : null,
   version: 'pi',
   projectID: '',
   time: {

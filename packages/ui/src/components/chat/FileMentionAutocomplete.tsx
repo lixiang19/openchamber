@@ -25,7 +25,7 @@ export interface FileMentionHandle {
   handleKeyDown: (key: string) => void;
 }
 
-type AutocompleteTab = 'commands' | 'agents' | 'files';
+type AutocompleteTab = 'prompts' | 'agents' | 'files';
 
 interface FileMentionAutocompleteProps {
   searchQuery: string;
@@ -85,6 +85,8 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
   const ignoreTabClickRef = React.useRef(false);
   const normalizedSearchQuery = (searchQuery ?? '').trim();
   const visibleAgents = agents;
+  const showAgentsTab = activeTab === 'agents';
+  const showFilesTab = activeTab === 'files';
 
   const recentFiles = React.useMemo(() => {
     if (!projectRoot || !projectTabs) {
@@ -234,7 +236,7 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
     setSelectedIndex(0);
     setOverflowMap({});
     setMarqueeDurations({});
-  }, [files, recentFiles.length, visibleAgents.length]);
+  }, [activeTab, files, recentFiles.length, visibleAgents.length]);
 
   React.useEffect(() => {
     itemRefs.current[selectedIndex]?.scrollIntoView({
@@ -325,7 +327,9 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
         return;
       }
 
-      const total = visibleAgents.length + recentFiles.length + files.length;
+      const total = showAgentsTab
+        ? visibleAgents.length
+        : recentFiles.length + files.length;
       if (total === 0) {
         return;
       }
@@ -342,23 +346,22 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
 
       if (key === 'Enter' || key === 'Tab') {
         const safeIndex = ((selectedIndex % total) + total) % total;
-        if (safeIndex < visibleAgents.length) {
+        if (showAgentsTab) {
           const agent = visibleAgents[safeIndex];
           if (agent) {
             handleAgentPick(agent.name);
           }
           return;
         }
-        const fileIndex = safeIndex - visibleAgents.length;
-        const selectedFile = fileIndex < recentFiles.length
-          ? recentFiles[fileIndex]
-          : files[fileIndex - recentFiles.length];
+        const selectedFile = safeIndex < recentFiles.length
+          ? recentFiles[safeIndex]
+          : files[safeIndex - recentFiles.length];
         if (selectedFile) {
           handleFileSelect(selectedFile);
         }
       }
     }
-  }), [files, recentFiles, visibleAgents, selectedIndex, onClose, handleFileSelect, handleAgentPick]);
+  }), [files, recentFiles, visibleAgents, selectedIndex, onClose, handleFileSelect, handleAgentPick, showAgentsTab]);
 
   const getFileIcon = (file: FileInfo) => {
     const ext = file.extension?.toLowerCase();
@@ -394,7 +397,7 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
           <div className="px-2 pt-2 pb-1 border-b border-border/60">
             <div className="flex items-center gap-1 rounded-lg bg-[var(--surface-elevated)] p-1">
               {([
-                { id: 'commands' as const, label: 'Commands' },
+                { id: 'prompts' as const, label: 'Prompts' },
                 { id: 'agents' as const, label: 'Agents' },
                 { id: 'files' as const, label: 'Files' },
               ]).map((tab) => (
@@ -437,7 +440,7 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
           </div>
         ) : (
           <div className="pb-2">
-            {visibleAgents.map((agent, index) => {
+            {showAgentsTab ? visibleAgents.map((agent, index) => {
               const isSelected = selectedIndex === index;
               const isProjectAgent = agent.scope === 'project';
               const displayName = agent.displayName?.trim() || agent.name;
@@ -476,12 +479,9 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
                   </div>
                 </div>
               );
-            })}
-            {visibleAgents.length > 0 && (recentFiles.length > 0 || files.length > 0) && (
-              <div className="my-1 border-t border-border/60" />
-            )}
-            {recentFiles.map((file, index) => {
-              const rowIndex = visibleAgents.length + index;
+            }) : null}
+            {showFilesTab ? recentFiles.map((file, index) => {
+              const rowIndex = index;
               const relativePath = file.relativePath || file.name;
               const displayPath = truncatePathMiddle(relativePath, { maxLength: 60 });
               const isSelected = selectedIndex === rowIndex;
@@ -528,12 +528,12 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
                   </span>
                 </div>
               );
-            })}
-            {recentFiles.length > 0 && files.length > 0 && (
+            }) : null}
+            {showFilesTab && recentFiles.length > 0 && files.length > 0 && (
               <div className="my-1 border-t border-border/60" />
             )}
-            {files.map((file, index) => {
-              const rowIndex = visibleAgents.length + recentFiles.length + index;
+            {showFilesTab ? files.map((file, index) => {
+              const rowIndex = recentFiles.length + index;
               const relativePath = file.relativePath || file.name;
               const displayPath = truncatePathMiddle(relativePath, { maxLength: 60 });
               const isSelected = selectedIndex === rowIndex;
@@ -585,8 +585,13 @@ export const FileMentionAutocomplete = React.forwardRef<FileMentionHandle, FileM
                   {item}
                 </React.Fragment>
               );
-            })}
-            {files.length === 0 && recentFiles.length === 0 && visibleAgents.length === 0 && (
+            }) : null}
+            {showAgentsTab && visibleAgents.length === 0 && (
+              <div className="px-3 py-2 typography-ui-label text-muted-foreground">
+                No agents found
+              </div>
+            )}
+            {showFilesTab && files.length === 0 && recentFiles.length === 0 && (
               <div className="px-3 py-2 typography-ui-label text-muted-foreground">
                 No matches found
               </div>

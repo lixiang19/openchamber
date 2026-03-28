@@ -409,7 +409,11 @@ export const useSessionStore = create<SessionStore>()(
                     const targetFolderId = draft.targetFolderId;
                     get().closeNewSessionDraft();
 
-                    const result = await useSessionManagementStore.getState().createSession(title, directoryOverride, parentID);
+                    // 从当前 agent 获取默认 thinking level
+                    const currentAgent = useConfigStore.getState().getCurrentAgent();
+                    const thinking = currentAgent?.thinking;
+
+                    const result = await useSessionManagementStore.getState().createSession(title, directoryOverride, parentID, { thinking });
 
                     if (result?.id) {
                         await get().setCurrentSession(result.id);

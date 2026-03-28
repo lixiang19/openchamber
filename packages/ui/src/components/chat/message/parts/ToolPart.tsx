@@ -586,36 +586,128 @@ const normalizeSessionIdCandidate = (value: unknown): string | undefined => {
     return trimmed.length > 0 ? trimmed : undefined;
 };
 
-const readTaskSessionIdFromRecord = (value: unknown): string | undefined => {
+const readTaskSessionIdFromValue = (value: unknown, seen = new WeakSet<object>()): string | undefined => {
+    if (typeof value === 'string') {
+        const parsedMetadata = parseTaskMetadataBlock(value);
+        if (parsedMetadata.sessionId) {
+            return parsedMetadata.sessionId;
+        }
+
+        const taskMatch = value.match(/task_id\s*:\s*([^\s<"']+)/i);
+        const sessionMatch = value.match(/session[_\s-]?id\s*:\s*([^\s<"']+)/i);
+        const candidate = taskMatch?.[1] ?? sessionMatch?.[1];
+        return normalizeSessionIdCandidate(candidate);
+    }
+
+    if (Array.isArray(value)) {
+        for (const entry of value) {
+            const sessionId = readTaskSessionIdFromValue(entry, seen);
+            if (sessionId) {
+                return sessionId;
+            }
+        }
+        return undefined;
+    }
+
     if (!value || typeof value !== 'object') {
         return undefined;
     }
 
+    if (seen.has(value)) {
+        return undefined;
+    }
+    seen.add(value);
+
     const record = value as Record<string, unknown>;
     const piRecord = (record.pi && typeof record.pi === 'object') ? (record.pi as Record<string, unknown>) : undefined;
     const taskRecord = (piRecord?.task && typeof piRecord.task === 'object') ? (piRecord.task as Record<string, unknown>) : undefined;
-    return (
+
+    const directSessionId =
         normalizeSessionIdCandidate(record.sessionID)
         ?? normalizeSessionIdCandidate(record.sessionId)
         ?? normalizeSessionIdCandidate(taskRecord?.sessionID)
         ?? normalizeSessionIdCandidate(taskRecord?.sessionId)
         ?? normalizeSessionIdCandidate(piRecord?.sessionID)
-        ?? normalizeSessionIdCandidate(piRecord?.sessionId)
-    );
+        ?? normalizeSessionIdCandidate(piRecord?.sessionId);
+    if (directSessionId) {
+        return directSessionId;
+    }
+
+    return readTaskSessionIdFromValue(record.details, seen)
+        ?? readTaskSessionIdFromValue(record.content, seen)
+        ?? readTaskSessionIdFromValue(record.text, seen)
+        ?? readTaskSessionIdFromValue(record.result, seen)
+        ?? readTaskSessionIdFromValue(record.partialResult, seen)
+        ?? readTaskSessionIdFromValue(piRecord, seen)
+        ?? readTaskSessionIdFromValue(taskRecord, seen);
+};
+
+const readTaskSessionIdFromRecord = (value: unknown): string | undefined => {
+    return readTaskSessionIdFromValue(value);
 };
 
 const readTaskSessionIdFromOutput = (output: string | undefined): string | undefined => {
-    if (typeof output !== 'string' || output.trim().length === 0) {
-        return undefined;
+    return readTaskSessionIdFromValue(output);
+};
+
+const readTaskSummaryEntriesFromValue = (value: unknown, seen = new WeakSet<object>()): TaskToolSummaryEntry[] => {
+    if (typeof value === 'string') {
+        return parseTaskMetadataBlock(value).summaryEntries;
     }
-    const parsedMetadata = parseTaskMetadataBlock(output);
-    if (parsedMetadata.sessionId) {
-        return parsedMetadata.sessionId;
+
+    if (Array.isArray(value)) {
+        for (const entry of value) {
+            const summaryEntries = readTaskSummaryEntriesFromValue(entry, seen);
+            if (summaryEntries.length > 0) {
+                return summaryEntries;
+            }
+        }
+        return [];
     }
-    const taskMatch = output.match(/task_id\s*:\s*([^\s<"']+)/i);
-    const sessionMatch = output.match(/session[_\s-]?id\s*:\s*([^\s<"']+)/i);
-    const candidate = taskMatch?.[1] ?? sessionMatch?.[1];
-    return normalizeSessionIdCandidate(candidate);
+
+    if (!value || typeof value !== 'object') {
+        return [];
+    }
+
+    if (seen.has(value)) {
+        return [];
+    }
+    seen.add(value);
+
+    const record = value as Record<string, unknown>;
+    const piRecord = (record.pi && typeof record.pi === 'object') ? (record.pi as Record<string, unknown>) : undefined;
+    const taskRecord = (piRecord?.task && typeof piRecord.task === 'object') ? (piRecord.task as Record<string, unknown>) : undefined;
+
+    const directSummary = normalizeTaskSummaryEntries(
+        record.summary
+        ?? record.entries
+        ?? record.tools
+        ?? record.calls
+        ?? taskRecord?.summary
+        ?? piRecord?.task
+    );
+    if (directSummary.length > 0) {
+        return directSummary;
+    }
+
+    const nestedCandidates = [
+        record.details,
+        record.content,
+        record.text,
+        record.result,
+        record.partialResult,
+        piRecord,
+        taskRecord,
+    ];
+
+    for (const candidate of nestedCandidates) {
+        const summaryEntries = readTaskSummaryEntriesFromValue(candidate, seen);
+        if (summaryEntries.length > 0) {
+            return summaryEntries;
+        }
+    }
+
+    return [];
 };
 
 const buildTaskSummaryEntriesFromPiSession = (session: PiSessionViewState): TaskToolSummaryEntry[] => {
@@ -1691,6 +1783,12 @@ const ToolPart: React.FC<ToolPartProps> = ({
             return undefined;
         }
 
+        const executionSessionId = readTaskSessionIdFromValue(currentPiExecution?.result)
+            ?? readTaskSessionIdFromValue(currentPiExecution?.partialResult);
+        if (executionSessionId) {
+            return executionSessionId;
+        }
+
         const metadataSessionId = readTaskSessionIdFromRecord(metadata);
         if (metadataSessionId) {
             return metadataSessionId;
@@ -1705,7 +1803,7 @@ const ToolPart: React.FC<ToolPartProps> = ({
             return parsedTaskMetadata.sessionId;
         }
         return readTaskSessionIdFromOutput(taskOutputString);
-    }, [isTaskTool, metadata, parsedTaskMetadata.sessionId, partMetadata, taskOutputString]);
+    }, [currentPiExecution?.partialResult, currentPiExecution?.result, isTaskTool, metadata, parsedTaskMetadata.sessionId, partMetadata, taskOutputString]);
 
     const childPiSession = useSessionStore(
         React.useCallback((store) => {
@@ -1739,8 +1837,18 @@ const ToolPart: React.FC<ToolPartProps> = ({
             return normalized;
         }
 
+        const executionSummary = readTaskSummaryEntriesFromValue(currentPiExecution?.result);
+        if (executionSummary.length > 0) {
+            return executionSummary;
+        }
+
+        const partialExecutionSummary = readTaskSummaryEntriesFromValue(currentPiExecution?.partialResult);
+        if (partialExecutionSummary.length > 0) {
+            return partialExecutionSummary;
+        }
+
         return parsedTaskMetadata.summaryEntries;
-    }, [isTaskTool, metadata, parsedTaskMetadata.summaryEntries]);
+    }, [currentPiExecution?.partialResult, currentPiExecution?.result, isTaskTool, metadata, parsedTaskMetadata.summaryEntries]);
 
     const childSessionTaskSummaryEntries = React.useMemo<TaskToolSummaryEntry[]>(() => {
         if (!isTaskTool || !taskSessionId || !childPiSession) {

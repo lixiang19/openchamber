@@ -47,44 +47,15 @@ export const useDirectoryStatusProbe = ({
       }
       checkingDirectories.current.add(directory);
       runtimeClient
-        .listLocalDirectory(directory)
-        .then(() => {
+        .statLocalPath(directory)
+        .then((stat) => {
           setDirectoryStatus((prev) => {
             const next = new Map(prev);
-            if (next.get(directory) === 'exists') {
+            const nextValue = stat.exists && stat.isDirectory ? 'exists' : 'missing';
+            if (next.get(directory) === nextValue) {
               return prev;
             }
-            next.set(directory, 'exists');
-            return next;
-          });
-        })
-        .catch(async () => {
-          const looksLikeSdkWorktree =
-            directory.includes('/opencode/worktree/') ||
-            directory.includes('/.opencode/data/worktree/') ||
-            directory.includes('/.local/share/opencode/worktree/');
-
-          if (looksLikeSdkWorktree) {
-            const ok = await runtimeClient.probeDirectory(directory).catch(() => false);
-            if (ok) {
-              setDirectoryStatus((prev) => {
-                const next = new Map(prev);
-                if (next.get(directory) === 'exists') {
-                  return prev;
-                }
-                next.set(directory, 'exists');
-                return next;
-              });
-              return;
-            }
-          }
-
-          setDirectoryStatus((prev) => {
-            const next = new Map(prev);
-            if (next.get(directory) === 'missing') {
-              return prev;
-            }
-            next.set(directory, 'missing');
+            next.set(directory, nextValue);
             return next;
           });
         })

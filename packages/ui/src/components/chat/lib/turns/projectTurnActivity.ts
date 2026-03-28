@@ -122,9 +122,15 @@ export const projectTurnActivity = (input: ProjectActivityInput): ProjectActivit
     input.assistantMessages.forEach((message) => {
         const messageCompleted = isAssistantMessageCompleted(message, input.piAssistantById);
         const finish = getMessageFinish(message, input.piAssistantById);
+        const messageHasSubtask = message.parts.some((part) => part.type === 'subtask');
 
         message.parts.forEach((part, partIndex) => {
             const isTool = part.type === 'tool';
+            const toolName = isTool
+                ? (part as { tool?: unknown }).tool
+                : undefined;
+            const normalizedToolName = typeof toolName === 'string' ? toolName.trim().toLowerCase() : '';
+            const hidesStandaloneTaskTool = messageHasSubtask && normalizedToolName === 'task';
             if (isTool) {
                 hasTools = true;
             }
@@ -137,9 +143,6 @@ export const projectTurnActivity = (input: ProjectActivityInput): ProjectActivit
                 hasReasoning = true;
             }
 
-            const toolName = isTool
-                ? (part as { tool?: unknown }).tool
-                : undefined;
             const standaloneTool = isTool && isStandaloneTool(toolName);
             if (standaloneTool) {
                 const toolPartId = part.id ?? `${message.info.id}-part-${partIndex}-${part.type}`;
@@ -152,7 +155,9 @@ export const projectTurnActivity = (input: ProjectActivityInput): ProjectActivit
 
             let kind: TurnActivityRecord['kind'] | null = null;
             if (isTool) {
-                kind = 'tool';
+                if (!hidesStandaloneTaskTool) {
+                    kind = 'tool';
+                }
             } else if (part.type === 'reasoning') {
                 if (text) {
                     kind = 'reasoning';
@@ -238,6 +243,10 @@ export const projectTurnActivity = (input: ProjectActivityInput): ProjectActivit
             parts: segmentParts,
         });
     });
+
+    // DEBUG: Log activity segments
+    console.log('[DEBUG projectTurnActivity] activitySegments:', activitySegments.length, 
+        activitySegments.map(s => ({ id: s.id, parts: s.parts.length, kinds: s.parts.map(p => p.kind).join(',') })));
 
     return {
         activityParts,

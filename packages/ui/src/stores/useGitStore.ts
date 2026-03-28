@@ -451,10 +451,36 @@ export const useGitStore = create<GitStore>()(
         set({ isLoadingBranches: true });
 
         try {
-          const branches = await git.getGitBranches(directory);
+          const now = Date.now();
           const newDirectories = new Map(get().directories);
           const dirState = newDirectories.get(directory) ?? createEmptyDirectoryState();
-          newDirectories.set(directory, { ...dirState, branches });
+          const shouldProbeRepository =
+            dirState.isGitRepo !== true ||
+            now - (dirState.lastRepoCheckAt || 0) > REPO_CHECK_STALE_THRESHOLD;
+
+          let isRepo = dirState.isGitRepo === true;
+          if (shouldProbeRepository) {
+            isRepo = await git.checkIsGitRepository(directory);
+          }
+
+          if (!isRepo) {
+            newDirectories.set(directory, {
+              ...dirState,
+              isGitRepo: false,
+              branches: undefined,
+              lastRepoCheckAt: now,
+            });
+            set({ directories: newDirectories });
+            return;
+          }
+
+          const branches = await git.getGitBranches(directory);
+          newDirectories.set(directory, {
+            ...dirState,
+            isGitRepo: true,
+            branches,
+            lastRepoCheckAt: shouldProbeRepository ? now : dirState.lastRepoCheckAt,
+          });
           set({ directories: newDirectories });
         } catch (error) {
           console.error('Failed to fetch git branches:', error);

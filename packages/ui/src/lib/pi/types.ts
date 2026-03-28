@@ -10,7 +10,7 @@ export interface PiToolExecutionViewState {
 
 export interface PiAgentInfo {
   name: string;
-  mode: 'primary' | 'subagent' | 'all';
+  mode: 'primary' | 'task' | 'all';
   description: string;
   source: string;
   scope?: 'user' | 'project';
@@ -131,6 +131,7 @@ export interface PiSessionViewState {
   id: string;
   title: string;
   cwd: string;
+  parentID?: string | null;
   createdAt: number;
   updatedAt: number;
   status: 'idle' | 'streaming' | 'error' | 'retrying' | 'compacting';

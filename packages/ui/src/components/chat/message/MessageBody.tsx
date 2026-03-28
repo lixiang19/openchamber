@@ -58,7 +58,7 @@ type ShellActionPartLike = Part & {
     };
 };
 
-const isSubtaskPart = (part: Part): part is SubtaskPartLike => {
+const isSubtaskPart = (part: Part): boolean => {
     return part.type === 'subtask';
 };
 
@@ -139,7 +139,7 @@ const UserSubtaskPart: React.FC<{ part: SubtaskPartLike }> = ({ part }) => {
                             void setCurrentSession(taskSessionID);
                         }}
                     >
-                        Open subtask session
+                        Open task session
                     </button>
                 </div>
             ) : null}
@@ -584,7 +584,7 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
     onCopyMessage,
     copiedMessage = false,
     onAuxiliaryContentComplete,
-    showReasoningTraces = false,
+    showReasoningTraces = true,
     turnGroupingContext,
     errorMessage,
     assistantTextContent = '',
@@ -609,12 +609,16 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
 
     const visibleParts = React.useMemo(() => {
         return parts
-            .filter((part) => !isEmptyTextPart(part))
+            .filter((part) => (isSubtaskPart(part) ? true : !isEmptyTextPart(part)))
             .filter((part) => {
                 const rawPart = part as Record<string, unknown>;
                 return rawPart.type !== 'compaction';
             });
     }, [parts]);
+
+    const hasRenderedSubtaskCard = React.useMemo(() => {
+        return visibleParts.some((part) => isSubtaskPart(part));
+    }, [visibleParts]);
 
     const toolParts = React.useMemo(() => {
         return visibleParts.filter((part): part is ToolPartType => part.type === 'tool');
@@ -1082,21 +1086,24 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
         };
     }, [clearCopyHintTimeout]);
 
+    const shouldUseActivityGrouping = Boolean(turnGroupingContext?.toggleGroup)
+        && (turnGroupingContext?.activityParts?.length ?? 0) > 0;
+
     const activityPartsForTurn = React.useMemo(() => {
         const all = turnGroupingContext?.activityParts;
-        if (!isSortedRenderMode || !all) {
+        if (!shouldUseActivityGrouping || !all) {
             return [];
         }
         return all;
-    }, [isSortedRenderMode, turnGroupingContext?.activityParts]);
+    }, [shouldUseActivityGrouping, turnGroupingContext?.activityParts]);
 
     const activityGroupSegmentsForMessage = React.useMemo(() => {
         const all = turnGroupingContext?.activityGroupSegments;
-        if (!isSortedRenderMode || !all) {
+        if (!shouldUseActivityGrouping || !all) {
             return [];
         }
         return all.filter((segment) => segment.anchorMessageId === messageId);
-    }, [isSortedRenderMode, messageId, turnGroupingContext?.activityGroupSegments]);
+    }, [shouldUseActivityGrouping, messageId, turnGroupingContext?.activityGroupSegments]);
 
     const activityByPart = React.useMemo(() => {
         const byRef = new Map<Part, (typeof activityPartsForTurn)[number]>();
@@ -1126,8 +1133,7 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
 
     const toggleActivityGroup = turnGroupingContext?.toggleGroup;
 
-    const shouldRenderActivityGroup = isSortedRenderMode
-        && activityGroupSegmentsForMessage.length > 0
+    const shouldRenderActivityGroup = activityGroupSegmentsForMessage.length > 0
         && Boolean(toggleActivityGroup);
 
 
@@ -1172,7 +1178,7 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
         // Text and reasoning render inline at their natural position.
         let i = 0;
         while (i < visibleParts.length) {
-            const part = visibleParts[i];
+            const part = visibleParts[i] as any;
 
             if (part.type === 'text') {
                 const activity = activityByPart.get(part);
@@ -1235,9 +1241,24 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
                 continue;
             }
 
+            if (isSubtaskPart(part)) {
+                rendered.push(
+                    <FadeInOnReveal key={`subtask-${(part as any).id ?? `${messageId}-${i}`}`}>
+                        <UserSubtaskPart part={part} />
+                    </FadeInOnReveal>
+                );
+                i++;
+                continue;
+            }
+
             if (part.type === 'tool') {
                 const toolPart = part as ToolPartType;
                 const toolName = toolPart.tool?.toLowerCase() ?? '';
+
+                if (toolName === 'task' && hasRenderedSubtaskCard) {
+                    i++;
+                    continue;
+                }
 
                 const activity = activityByPart.get(part);
                 if (activity?.kind === 'tool' && !isStandaloneTool(toolName)) {
@@ -1251,48 +1272,53 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
                 }
 
                 // Expandable tools: bash, edit, write, task, question — individual rows
+                // In sorted render mode, these are already rendered via TurnActivity, so skip
                 if (isExpandableTool(toolName)) {
+                    if (!isSortedRenderMode) {
+                        rendered.push(
+                            <FadeInOnReveal key={`tool-${toolPart.id}`}>
+                                <ToolRevealOnMount animate={animatedToolIdsLookup.has(toolPart.id)} wipe>
+                                    <ToolPart
+                                        part={toolPart}
+                                        isExpanded={expandedTools.has(toolPart.id)}
+                                        onToggle={onToggleTool}
+                                        syntaxTheme={syntaxTheme}
+                                        isMobile={isMobile}
+                                        onContentChange={onContentChange}
+                                        onShowPopup={onShowPopup}
+                                        animateTailText={animatedToolIdsLookup.has(toolPart.id)}
+                                    />
+                                </ToolRevealOnMount>
+                            </FadeInOnReveal>
+                        );
+                    }
+                    i++;
+                    continue;
+                }
+                // Static tools: one row per tool call (no grouping)
+                // In sorted render mode, these are already rendered via TurnActivity, so skip
+                if (!isSortedRenderMode) {
                     rendered.push(
-                        <FadeInOnReveal key={`tool-${toolPart.id}`}>
+                        <FadeInOnReveal key={`static-tools-${toolPart.id}`}>
                             <ToolRevealOnMount animate={animatedToolIdsLookup.has(toolPart.id)} wipe>
-                                <ToolPart
-                                    part={toolPart}
-                                    isExpanded={expandedTools.has(toolPart.id)}
-                                    onToggle={onToggleTool}
-                                    syntaxTheme={syntaxTheme}
-                                    isMobile={isMobile}
-                                    onContentChange={onContentChange}
-                                    onShowPopup={onShowPopup}
+                                <StaticToolRow
+                                    toolName={toolName}
+                                    activities={[
+                                        {
+                                            id: toolPart.id,
+                                            turnId: '',
+                                            messageId,
+                                            partIndex: 0,
+                                            part: toolPart,
+                                            kind: 'tool' as const,
+                                        },
+                                    ]}
                                     animateTailText={animatedToolIdsLookup.has(toolPart.id)}
                                 />
                             </ToolRevealOnMount>
                         </FadeInOnReveal>
                     );
-                    i++;
-                    continue;
                 }
-
-                // Static tools: one row per tool call (no grouping)
-                rendered.push(
-                    <FadeInOnReveal key={`static-tools-${toolPart.id}`}>
-                        <ToolRevealOnMount animate={animatedToolIdsLookup.has(toolPart.id)} wipe>
-                            <StaticToolRow
-                                toolName={toolName}
-                                activities={[
-                                    {
-                                        id: toolPart.id,
-                                        turnId: '',
-                                        messageId,
-                                        partIndex: 0,
-                                        part: toolPart,
-                                        kind: 'tool' as const,
-                                    },
-                                ]}
-                                animateTailText={animatedToolIdsLookup.has(toolPart.id)}
-                            />
-                        </ToolRevealOnMount>
-                    </FadeInOnReveal>
-                );
                 i++;
                 continue;
             }

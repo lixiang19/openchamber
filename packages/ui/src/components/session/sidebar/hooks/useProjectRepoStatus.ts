@@ -11,6 +11,7 @@ type Args = {
   normalizedProjects: Project[];
   normalizePath: (value?: string | null) => string | null;
   gitDirectories: Map<string, DirectoryState>;
+  projectRepoStatus: Map<string, boolean | null>;
   setProjectRepoStatus: React.Dispatch<React.SetStateAction<Map<string, boolean | null>>>;
   setProjectRootBranches: React.Dispatch<React.SetStateAction<Map<string, string>>>;
 };
@@ -21,6 +22,7 @@ export const useProjectRepoStatus = (args: Args): void => {
     normalizedProjects,
     normalizePath,
     gitDirectories,
+    projectRepoStatus,
     setProjectRepoStatus,
     setProjectRootBranches,
   } = args;
@@ -78,8 +80,17 @@ export const useProjectRepoStatus = (args: Args): void => {
   React.useEffect(() => {
     let cancelled = false;
     const run = async () => {
-        const entries = await Promise.all(
-        normalizedProjects.map(async (project) => {
+      const repoProjects = normalizedProjects.filter((project) => projectRepoStatus.get(project.id) === true);
+
+      if (repoProjects.length === 0) {
+        if (!cancelled) {
+          setProjectRootBranches(new Map());
+        }
+        return;
+      }
+
+      const entries = await Promise.all(
+        repoProjects.map(async (project) => {
           const branch = await getRootBranch(project.normalizedPath).catch(() => null);
           return { id: project.id, branch };
         }),
@@ -89,6 +100,11 @@ export const useProjectRepoStatus = (args: Args): void => {
       }
       setProjectRootBranches((prev) => {
         const next = new Map(prev);
+        normalizedProjects.forEach((project) => {
+          if (projectRepoStatus.get(project.id) !== true) {
+            next.delete(project.id);
+          }
+        });
         entries.forEach(({ id, branch }) => {
           if (branch) {
             next.set(id, branch);
@@ -101,5 +117,5 @@ export const useProjectRepoStatus = (args: Args): void => {
     return () => {
       cancelled = true;
     };
-  }, [normalizedProjects, projectGitBranchesKey, setProjectRootBranches]);
+  }, [normalizedProjects, projectGitBranchesKey, projectRepoStatus, setProjectRootBranches]);
 };

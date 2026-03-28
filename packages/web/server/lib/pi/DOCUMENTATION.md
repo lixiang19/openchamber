@@ -7,9 +7,9 @@ This module is the server-side Pi SDK bridge for Ridge. It keeps the existing HT
 - `packages/web/server/lib/pi/index.js`: public exports for bridge schema and message projection helpers.
 - `packages/web/server/lib/pi/bridge-schema.js`: normalized event catalog plus envelope and message normalizers.
 - `packages/web/server/lib/pi/providers.js`: Pi model/provider discovery built directly on `AuthStorage`, `ModelRegistry`, and `SettingsManager`.
-- `packages/web/server/lib/pi/sdk-host.js`: in-memory Pi session host backed by `createAgentSession()`.
+- `packages/web/server/lib/pi/sdk-host.js`: Pi session host backed by `createAgentSession()`, with persisted session listing and lazy on-demand loading from `SessionManager`.
 - `packages/web/server/lib/pi/extensions/question.js`: defines the UI-native `question` tool contract that the Web `QuestionCard` renders directly.
-- `packages/web/server/lib/pi/extensions/subagent.js`: SDK-backed subagent tool that creates nested in-memory Pi sessions instead of spawning `pi` subprocesses.
+- `packages/web/server/lib/pi/extensions/task.js`: SDK-backed task tool that creates persisted child Pi sessions and exposes them as parent/child session trees in Ridge.
 - `packages/web/server/lib/pi/agents.js`: discovers `.pi/agents/*.md` definitions and parses their frontmatter.
 - `packages/web/server/lib/pi/permissions.js`: normalizes OpenCode-style permission rules, compiles runtime policies, and provides the shared `tool_call` gate.
 
@@ -36,9 +36,10 @@ This module is the server-side Pi SDK bridge for Ridge. It keeps the existing HT
 
 ## Notes for contributors
 - The active server routes use `sdk-host.js` and `providers.js`; they do not rely on the external `pi` binary or RPC mode.
+- `sdk-host.js` no longer treats the server process as the source of truth for the session list. Session enumeration comes from Pi's persisted JSONL sessions via `SessionManager.listAll()`, while full `AgentSession` instances are loaded lazily on demand.
 - `sdk-host.js` is the source of truth for interactive dialogs in Web mode: internally it emits only native `question` requests. `ctx.ui.input()` / `select()` / `confirm()` / `editor()` are explicitly unsupported in the Web host and callers must use the custom `question` tool instead.
 - Model/provider discovery must stay separate from session bootstrap. `providers.js` reads Pi's `ModelRegistry` directly instead of creating throwaway sessions.
-- Subagents are also SDK-backed. Agent frontmatter now uses the Pi-native subset: `description`, `mode`, `model`, `thinking`, `steps`, `permission`, `enabled`, `display_name`, plus markdown body prompt.
-- Agent `permission` now accepts OpenCode-style rule values for `edit` (for example `edit: deny` or `edit: { "*": "deny", "**/*.md": "allow" }`). `permissions.js` compiles those rules into `activeToolNames` plus a shared `tool_call` gate that both `sdk-host.js` and `extensions/subagent.js` inject through `DefaultResourceLoader` extension factories.
+- Task agents are also SDK-backed. Agent frontmatter now uses the Pi-native subset: `description`, `mode`, `model`, `thinking`, `steps`, `permission`, `enabled`, `display_name`, plus markdown body prompt.
+- Agent `permission` now accepts OpenCode-style rule values for `edit` (for example `edit: deny` or `edit: { "*": "deny", "**/*.md": "allow" }`). `permissions.js` compiles those rules into `activeToolNames` plus a shared `tool_call` gate that both `sdk-host.js` and `extensions/task.js` inject through `DefaultResourceLoader` extension factories.
 - Unknown event payloads are preserved as `envelope: unknown` so the caller can log protocol drift instead of dropping data silently.
-- OpenCode-shaped payload projection has been removed from the active Web path. Session lifecycle, prompt execution, and extension binding live in `sdk-host.js`, while the front-end is expected to consume Pi-native state directly.
+- OpenCode-shaped payload projection has been removed from the active Web path. Session lifecycle, persisted session recovery, prompt execution, and extension binding live in `sdk-host.js`, while the front-end is expected to consume Pi-native state directly.

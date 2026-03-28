@@ -21,7 +21,7 @@ export interface CommandAutocompleteHandle {
   handleKeyDown: (key: string) => void;
 }
 
-type AutocompleteTab = 'commands' | 'agents' | 'files';
+type AutocompleteTab = 'prompts' | 'agents' | 'files';
 
 interface CommandAutocompleteProps {
   searchQuery: string;
@@ -38,7 +38,7 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
   onCommandSelect,
   onClose,
   showTabs,
-  activeTab = 'commands',
+  activeTab = 'prompts',
   onTabSelect,
   style,
 }, ref) => {
@@ -236,7 +236,7 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
         <div className="px-2 pt-2 pb-1 border-b border-border/60">
           <div className="flex items-center gap-1 rounded-lg bg-[var(--surface-elevated)] p-1">
             {([
-              { id: 'commands' as const, label: 'Commands' },
+              { id: 'prompts' as const, label: 'Prompts' },
               { id: 'agents' as const, label: 'Agents' },
               { id: 'files' as const, label: 'Files' },
             ]).map((tab) => (

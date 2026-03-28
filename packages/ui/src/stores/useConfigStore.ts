@@ -25,6 +25,7 @@ interface OpenChamberDefaults {
     defaultModel?: string;
     defaultVariant?: string;
     defaultAgent?: string;
+    defaultThinkingLevel?: string;
     autoCreateWorktree?: boolean;
     gitmojiEnabled?: boolean;
     zenModel?: string;
@@ -42,6 +43,7 @@ const fetchOpenChamberDefaults = async (): Promise<OpenChamberDefaults> => {
                     const defaultModel = typeof data?.defaultModel === 'string' ? data.defaultModel.trim() : '';
                     const defaultVariant = typeof data?.defaultVariant === 'string' ? data.defaultVariant.trim() : '';
                     const defaultAgent = typeof data?.defaultAgent === 'string' ? data.defaultAgent.trim() : '';
+                    const defaultThinkingLevel = typeof data?.defaultThinkingLevel === 'string' ? data.defaultThinkingLevel.trim() : '';
                     const gitmojiEnabled = typeof data?.gitmojiEnabled === 'boolean' ? data.gitmojiEnabled : undefined;
                     const zenModel = typeof data?.zenModel === 'string' ? data.zenModel.trim() : '';
 
@@ -49,6 +51,7 @@ const fetchOpenChamberDefaults = async (): Promise<OpenChamberDefaults> => {
                         defaultModel: defaultModel.length > 0 ? defaultModel : undefined,
                         defaultVariant: defaultVariant.length > 0 ? defaultVariant : undefined,
                         defaultAgent: defaultAgent.length > 0 ? defaultAgent : undefined,
+                        defaultThinkingLevel: defaultThinkingLevel.length > 0 ? defaultThinkingLevel : undefined,
                         autoCreateWorktree: typeof data?.autoCreateWorktree === 'boolean' ? data.autoCreateWorktree : undefined,
                         gitmojiEnabled,
                         zenModel: zenModel.length > 0 ? zenModel : undefined,
@@ -71,6 +74,7 @@ const fetchOpenChamberDefaults = async (): Promise<OpenChamberDefaults> => {
         const defaultModel = typeof data?.defaultModel === 'string' ? data.defaultModel.trim() : '';
         const defaultVariant = typeof data?.defaultVariant === 'string' ? data.defaultVariant.trim() : '';
         const defaultAgent = typeof data?.defaultAgent === 'string' ? data.defaultAgent.trim() : '';
+        const defaultThinkingLevel = typeof data?.defaultThinkingLevel === 'string' ? data.defaultThinkingLevel.trim() : '';
         const gitmojiEnabled = typeof data?.gitmojiEnabled === 'boolean' ? data.gitmojiEnabled : undefined;
         const zenModel = typeof data?.zenModel === 'string' ? data.zenModel.trim() : '';
 
@@ -78,6 +82,7 @@ const fetchOpenChamberDefaults = async (): Promise<OpenChamberDefaults> => {
             defaultModel: defaultModel.length > 0 ? defaultModel : undefined,
             defaultVariant: defaultVariant.length > 0 ? defaultVariant : undefined,
             defaultAgent: defaultAgent.length > 0 ? defaultAgent : undefined,
+            defaultThinkingLevel: defaultThinkingLevel.length > 0 ? defaultThinkingLevel : undefined,
             autoCreateWorktree: typeof data?.autoCreateWorktree === 'boolean' ? data.autoCreateWorktree : undefined,
             gitmojiEnabled,
             zenModel: zenModel.length > 0 ? zenModel : undefined,
@@ -429,6 +434,7 @@ interface ConfigStore {
     settingsDefaultModel: string | undefined; // format: "provider/model"
     settingsDefaultVariant: string | undefined;
     settingsDefaultAgent: string | undefined;
+    settingsDefaultThinkingLevel: string | undefined;
     settingsAutoCreateWorktree: boolean;
     settingsGitmojiEnabled: boolean;
     settingsZenModel: string | undefined;
@@ -478,6 +484,7 @@ interface ConfigStore {
     setSettingsDefaultModel: (model: string | undefined) => void;
     setSettingsDefaultVariant: (variant: string | undefined) => void;
     setSettingsDefaultAgent: (agent: string | undefined) => void;
+    setSettingsDefaultThinkingLevel: (level: string | undefined) => void;
     setSettingsAutoCreateWorktree: (enabled: boolean) => void;
     setSettingsGitmojiEnabled: (enabled: boolean) => void;
     setSettingsZenModel: (model: string | undefined) => void;
@@ -524,6 +531,7 @@ export const useConfigStore = create<ConfigStore>()(
                 settingsDefaultModel: undefined,
                 settingsDefaultVariant: undefined,
                 settingsDefaultAgent: undefined,
+                settingsDefaultThinkingLevel: undefined,
                 settingsAutoCreateWorktree: false,
                 settingsGitmojiEnabled: false,
                 settingsZenModel: undefined,
@@ -1108,6 +1116,7 @@ export const useConfigStore = create<ConfigStore>()(
                                     settingsDefaultModel: openChamberDefaults.defaultModel,
                                     settingsDefaultVariant: openChamberDefaults.defaultVariant,
                                     settingsDefaultAgent: openChamberDefaults.defaultAgent,
+                                    settingsDefaultThinkingLevel: openChamberDefaults.defaultThinkingLevel,
                                     settingsAutoCreateWorktree: openChamberDefaults.autoCreateWorktree ?? false,
                                     settingsGitmojiEnabled: openChamberDefaults.gitmojiEnabled ?? false,
                                     settingsZenModel: resolvedZenModel,
@@ -1192,7 +1201,7 @@ export const useConfigStore = create<ConfigStore>()(
                             let resolvedAgent: Agent = fallbackAgent;
 
                             // Track invalid settings to clear
-                             const invalidSettings: { defaultModel?: string; defaultVariant?: string; defaultAgent?: string } = {};
+                             const invalidSettings: Partial<import('@/lib/desktop').DesktopSettings> = {};
 
                             // 1. Check OpenChamber settings for default agent
                             if (openChamberDefaults.defaultAgent) {
@@ -1307,6 +1316,7 @@ export const useConfigStore = create<ConfigStore>()(
                                      settingsDefaultModel: invalidSettings.defaultModel !== undefined ? undefined : get().settingsDefaultModel,
                                      settingsDefaultVariant: invalidSettings.defaultVariant !== undefined ? undefined : get().settingsDefaultVariant,
                                      settingsDefaultAgent: invalidSettings.defaultAgent !== undefined ? undefined : get().settingsDefaultAgent,
+                                     settingsDefaultThinkingLevel: invalidSettings.defaultThinkingLevel !== undefined ? undefined : get().settingsDefaultThinkingLevel,
                                  });
                                 updateDesktopSettings(invalidSettings).catch(() => {
                                     // Ignore errors - best effort cleanup
@@ -1539,6 +1549,10 @@ export const useConfigStore = create<ConfigStore>()(
  
                  setSettingsDefaultAgent: (agent: string | undefined) => {
                      set({ settingsDefaultAgent: agent });
+                 },
+
+                 setSettingsDefaultThinkingLevel: (level: string | undefined) => {
+                     set({ settingsDefaultThinkingLevel: level });
                  },
 
                 setSettingsAutoCreateWorktree: (enabled: boolean) => {

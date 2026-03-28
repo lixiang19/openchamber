@@ -14,6 +14,7 @@ import {
     RiFileMusicLine,
     RiFilePdfLine,
     RiFileVideoLine,
+    RiLightbulbLine,
     RiPencilAiLine,
     RiQuestionLine,
     RiSearchLine,
@@ -23,6 +24,15 @@ import {
     RiTimeLine,
     RiToolsLine,
 } from '@remixicon/react';
+
+const THINKING_LEVELS = [
+    { value: 'off', label: 'off' },
+    { value: 'minimal', label: 'minimal' },
+    { value: 'low', label: 'low' },
+    { value: 'medium', label: 'medium' },
+    { value: 'high', label: 'high' },
+    { value: 'xhigh', label: 'xhigh' },
+] as const;
 import type { EditPermissionMode } from '@/stores/types/sessionTypes';
 import type { ModelMetadata } from '@/types';
 import {
@@ -298,12 +308,14 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
         currentAgentName,
         settingsDefaultVariant,
         settingsDefaultAgent,
+        settingsDefaultThinkingLevel,
         setProvider,
         setSelectedProvider,
         setModel,
         setCurrentVariant,
         getCurrentModelVariants,
         setAgent,
+        setSettingsDefaultThinkingLevel,
         getCurrentProvider,
         getModelMetadata,
         getCurrentAgent,
@@ -331,6 +343,12 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
         getAgentModelVariantForSession,
         analyzeAndSaveExternalSessionChoices,
     } = useSessionStore();
+
+    // 从 pi 会话获取当前 thinking level
+    const currentPiSession = useSessionStore((state) =>
+        currentSessionId ? state.piSessions.get(currentSessionId) ?? null : null
+    );
+    const currentSessionThinkingLevel = currentPiSession?.thinkingLevel;
 
     const contextHydrated = useContextStore((state) => state.hasHydrated);
 
@@ -473,7 +491,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
     }, [desktopModelQuery]);
 
     const selectableDesktopAgents = React.useMemo(() => {
-        return agents.filter((agent) => agent.mode !== 'subagent');
+        return agents.filter((agent) => agent.mode !== 'task');
     }, [agents]);
 
     const sortedAndFilteredAgents = React.useMemo(() => {
@@ -571,9 +589,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
 
     const prevAgentNameRef = React.useRef<string | undefined>(undefined);
 
-    const currentPiSession = useSessionStore((state) =>
-        currentSessionId ? state.piSessions.get(currentSessionId) ?? null : null
-    );
+    // 复用上方已声明的 currentPiSession 和 currentSessionThinkingLevel
     const currentSessionMessageCount = currentPiSession ? currentPiSession.messages.length : -1;
 
     const sessionInitializationRef = React.useRef<{
@@ -1060,6 +1076,23 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
         setCurrentVariant,
     ]);
 
+    const handleThinkingLevelChange = React.useCallback(async (level: typeof THINKING_LEVELS[number]['value']) => {
+        const newValue = level === 'off' ? undefined : level;
+        setSettingsDefaultThinkingLevel(newValue);
+
+        try {
+            const { updateDesktopSettings } = await import('@/lib/persistence');
+            await updateDesktopSettings({ defaultThinkingLevel: newValue });
+            await fetch('/api/config/settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ defaultThinkingLevel: newValue }),
+            });
+        } catch (error) {
+            console.warn('Failed to save thinking level:', error);
+        }
+    }, [setSettingsDefaultThinkingLevel]);
+
     const handleAgentChange = (agentName: string) => {
         try {
             setAgent(agentName);
@@ -1336,7 +1369,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                     <div className="rounded-xl border border-border/40 bg-sidebar/30 px-2 py-1.5">
                         <div className="typography-micro text-muted-foreground mb-0.5">Mode</div>
                         <div className="typography-meta text-foreground font-medium">
-                            {currentAgent.mode === 'primary' ? 'Primary' : currentAgent.mode === 'subagent' ? 'Subagent' : currentAgent.mode === 'all' ? 'All' : '—'}
+                            {currentAgent.mode === 'primary' ? 'Primary' : currentAgent.mode === 'task' ? 'Task' : currentAgent.mode === 'all' ? 'All' : '—'}
                         </div>
                     </div>
 
@@ -2457,7 +2490,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                     <div className="flex flex-col gap-1">
                         <span className="typography-meta font-semibold uppercase tracking-wide text-muted-foreground/90">Mode</span>
                         <span className="typography-meta text-foreground">
-                            {currentAgent.mode === 'primary' ? 'Primary' : currentAgent.mode === 'subagent' ? 'Subagent' : currentAgent.mode === 'all' ? 'All' : '—'}
+                            {currentAgent.mode === 'primary' ? 'Primary' : currentAgent.mode === 'task' ? 'Task' : currentAgent.mode === 'all' ? 'All' : '—'}
                         </span>
                     </div>
 
@@ -2547,7 +2580,6 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
 
         const displayVariant = currentVariant ?? 'Default';
         const isDefault = !currentVariant;
-        const colorClass = isDefault ? 'text-muted-foreground' : 'text-[color:var(--status-info)]';
 
         if (isCompact) {
             return (
@@ -2555,18 +2587,17 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                     type="button"
                     onClick={() => setActiveMobilePanel('variant')}
                     className={cn(
-                        'model-controls__variant-trigger flex items-center gap-1.5 transition-opacity min-w-0 focus:outline-none',
+                        'flex items-center gap-1.5 transition-opacity min-w-0 focus:outline-none',
                         buttonHeight,
-                        'cursor-pointer hover:bg-transparent hover:opacity-70',
+                        'cursor-pointer hover:opacity-70',
+                        isDefault ? 'text-muted-foreground' : 'text-primary'
                     )}
                 >
-                    <RiBrainAi3Line className={cn(controlIconSize, 'flex-shrink-0', colorClass)} />
+                    <RiBrainAi3Line className={cn(controlIconSize, 'flex-shrink-0')} />
                     <span className={cn(
-                        'model-controls__variant-label',
                         controlTextSize,
                         'font-medium truncate min-w-0',
                         isMobile && 'max-w-[60px]',
-                        colorClass
                     )}>
                         {displayVariant}
                     </span>
@@ -2581,18 +2612,17 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                         <DropdownMenuTrigger asChild>
                             <div
                                 className={cn(
-                                    'model-controls__variant-trigger flex items-center gap-1.5 transition-colors cursor-pointer hover:bg-transparent hover:opacity-70 min-w-0',
+                                    'flex items-center gap-1.5 cursor-pointer hover:opacity-70 min-w-0',
                                     buttonHeight,
+                                    isDefault ? 'text-muted-foreground' : 'text-primary'
                                 )}
                             >
-                                <RiBrainAi3Line className={cn(controlIconSize, 'flex-shrink-0', colorClass)} />
+                                <RiBrainAi3Line className={cn(controlIconSize, 'flex-shrink-0')} />
                                 <span
                                     className={cn(
-                                        'model-controls__variant-label',
                                         controlTextSize,
                                         'font-medium min-w-0 truncate',
                                         isDesktop ? 'max-w-[180px]' : undefined,
-                                        colorClass,
                                     )}
                                 >
                                     {displayVariant}
@@ -2631,6 +2661,141 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                     <p className="typography-meta">Thinking: {displayVariant}</p>
                 </TooltipContent>
             </Tooltip>
+        );
+    };
+
+    const renderThinkingLevelSelector = () => {
+        // 优先显示当前 pi 会话的 thinking level，如果没有会话则显示当前 agent 的默认 thinking
+        const currentLevel = currentSessionThinkingLevel
+            ?? currentAgent?.thinking
+            ?? 'off';
+        const isOff = currentLevel === 'off';
+
+        if (isCompact) {
+            return (
+                <button
+                    type="button"
+                    onClick={() => setActiveMobilePanel('thinking')}
+                    className={cn(
+                        'flex items-center gap-1.5 transition-opacity min-w-0 focus:outline-none',
+                        buttonHeight,
+                        'cursor-pointer hover:opacity-70',
+                        isOff ? 'text-muted-foreground' : 'text-primary'
+                    )}
+                >
+                    <RiLightbulbLine className={cn(controlIconSize, 'flex-shrink-0')} />
+                    <span className={cn(
+                        controlTextSize,
+                        'font-medium truncate min-w-0',
+                        isMobile && 'max-w-[60px]',
+                    )}>
+                        {currentLevel}
+                    </span>
+                </button>
+            );
+        }
+
+        return (
+            <Tooltip delayDuration={800}>
+                <DropdownMenu>
+                    <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                            <div
+                                className={cn(
+                                    'flex items-center gap-1.5 cursor-pointer hover:opacity-70 min-w-0',
+                                    buttonHeight,
+                                    isOff ? 'text-muted-foreground' : 'text-primary'
+                                )}
+                            >
+                                <RiLightbulbLine className={cn(controlIconSize, 'flex-shrink-0')} />
+                                <span
+                                    className={cn(
+                                        controlTextSize,
+                                        'font-medium min-w-0 truncate',
+                                        isDesktop ? 'max-w-[100px]' : undefined,
+                                    )}
+                                >
+                                    {currentLevel}
+                                </span>
+                            </div>
+                        </DropdownMenuTrigger>
+                    </TooltipTrigger>
+                    <DropdownMenuContent align="end" alignOffset={-40} className="w-[min(140px,calc(100vw-2rem))]">
+                        <DropdownMenuLabel className="typography-ui-header font-semibold text-foreground">Thinking Level</DropdownMenuLabel>
+                        {THINKING_LEVELS.map((level) => {
+                            const selected = currentLevel === level.value;
+                            return (
+                                <DropdownMenuItem
+                                    key={level.value}
+                                    className="typography-meta"
+                                    onSelect={() => handleThinkingLevelChange(level.value)}
+                                >
+                                    <div className="flex items-center justify-between gap-2 w-full min-w-0">
+                                        <span className="typography-meta font-medium text-foreground truncate min-w-0">{level.label}</span>
+                                        {selected && <RiCheckLine className="h-4 w-4 text-primary flex-shrink-0" />}
+                                    </div>
+                                </DropdownMenuItem>
+                            );
+                        })}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+                <TooltipContent side="top">
+                    <p className="typography-meta">Thinking level: {currentLevel}</p>
+                </TooltipContent>
+            </Tooltip>
+        );
+    };
+
+    const renderMobileThinkingPanel = () => {
+        if (!isCompact) return null;
+
+        // 优先显示当前 pi 会话的 thinking level，如果没有会话则显示当前 agent 的默认 thinking
+        const currentLevel = currentSessionThinkingLevel
+            ?? currentAgent?.thinking
+            ?? 'off';
+
+        const handleSelect = (level: typeof THINKING_LEVELS[number]['value']) => {
+            handleThinkingLevelChange(level);
+            closeMobilePanel();
+            if (onMobilePanelSelection) {
+                requestAnimationFrame(() => {
+                    onMobilePanelSelection();
+                });
+                return;
+            }
+            requestAnimationFrame(() => {
+                const textarea = document.querySelector<HTMLTextAreaElement>('textarea[data-chat-input="true"]');
+                textarea?.focus();
+            });
+        };
+
+        return (
+            <MobileOverlayPanel
+                open={activeMobilePanel === 'thinking'}
+                onClose={closeMobilePanel}
+                title="Thinking Level"
+            >
+                <div className="flex flex-col gap-1.5">
+                    {THINKING_LEVELS.map((level) => {
+                        const selected = currentLevel === level.value;
+                        return (
+                            <button
+                                key={level.value}
+                                type="button"
+                                className={cn(
+                                    'flex w-full items-center justify-between gap-2 rounded-xl border px-2 py-1.5 text-left',
+                                    'focus:outline-none focus-visible:ring-1 focus-visible:ring-primary',
+                                    selected ? 'border-primary/30 bg-primary/10' : 'border-border/40'
+                                )}
+                                onClick={() => handleSelect(level.value)}
+                            >
+                                <span className="typography-meta font-medium text-foreground">{level.label}</span>
+                                {selected && <RiCheckLine className="h-4 w-4 text-primary flex-shrink-0" />}
+                            </button>
+                        );
+                    })}
+                </div>
+            </MobileOverlayPanel>
         );
     };
 
@@ -2801,6 +2966,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                         isMobile && 'overflow-hidden'
                     )}
                 >
+                    {renderThinkingLevelSelector()}
                     {renderVariantSelector()}
                     {renderModelSelector()}
                     {renderAgentSelector()}
@@ -2809,6 +2975,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
 
             {renderMobileModelPanel()}
             {renderMobileVariantPanel()}
+            {renderMobileThinkingPanel()}
             {renderMobileAgentPanel()}
             {renderMobileModelTooltip()}
             {renderMobileAgentTooltip()}

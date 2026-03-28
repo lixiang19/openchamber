@@ -63,7 +63,7 @@ const DEFAULT_TOOL_ORDER = [
   'find',
   'ls',
   'question',
-  'subagent',
+  'task',
 ];
 
 const THINKING_OPTIONS: Array<{ value: string; label: string }> = [
@@ -208,7 +208,7 @@ const buildFormState = (params: {
       draftScope: agentDraft.scope || 'user',
       description: agentDraft.description || '',
       displayName: agentDraft.display_name || '',
-      mode: agentDraft.mode || 'subagent',
+      mode: agentDraft.mode || 'task',
       model: agentDraft.model || '',
       thinking: agentDraft.thinking,
       steps: agentDraft.steps,
@@ -230,7 +230,7 @@ const buildFormState = (params: {
     draftScope: 'user',
     description: selectedAgent.description || '',
     displayName: extended.displayName || '',
-    mode: selectedAgent.mode || 'subagent',
+    mode: selectedAgent.mode || 'task',
     model: selectedAgent.model?.providerID && selectedAgent.model?.modelID
       ? `${selectedAgent.model.providerID}/${selectedAgent.model.modelID}`
       : '',
@@ -323,7 +323,7 @@ export const AgentsPage: React.FC = () => {
   const [draftScope, setDraftScope] = React.useState<AgentScope>('user');
   const [description, setDescription] = React.useState('');
   const [displayName, setDisplayName] = React.useState('');
-  const [mode, setMode] = React.useState<NonNullable<AgentConfig['mode']>>('subagent');
+  const [mode, setMode] = React.useState<NonNullable<AgentConfig['mode']>>('task');
   const [model, setModel] = React.useState('');
   const [thinking, setThinking] = React.useState<ThinkingLevel | undefined>(undefined);
   const [steps, setSteps] = React.useState<number | undefined>(undefined);
@@ -579,12 +579,12 @@ export const AgentsPage: React.FC = () => {
                       <RiInformationLine className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent sideOffset={8} className="max-w-xs">
-                      Controls whether the agent is selectable as a main agent, callable as a subagent, or both.
+                      Controls whether the agent is selectable as a main agent, callable as a task agent, or both.
                     </TooltipContent>
                   </Tooltip>
                 </div>
                 <div className="flex flex-wrap items-center gap-1">
-                  {(['primary', 'subagent', 'all'] as const).map((candidateMode) => (
+                  {(['primary', 'task', 'all'] as const).map((candidateMode) => (
                     <Button
                       key={candidateMode}
                       variant="outline"
@@ -597,7 +597,7 @@ export const AgentsPage: React.FC = () => {
                           : 'text-foreground'
                       )}
                     >
-                      {candidateMode === 'primary' ? 'Primary' : candidateMode === 'subagent' ? 'Subagent' : 'All'}
+                      {candidateMode === 'primary' ? 'Primary' : candidateMode === 'task' ? 'Task' : 'All'}
                     </Button>
                   ))}
                 </div>

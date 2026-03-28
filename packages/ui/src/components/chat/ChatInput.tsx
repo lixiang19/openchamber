@@ -7,7 +7,6 @@ import {
     RiCloseLine,
     RiCommandLine,
     RiExternalLinkLine,
-    RiFolderLine,
     RiFullscreenLine,
     RiGitPullRequestLine,
     RiShieldCheckLine,
@@ -37,12 +36,10 @@ import { parseAgentMentions } from '@/lib/messages/agentMentions';
 import { StatusRow } from './StatusRow';
 import { MobileAgentButton } from './MobileAgentButton';
 import { MobileModelButton } from './MobileModelButton';
-import { MobileSessionStatusBar } from './MobileSessionStatusBar';
 import { useAssistantStatus } from '@/hooks/useAssistantStatus';
 import { useCurrentSessionActivity } from '@/hooks/useSessionActivity';
 import { toast } from '@/components/ui';
 import { useFileStore } from '@/stores/fileStore';
-import { useMessageStore } from '@/stores/messageStore';
 import { isTauriShell, isVSCodeRuntime } from '@/lib/desktop';
 import { isIMECompositionEvent } from '@/lib/ime';
 import { StopIcon } from '@/components/icons/StopIcon';
@@ -54,7 +51,6 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
 import { GitHubIssuePickerDialog } from '@/components/session/GitHubIssuePickerDialog';
 import { GitHubPrPickerDialog } from '@/components/session/GitHubPrPickerDialog';
@@ -65,7 +61,6 @@ import {
     hasChatInputFileReferenceType,
 } from '@/lib/chatInputDragDrop';
 import { useProjectsStore } from '@/stores/useProjectsStore';
-import { PROJECT_COLOR_MAP, PROJECT_ICON_MAP, getProjectIconImageUrl } from '@/lib/projectMeta';
 import { useGitBranches, useGitStore } from '@/stores/useGitStore';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { usePermissionStore } from '@/stores/permissionStore';
@@ -101,21 +96,6 @@ const normalizePath = (value?: string | null): string | null => {
         return '/';
     }
     return normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized;
-};
-
-const getProjectDisplayLabel = (project: { label?: string; path: string }): string => {
-    const label = project.label?.trim();
-    if (label) {
-        return label;
-    }
-    return formatDirectoryName(project.path);
-};
-
-const getProjectIconColor = (projectColor?: string | null): string | undefined => {
-    if (!projectColor) {
-        return undefined;
-    }
-    return PROJECT_COLOR_MAP[projectColor] ?? undefined;
 };
 
 const appendWithLineBreaks = (base: string, next: string): string => {
@@ -197,7 +177,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
     const [mentionQuery, setMentionQuery] = React.useState('');
     const [showCommandAutocomplete, setShowCommandAutocomplete] = React.useState(false);
     const [commandQuery, setCommandQuery] = React.useState('');
-    const [autocompleteTab, setAutocompleteTab] = React.useState<'commands' | 'agents' | 'files'>('commands');
+    const [autocompleteTab, setAutocompleteTab] = React.useState<'prompts' | 'agents' | 'files'>('prompts');
+    const preferredMentionTabRef = React.useRef<'agents' | 'files' | null>(null);
     const [showSkillAutocomplete, setShowSkillAutocomplete] = React.useState(false);
     const [skillQuery, setSkillQuery] = React.useState('');
     const [textareaSize, setTextareaSize] = React.useState<{ height: number; maxHeight: number } | null>(null);
@@ -241,12 +222,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
     const currentManagementSessionId = useSessionManagementStore((state) => state.currentSessionId);
     const projects = useProjectsStore((state) => state.projects);
     const activeProjectId = useProjectsStore((state) => state.activeProjectId);
-    const setActiveProjectIdOnly = useProjectsStore((state) => state.setActiveProjectIdOnly);
 
     const { currentProviderId, currentModelId, currentVariant, currentAgentName, setAgent, getVisibleAgents } = useConfigStore();
     const agents = getVisibleAgents();
     const primaryAgents = React.useMemo(() => agents.filter((agent) => agent.mode === 'primary'), [agents]);
-    const { isMobile, inputBarOffset, isKeyboardOpen, setTimelineDialogOpen, cornerRadius, persistChatDraft, inputSpellcheckEnabled, isExpandedInput, setExpandedInput } = useUIStore();
+    const { isMobile, inputBarOffset, isKeyboardOpen, setTimelineDialogOpen, persistChatDraft, inputSpellcheckEnabled, isExpandedInput, setExpandedInput } = useUIStore();
     const { working } = useAssistantStatus();
     const { git: runtimeGit } = useRuntimeAPIs();
     const { currentTheme } = useThemeSystem();
@@ -1418,6 +1398,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
 
     const updateAutocompleteState = React.useCallback((value: string, cursorPosition: number) => {
         if (inputMode === 'shell') {
+            preferredMentionTabRef.current = null;
             setShowCommandAutocomplete(false);
             setShowFileMention(false);
             setShowSkillAutocomplete(false);
@@ -1435,7 +1416,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
             if (cursorPosition <= commandEnd && firstSpace === -1) {
                 const commandText = value.substring(1, commandEnd);
                 setCommandQuery(commandText);
-                setAutocompleteTab('commands');
+                setAutocompleteTab('prompts');
+                preferredMentionTabRef.current = null;
                 setShowCommandAutocomplete(true);
                 setShowFileMention(false);
                 setShowSkillAutocomplete(false);
@@ -1456,6 +1438,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
 
             if (isWordBoundary && !hasSeparator) {
                 setSkillQuery(textAfterSlash);
+                preferredMentionTabRef.current = null;
                 setShowSkillAutocomplete(true);
                 setShowFileMention(false);
                 return;
@@ -1472,12 +1455,14 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
             const isWordBoundary = !charBefore || /\s/.test(charBefore);
             if (isWordBoundary && !textAfterAt.includes(' ') && !textAfterAt.includes('\n')) {
                 setMentionQuery(textAfterAt);
-                setAutocompleteTab('agents');
+                setAutocompleteTab(preferredMentionTabRef.current ?? 'agents');
                 setShowFileMention(true);
             } else {
+                preferredMentionTabRef.current = null;
                 setShowFileMention(false);
             }
         } else {
+            preferredMentionTabRef.current = null;
             setShowFileMention(false);
         }
     }, [inputMode, setAutocompleteTab, setCommandQuery, setMentionQuery, setShowCommandAutocomplete, setShowFileMention, setShowSkillAutocomplete, setSkillQuery]);
@@ -1500,7 +1485,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
         });
     }, [adjustTextareaHeight, message, setMessage, updateAutocompleteState]);
 
-    const handleAutocompleteTabSelect = React.useCallback((tab: 'commands' | 'agents' | 'files') => {
+    const handleAutocompleteTabSelect = React.useCallback((tab: 'prompts' | 'agents' | 'files') => {
         const textarea = textareaRef.current;
         if (isMobile && textarea) {
             try {
@@ -1518,17 +1503,20 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
         setAutocompleteTab(tab);
         setCommandQuery('');
         setMentionQuery('');
-        if (tab === 'commands') {
+        if (tab === 'prompts') {
+            preferredMentionTabRef.current = null;
             applyAutocompletePrefix('/');
         }
         if (tab === 'agents') {
+            preferredMentionTabRef.current = 'agents';
             applyAutocompletePrefix('@');
         }
         if (tab === 'files') {
+            preferredMentionTabRef.current = 'files';
             applyAutocompletePrefix('@');
         }
         setShowSkillAutocomplete(false);
-        setShowCommandAutocomplete(tab === 'commands');
+        setShowCommandAutocomplete(tab === 'prompts');
         setShowFileMention(tab === 'agents' || tab === 'files');
     }, [applyAutocompletePrefix, isMobile, setAutocompleteTab, setCommandQuery, setMentionQuery, setShowCommandAutocomplete, setShowFileMention, setShowSkillAutocomplete]);
 
@@ -1552,7 +1540,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
         }
         applyAutocompletePrefix('/');
         setCommandQuery('');
-        setAutocompleteTab('commands');
+        setAutocompleteTab('prompts');
         setShowCommandAutocomplete(true);
         setShowFileMention(false);
         setShowSkillAutocomplete(false);
@@ -2353,7 +2341,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
 
     const selectedDraftProjectBranches = useGitBranches(selectedDraftProjectPath);
     const fetchBranches = useGitStore((state) => state.fetchBranches);
-    const [isDiscoveringDraftBranches, setIsDiscoveringDraftBranches] = React.useState(false);
+    const [, setIsDiscoveringDraftBranches] = React.useState(false);
 
     React.useEffect(() => {
         if (!showDraftTargetSelectors || !selectedDraftProjectPath || !selectedDraftProject || !runtimeGit) {
@@ -2458,96 +2446,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
             { value: selectedDraftDirectory, label: formatDirectoryName(selectedDraftDirectory) },
         ];
     }, [projectRootBranchOption, selectedDraftDirectory, worktreeBranchOptions]);
-
-    const selectedDraftBranchLabel = React.useMemo(() => {
-        const selectedValue = selectedDraftDirectory ?? draftBranchItems[0]?.value ?? null;
-        if (!selectedValue) {
-            return null;
-        }
-        return draftBranchItems.find((item) => item.value === selectedValue)?.label ?? formatDirectoryName(selectedValue);
-    }, [draftBranchItems, selectedDraftDirectory]);
-
-    const selectedDraftBranchIsKnown = React.useMemo(() => {
-        if (!selectedDraftDirectory) {
-            return true;
-        }
-        if (projectRootBranchOption?.value === selectedDraftDirectory) {
-            return true;
-        }
-        return worktreeBranchOptions.some((option) => option.value === selectedDraftDirectory);
-    }, [projectRootBranchOption?.value, selectedDraftDirectory, worktreeBranchOptions]);
-
-    const shouldShowDraftBranchSelector = React.useMemo(() => {
-        if (isDiscoveringDraftBranches) {
-            return false;
-        }
-        if (projectRootBranchOption) {
-            return true;
-        }
-        return worktreeBranchOptions.length > 0;
-    }, [isDiscoveringDraftBranches, projectRootBranchOption, worktreeBranchOptions.length]);
-
-    const handleDraftProjectChange = React.useCallback((projectId: string) => {
-        const project = projects.find((entry) => entry.id === projectId);
-        if (!project) {
-            return;
-        }
-        if (activeProjectId !== projectId) {
-            setActiveProjectIdOnly(projectId);
-        }
-        setNewSessionDraftTarget({
-            projectId,
-            directoryOverride: project.path,
-        });
-    }, [activeProjectId, projects, setActiveProjectIdOnly, setNewSessionDraftTarget]);
-
-    const handleDraftDirectoryChange = React.useCallback((directory: string) => {
-        if (!selectedDraftProject) {
-            return;
-        }
-        setNewSessionDraftTarget({
-            projectId: selectedDraftProject.id,
-            directoryOverride: directory,
-        });
-    }, [selectedDraftProject, setNewSessionDraftTarget]);
-
-    const renderProjectLabelWithIcon = React.useCallback((project: {
-        id: string;
-        path: string;
-        label?: string;
-        icon?: string | null;
-        color?: string | null;
-        iconImage?: { mime: string; updatedAt: number; source: 'custom' | 'auto' } | null;
-        iconBackground?: string | null;
-    }) => {
-        const imageUrl = getProjectIconImageUrl(
-            { id: project.id, iconImage: project.iconImage ?? null },
-            {
-                themeVariant: currentTheme.metadata.variant,
-                iconColor: currentTheme.colors.surface.foreground,
-            },
-        );
-        const ProjectIcon = project.icon ? PROJECT_ICON_MAP[project.icon] : null;
-        const iconColor = getProjectIconColor(project.color);
-
-        return (
-            <span className="inline-flex min-w-0 items-center gap-1.5">
-                {imageUrl ? (
-                    <span
-                        className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center overflow-hidden rounded-[3px]"
-                        style={project.iconBackground ? { backgroundColor: project.iconBackground } : undefined}
-                    >
-                        <img src={imageUrl} alt="" className="h-full w-full object-contain" draggable={false} />
-                    </span>
-                ) : ProjectIcon ? (
-                    <ProjectIcon className="h-3.5 w-3.5 shrink-0" style={iconColor ? { color: iconColor } : undefined} />
-                ) : (
-                    <RiFolderLine className="h-3.5 w-3.5 shrink-0 text-muted-foreground/80" style={iconColor ? { color: iconColor } : undefined} />
-                )}
-                <span className="truncate">{getProjectDisplayLabel(project)}</span>
-            </span>
-        );
-    }, [currentTheme.colors.surface.foreground, currentTheme.metadata.variant]);
 
     React.useEffect(() => {
         if (!showDraftTargetSelectors || !selectedDraftProject || !selectedDraftDirectory) {
@@ -2812,8 +2710,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                         }
                     }}
                     onClick={handleOpenCommandMenu}
-                    title="Commands"
-                    aria-label="Commands"
+                    title="Prompts"
+                    aria-label="Prompts"
                 >
                     <RiCommandLine className={cn(iconSizeClass)} />
                 </button>
@@ -3002,74 +2900,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                     showAssistantStatus={false}
                     showTodos
                 />
-                {showDraftTargetSelectors && selectedDraftProject ? (
-                    <div className="mb-1.5 flex min-w-0 items-center gap-1.5 px-0.5">
-                        <Select
-                            value={selectedDraftProject.id}
-                            onValueChange={handleDraftProjectChange}
-                        >
-                            <SelectTrigger
-                                size="sm"
-                                className="h-7 min-w-0 w-fit max-w-[42vw] sm:max-w-[18rem] border-transparent bg-transparent px-1.5 hover:bg-transparent data-[state=open]:bg-transparent"
-                            >
-                                <SelectValue>
-                                    {renderProjectLabelWithIcon(selectedDraftProject)}
-                                </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent fitContent>
-                                {projects.map((project) => (
-                                    <SelectItem key={project.id} value={project.id} className="max-w-[24rem] truncate">
-                                        {renderProjectLabelWithIcon(project)}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-
-                        {shouldShowDraftBranchSelector ? (
-                            <Select
-                                value={selectedDraftDirectory ?? draftBranchItems[0]?.value ?? normalizePath(selectedDraftProject.path) ?? ''}
-                                onValueChange={handleDraftDirectoryChange}
-                            >
-                                <SelectTrigger
-                                    size="sm"
-                                    className="h-7 min-w-0 w-fit max-w-[48vw] sm:max-w-[20rem] border-transparent bg-transparent px-1.5 hover:bg-transparent data-[state=open]:bg-transparent"
-                                >
-                                    <SelectValue>
-                                        {selectedDraftBranchLabel ?? 'Branch'}
-                                    </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent fitContent>
-                                    {projectRootBranchOption ? (
-                                        <SelectGroup>
-                                            <SelectLabel>Project root</SelectLabel>
-                                            <SelectItem key={projectRootBranchOption.value} value={projectRootBranchOption.value} className="max-w-[24rem] truncate">
-                                                {projectRootBranchOption.label}
-                                            </SelectItem>
-                                        </SelectGroup>
-                                    ) : null}
-                                    {worktreeBranchOptions.length > 0 ? (
-                                        <>
-                                            {projectRootBranchOption ? <SelectSeparator /> : null}
-                                            <SelectGroup>
-                                                <SelectLabel>Worktrees</SelectLabel>
-                                                {worktreeBranchOptions.map((option) => (
-                                                    <SelectItem key={option.value} value={option.value} className="max-w-[24rem] truncate">
-                                                        {option.label}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectGroup>
-                                        </>
-                                    ) : null}
-                                    {selectedDraftDirectory && !selectedDraftBranchIsKnown ? (
-                                        <SelectItem value={selectedDraftDirectory} className="max-w-[24rem] truncate">
-                                            {selectedDraftBranchLabel}
-                                        </SelectItem>
-                                    ) : null}
-                                </SelectContent>
-                            </Select>
-                        ) : null}
-                    </div>
-                ) : null}
                 <div
                     className={cn(
                         "flex flex-col relative overflow-visible",
@@ -3228,7 +3058,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                             placeholder={currentSessionId || newSessionDraftOpen
                                 ? inputMode === 'shell'
                                     ? "Enter shell command..."
-                                    : "@ for files/agents; / for commands; ! for shell"
+                                    : "@ for files/agents; / for prompts; ! for shell"
                                 : "Select or create a session to start chatting"}
                             disabled={!currentSessionId && !newSessionDraftOpen}
                             autoCorrect={isMobile ? "on" : "off"}
@@ -3349,8 +3179,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                         )}
                     </div>
 
-                    {/* Mobile Session Status Bar - above input */}
-                    {isMobile && <MobileSessionStatusBar cornerRadius={cornerRadius} />}
                 </div>
             </div>
         </form>

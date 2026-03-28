@@ -822,6 +822,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
     normalizedProjects,
     normalizePath,
     gitDirectories,
+    projectRepoStatus,
     setProjectRepoStatus,
     setProjectRootBranches,
   });
@@ -1387,6 +1388,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
         onOpenAbout={() => setAboutDialogOpen(true)}
         onOpenUpdate={handleOpenUpdateDialog}
         showUpdateButton={showSidebarUpdateButton}
+        versionLabel="0.2"
       />
 
       <UpdateDialog

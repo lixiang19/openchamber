@@ -102,13 +102,15 @@ export const TOOL_METADATA: Record<string, ToolMetadata> = {
   },
 
   task: {
-    displayName: 'Agent Task',
+    displayName: 'Task',
     category: 'ai',
     outputLanguage: 'markdown',
     inputFields: [
-      { key: 'description', label: 'Task', type: 'text' },
-      { key: 'prompt', label: 'Instructions', type: 'text' },
-      { key: 'subagent_type', label: 'Agent Type', type: 'text' }
+      { key: 'agent', label: 'Agent', type: 'text' },
+      { key: 'task', label: 'Task', type: 'text' },
+      { key: 'tasks', label: 'Tasks', type: 'code', language: 'json' },
+      { key: 'chain', label: 'Chain', type: 'code', language: 'json' },
+      { key: 'cwd', label: 'Directory', type: 'file' }
     ]
   },
 
@@ -695,8 +697,10 @@ export function formatToolInput(input: Record<string, unknown>, toolName: string
   }
 
   if (toolName === 'task') {
-    const prompt = getString('prompt');
-    if (prompt) return prompt;
+    const task = getString('task');
+    if (task) return task;
+    const agent = getString('agent');
+    if (agent) return `Agent: ${agent}`;
     const desc = getString('description');
     if (desc) return desc;
   }

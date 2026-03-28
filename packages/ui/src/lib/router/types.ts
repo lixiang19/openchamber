@@ -40,7 +40,7 @@ export const VALID_PAGES: readonly AppPage[] = ['workspace', 'inbox'] as const;
 export const VALID_SETTINGS_SECTIONS: readonly SidebarSection[] = [
   'settings',
   'agents',
-  'commands',
+  'prompts',
   'skills',
   'providers',
   'usage',

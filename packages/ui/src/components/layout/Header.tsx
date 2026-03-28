@@ -65,7 +65,6 @@ import { desktopHostsGet, locationMatchesHost, redactSensitiveUrl } from '@/lib/
 import { resolveSessionDiffStats } from '@/components/session/sidebar/utils';
 import { WeChatSessionDialog } from '@/components/chat/WeChatSessionDialog';
 
-
 const isSameContextUsage = (
   a: SessionContextUsage | null,
   b: SessionContextUsage | null,
@@ -1624,14 +1623,6 @@ export const Header: React.FC<HeaderProps> = ({
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
-      {currentSession ? (
-        <WeChatSessionDialog
-          sessionId={currentSession.id}
-          sessionTitle={currentSession.title?.trim() || 'Untitled session'}
-          sessionCwd={currentSession.path}
-          triggerClassName="mr-1"
-        />
-      ) : null}
       <Tooltip delayDuration={500}>
         <TooltipTrigger asChild>
           <button
@@ -1758,6 +1749,14 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex-1" />
 
         <div className="flex shrink-0 items-center gap-1">
+          {currentSession ? (
+            <WeChatSessionDialog
+              sessionId={currentSession.id}
+              sessionTitle={currentSession.title?.trim() || 'Untitled session'}
+              sessionCwd={currentSession.path}
+              triggerClassName="mr-1"
+            />
+          ) : null}
           {showDesktopHeaderContextUsage && stableDesktopContextUsage ? (
             <ContextUsageDisplay
               totalTokens={stableDesktopContextUsage.totalTokens}
@@ -1899,6 +1898,18 @@ export const Header: React.FC<HeaderProps> = ({
                 className="h-9"
               />
             )}
+
+            {currentSession ? (
+              <WeChatSessionDialog
+                sessionId={currentSession.id}
+                sessionTitle={currentSession.title?.trim() || 'Untitled session'}
+                sessionCwd={currentSession.path}
+                triggerVariant="ghost"
+                triggerSize="icon"
+                showTriggerLabel={false}
+                triggerClassName={mobileHeaderIconButtonClass}
+              />
+            ) : null}
 
             {/* Mobile Services Menu (Usage + MCP) */}
             <DropdownMenu

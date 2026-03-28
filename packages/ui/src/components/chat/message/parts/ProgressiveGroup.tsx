@@ -655,7 +655,11 @@ const ProgressiveGroup: React.FC<ProgressiveGroupProps> = ({
         if (!shouldRenderRows) {
             return [] as AggregatedRow[];
         }
-        return aggregateRows(sortedParts);
+        const result = aggregateRows(sortedParts);
+        // DEBUG: Log rows
+        console.log('[DEBUG ProgressiveGroup] rows count:', result.length, 
+            'types:', result.map(r => r.type === 'tool-static-group' ? `static(${r.toolName})` : r.type).join(', '));
+        return result;
     }, [shouldRenderRows, sortedParts]);
 
     const previewHiddenCount = React.useMemo(() => {

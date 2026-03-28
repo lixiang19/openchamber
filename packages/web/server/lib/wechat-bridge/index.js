@@ -352,7 +352,7 @@ export const createWechatBridgeService = ({ piHost, defaultCwd = process.cwd() }
 
     let resolvedCwd = normalizeNullableString(cwd);
     if (piHost) {
-      const session = piHost.getSession(normalizedSessionId);
+      const session = await piHost.getSession(normalizedSessionId);
       resolvedCwd = normalizeNullableString(session?.cwd) || resolvedCwd;
     }
 
@@ -381,7 +381,7 @@ export const createWechatBridgeService = ({ piHost, defaultCwd = process.cwd() }
     let normalizedCwd = normalizeNullableString(cwd);
 
     if (normalizedSessionId && piHost) {
-      const session = piHost.getSession(normalizedSessionId);
+      const session = await piHost.getSession(normalizedSessionId);
       normalizedCwd = normalizeNullableString(session?.cwd) || normalizedCwd;
     }
 
@@ -410,7 +410,7 @@ export const createWechatBridgeService = ({ piHost, defaultCwd = process.cwd() }
     const existingBinding = getBinding(userId);
     if (existingBinding) {
       try {
-        piHost.getSession(existingBinding.sessionId);
+        await piHost.getSession(existingBinding.sessionId);
         return existingBinding;
       } catch {
       }
@@ -419,7 +419,7 @@ export const createWechatBridgeService = ({ piHost, defaultCwd = process.cwd() }
     const defaultSessionId = normalizeString(state.defaultSessionId);
     if (defaultSessionId) {
       try {
-        const targetSession = piHost.getSession(defaultSessionId);
+        const targetSession = await piHost.getSession(defaultSessionId);
         await bindWechatUser({
           userId,
           sessionId: targetSession.id,
@@ -482,7 +482,7 @@ export const createWechatBridgeService = ({ piHost, defaultCwd = process.cwd() }
             text: promptPayload.text,
             ...(Array.isArray(promptPayload.images) && promptPayload.images.length > 0 ? { images: promptPayload.images } : {}),
           });
-          const sessionSnapshot = piHost.getSession(binding.sessionId);
+          const sessionSnapshot = await piHost.getSession(binding.sessionId);
           const { text: replyText, mediaPaths } = extractLatestAssistantReply(sessionSnapshot);
           const finalReplyText = replyText || 'Done.';
 

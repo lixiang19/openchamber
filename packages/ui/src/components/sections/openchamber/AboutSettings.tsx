@@ -1,13 +1,11 @@
 import React from 'react';
-import { RiDiscordFill, RiDownloadLine, RiGithubFill, RiLoaderLine, RiTwitterXFill } from '@remixicon/react';
+import { RiDownloadLine, RiLoaderLine } from '@remixicon/react';
 import { useUpdateStore } from '@/stores/useUpdateStore';
 import { UpdateDialog } from '@/components/ui/UpdateDialog';
 import { useDeviceInfo } from '@/lib/device';
 import { toast } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-
-const GITHUB_URL = 'https://github.com/btriapitsyn/openchamber';
 
 const MIN_CHECKING_DURATION = 800; // ms
 
@@ -19,10 +17,8 @@ export const AboutSettings: React.FC = () => {
 
   const currentVersion = updateStore.info?.currentVersion || 'unknown';
 
-  // Track if we initiated a check to show toast on completion
   const didInitiateCheck = React.useRef(false);
 
-  // Ensure minimum visible duration for checking animation
   React.useEffect(() => {
     if (updateStore.checking) {
       setShowChecking(true);
@@ -30,7 +26,6 @@ export const AboutSettings: React.FC = () => {
     } else if (showChecking) {
       const timer = setTimeout(() => {
         setShowChecking(false);
-        // Show toast if check completed with no update available
         if (didInitiateCheck.current && !updateStore.available && !updateStore.error) {
           toast.success('You are on the latest version');
           didInitiateCheck.current = false;
@@ -42,11 +37,9 @@ export const AboutSettings: React.FC = () => {
 
   const isChecking = updateStore.checking || showChecking;
 
-  // Compact mobile layout for sidebar footer
   if (isMobile) {
     return (
       <div className="w-full space-y-2">
-        {/* Version row with update status */}
         <div className="flex items-center justify-between">
           <span className="typography-meta text-muted-foreground">
             v{currentVersion}
@@ -80,39 +73,6 @@ export const AboutSettings: React.FC = () => {
           <p className="typography-micro text-[var(--status-error)] truncate">{updateStore.error}</p>
         )}
 
-        {/* Links row */}
-        <div className="flex items-center gap-3">
-          <a
-            href={GITHUB_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 typography-meta text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <RiGithubFill className="h-3.5 w-3.5" />
-            <span>GitHub</span>
-          </a>
-
-          <a
-            href="https://discord.gg/ZYRSdnwwKA"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 typography-meta text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <RiDiscordFill className="h-3.5 w-3.5" />
-            <span>Discord</span>
-          </a>
-
-          <a
-            href="https://x.com/btriapitsyn"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 typography-meta text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <RiTwitterXFill className="h-3.5 w-3.5" />
-            <span>@btriapitsyn</span>
-          </a>
-        </div>
-
         <UpdateDialog
           open={updateDialogOpen}
           onOpenChange={setUpdateDialogOpen}
@@ -129,18 +89,16 @@ export const AboutSettings: React.FC = () => {
     );
   }
 
-
-  // Desktop layout (redesigned)
   return (
     <div className="mb-8">
       <div className="mb-3 px-1">
         <h3 className="typography-ui-header font-semibold text-foreground">
-          About OpenChamber
+          About ridge
         </h3>
       </div>
 
       <div className="rounded-lg bg-[var(--surface-elevated)]/70 overflow-hidden flex flex-col">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-4 py-3 border-b border-[var(--surface-subtle)]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-4 py-3">
           <div className="flex min-w-0 flex-col">
             <span className="typography-ui-label text-foreground">Version</span>
             <span className="typography-meta text-muted-foreground font-mono">{currentVersion}</span>
@@ -179,32 +137,10 @@ export const AboutSettings: React.FC = () => {
         </div>
         
         {updateStore.error && (
-          <div className="px-3 py-2 border-b border-[var(--surface-subtle)]">
+          <div className="px-3 py-2 border-t border-[var(--surface-subtle)]">
             <p className="typography-meta text-[var(--status-error)]">{updateStore.error}</p>
           </div>
         )}
-
-        <div className="flex items-center gap-4 px-4 py-4">
-          <a
-            href={GITHUB_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground typography-meta transition-colors"
-          >
-            <RiGithubFill className="h-4 w-4" />
-            <span>GitHub</span>
-          </a>
-
-          <a
-            href="https://x.com/btriapitsyn"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground typography-meta transition-colors"
-          >
-            <RiTwitterXFill className="h-4 w-4" />
-            <span>@btriapitsyn</span>
-          </a>
-        </div>
       </div>
 
       <UpdateDialog

@@ -4,7 +4,7 @@ import { getAgentDir, parseFrontmatter } from '@mariozechner/pi-coding-agent';
 
 import { normalizeAgentPermission } from './permissions.js';
 
-const AGENT_MODES = new Set(['primary', 'subagent', 'all']);
+const AGENT_MODES = new Set(['primary', 'task', 'all']);
 const THINKING_LEVELS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
 
 const normalizeString = (value) => {
@@ -157,7 +157,7 @@ const loadAgentsFromDir = async (dirPath, sourceScope) => {
  * @param {{ userAgentsDir?: string, projectAgentsDir?: string | null }} [options]
  * @returns {Promise<Array<{
  *   name: string,
- *   mode: 'primary'|'subagent'|'all',
+ *   mode: 'primary'|'task'|'all',
  *   description: string,
  *   displayName?: string,
  *   systemPrompt: string,

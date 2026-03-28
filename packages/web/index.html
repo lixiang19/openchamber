@@ -202,6 +202,8 @@
 
       let activeManifestBlobUrl = null;
       let manifestRequestVersion = 0;
+      let manifestDebounceTimer = null;
+      let pendingManifestOverride = null;
 
       const setManifestFromBlob = (manifest) => {
         if (activeManifestBlobUrl) {
@@ -254,7 +256,7 @@
         }
       };
 
-      const updateManifest = async (installNameOverride = null) => {
+      const executeManifestUpdate = async (installNameOverride = null) => {
         const resolvedFallbackName = typeof installNameOverride === 'string' ? installNameOverride : getStoredInstallName();
         const recentSessions = parseRecentSessionShortcuts();
         const manifest = buildManifest(resolvedFallbackName, recentSessions);
@@ -274,12 +276,27 @@
         setManifestFromBlob(manifest);
       };
 
+      const updateManifest = (installNameOverride = null) => {
+        pendingManifestOverride = installNameOverride;
+
+        if (manifestDebounceTimer) {
+          clearTimeout(manifestDebounceTimer);
+        }
+
+        manifestDebounceTimer = setTimeout(() => {
+          manifestDebounceTimer = null;
+          const override = pendingManifestOverride;
+          pendingManifestOverride = null;
+          void executeManifestUpdate(override);
+        }, 300);
+      };
+
       const refreshManifestFromStorage = () => {
-        void updateManifest();
+        updateManifest();
       };
 
       const initialInstallNameOverride = getQueryInstallNameOverride();
-      void updateManifest(initialInstallNameOverride);
+      void executeManifestUpdate(initialInstallNameOverride);
 
       window.__RIDGE_GET_PWA_INSTALL_NAME__ = () => getStoredInstallName();
       window.__RIDGE_SET_PWA_INSTALL_NAME__ = (value) => {

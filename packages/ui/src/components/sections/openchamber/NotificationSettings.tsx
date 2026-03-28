@@ -638,8 +638,8 @@ export const NotificationSettings: React.FC = () => {
                     }
                   }}
                 >
-                  <Checkbox checked={notifyOnSubtasks} onChange={setNotifyOnSubtasks} ariaLabel="Subagent completion" />
-                  <span className="typography-ui-label text-foreground">Subagent Completion</span>
+                  <Checkbox checked={notifyOnSubtasks} onChange={setNotifyOnSubtasks} ariaLabel="Task completion" />
+                  <span className="typography-ui-label text-foreground">Task Completion</span>
                 </div>
 
                 <div
@@ -693,7 +693,7 @@ export const NotificationSettings: React.FC = () => {
                 {(['completion', 'subtask', 'error', 'question'] as const).map((event) => (
                   <section key={event} className="p-2">
                     <span className="typography-ui-label text-foreground font-normal capitalize block">
-                      {event === 'subtask' ? 'Subagent Completion' : event}
+                      {event === 'subtask' ? 'Task Completion' : event}
                     </span>
                     <div className="mt-1.5 space-y-2">
                       <div>

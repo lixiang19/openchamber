@@ -264,6 +264,35 @@ const normalizeDirectoryPath = (value) => {
   return trimmed;
 };
 
+const resolveGitRepositoryRoot = async (directory) => {
+  const directoryPath = normalizeDirectoryPath(directory);
+  if (!directoryPath || !fs.existsSync(directoryPath)) {
+    return null;
+  }
+
+  const result = await runGitCommand(directoryPath, ['rev-parse', '--show-toplevel']);
+  if (!result.success) {
+    return null;
+  }
+
+  const resolvedRoot = String(result.stdout || '').trim();
+  if (!resolvedRoot) {
+    return null;
+  }
+
+  return path.resolve(directoryPath, resolvedRoot);
+};
+
+const resolveGitAbsolutePath = async (directory, filePath) => {
+  const directoryPath = normalizeDirectoryPath(directory);
+  const repositoryRoot = await resolveGitRepositoryRoot(directoryPath);
+  const basePath = repositoryRoot || directoryPath;
+  if (!basePath) {
+    return null;
+  }
+  return path.resolve(basePath, filePath);
+};
+
 const cleanBranchName = (branch) => {
   if (!branch) {
     return branch;
@@ -980,13 +1009,7 @@ const applyUpstreamConfiguration = async (args) => {
 };
 
 export async function isGitRepository(directory) {
-  const directoryPath = normalizeDirectoryPath(directory);
-  if (!directoryPath || !fs.existsSync(directoryPath)) {
-    return false;
-  }
-
-  const gitDir = path.join(directoryPath, '.git');
-  return fs.existsSync(gitDir);
+  return Boolean(await resolveGitRepositoryRoot(directory));
 }
 
 export async function getGlobalIdentity() {
@@ -1105,6 +1128,8 @@ export async function setLocalIdentity(directory, profile) {
 export async function getStatus(directory) {
   const directoryPath = normalizeDirectoryPath(directory);
   const git = await createGit(directoryPath);
+  const repositoryRoot = await resolveGitRepositoryRoot(directoryPath);
+  const workingTreeRoot = repositoryRoot || directoryPath;
 
   try {
     // Use -uall to show all untracked files individually, not just directories
@@ -1164,7 +1189,7 @@ export async function getStatus(directory) {
           return null;
         }
 
-        const absolutePath = path.join(directoryPath, file.path);
+        const absolutePath = path.resolve(workingTreeRoot, file.path);
 
         try {
           const stat = await fsp.stat(absolutePath);
@@ -1540,13 +1565,13 @@ export async function getFileDiff(directory, { path: filePath, staged = false } 
   }
 
   const directoryPath = normalizeDirectoryPath(directory);
+  const absolutePath = await resolveGitAbsolutePath(directoryPath, filePath);
   const git = await createGit(directoryPath);
   const isImage = isImageFile(filePath);
   const mimeType = isImage ? getImageMimeType(filePath) : null;
 
   if (!isImage) {
-    const absolutePath = path.join(directoryPath, filePath);
-    const isBinaryBySniff = await looksBinaryBySniff(absolutePath);
+    const isBinaryBySniff = absolutePath ? await looksBinaryBySniff(absolutePath) : false;
     const isBinary = isBinaryBySniff || (await isBinaryDiff(directoryPath, filePath, staged));
     if (isBinary) {
       return {
@@ -1582,17 +1607,20 @@ export async function getFileDiff(directory, { path: filePath, staged = false } 
     original = '';
   }
 
-  const fullPath = path.join(directoryPath, filePath);
   let modified = '';
   try {
-    const stat = await fsp.stat(fullPath);
+    if (!absolutePath) {
+      throw Object.assign(new Error('Resolved file path is empty'), { code: 'ENOENT' });
+    }
+
+    const stat = await fsp.stat(absolutePath);
     if (stat.isFile()) {
       if (isImage) {
         // For images, read as binary and convert to data URL
-        const buffer = await fsp.readFile(fullPath);
+        const buffer = await fsp.readFile(absolutePath);
         modified = `data:${mimeType};base64,${buffer.toString('base64')}`;
       } else {
-        modified = await fsp.readFile(fullPath, 'utf8');
+        modified = await fsp.readFile(absolutePath, 'utf8');
       }
     }
   } catch (error) {
@@ -1615,7 +1643,7 @@ export async function getFileDiff(directory, { path: filePath, staged = false } 
 export async function revertFile(directory, filePath) {
   const directoryPath = normalizeDirectoryPath(directory);
   const git = await createGit(directoryPath);
-  const repoRoot = path.resolve(directoryPath);
+  const repoRoot = (await resolveGitRepositoryRoot(directoryPath)) || path.resolve(directoryPath);
   const absoluteTarget = path.resolve(repoRoot, filePath);
 
   if (!absoluteTarget.startsWith(repoRoot + path.sep) && absoluteTarget !== repoRoot) {
@@ -1943,7 +1971,16 @@ export async function commit(directory, message, options = {}) {
 }
 
 export async function getBranches(directory) {
-  const git = await createGit(directory);
+  const repositoryRoot = await resolveGitRepositoryRoot(directory);
+  if (!repositoryRoot) {
+    return {
+      all: [],
+      current: '',
+      branches: {},
+    };
+  }
+
+  const git = await createGit(repositoryRoot);
 
   try {
     const result = await git.branch();

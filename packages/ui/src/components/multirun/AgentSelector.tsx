@@ -38,7 +38,7 @@ export const AgentSelector: React.FC<AgentSelectorProps> = ({
   const defaultAgentName = useConfigStore((state) => state.currentAgentName);
   const agents = getVisibleAgents();
   const selectableAgents = React.useMemo(
-    () => agents.filter((agent) => agent.mode !== 'subagent'),
+    () => agents.filter((agent) => agent.mode !== 'task'),
     [agents]
   );
 

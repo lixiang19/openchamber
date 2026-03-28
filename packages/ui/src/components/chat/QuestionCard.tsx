@@ -244,7 +244,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ request }) => {
               <span className="typography-meta font-medium text-muted-foreground">Input needed</span>
               {isFromSubagent ? (
                 <span className="typography-micro text-muted-foreground px-1.5 py-0.5 rounded bg-foreground/5">
-                  From subagent
+                  From task
                 </span>
               ) : null}
               {activeHeader ? (
