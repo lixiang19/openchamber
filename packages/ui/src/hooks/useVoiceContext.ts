@@ -1,6 +1,22 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { voiceHooks, isVoiceSessionStarted } from '@/lib/voice';
+import type { PiContentBlock, PiMessageViewState } from '@/lib/pi/types';
+
+const extractPiVoiceMessageText = (message: PiMessageViewState): string => {
+    if (typeof (message as { content?: unknown }).content === 'string') {
+        return String((message as { content?: unknown }).content ?? '');
+    }
+
+    const blocks = Array.isArray((message as { content?: unknown }).content)
+        ? ((message as { content?: PiContentBlock[] }).content ?? [])
+        : [];
+
+    return blocks
+        .filter((block): block is Extract<PiContentBlock, { type: 'text' }> => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
+};
 
 /**
  * Hook that syncs session events (messages, permissions) to the voice agent.
@@ -8,8 +24,12 @@ import { voiceHooks, isVoiceSessionStarted } from '@/lib/voice';
  */
 export function useVoiceContext() {
     const currentSessionId = useSessionStore((s) => s.currentSessionId);
-    const messages = useSessionStore((s) => 
-        currentSessionId ? s.messages.get(currentSessionId) : undefined
+    const currentPiSession = useSessionStore((s) => 
+        currentSessionId ? s.piSessions.get(currentSessionId) ?? null : null
+    );
+    const messages = useMemo(
+        () => currentPiSession?.messages,
+        [currentPiSession]
     );
     const permissions = useSessionStore((s) => 
         currentSessionId ? s.permissions.get(currentSessionId) : undefined
@@ -23,6 +43,9 @@ export function useVoiceContext() {
         if (!currentSessionId || !messages || !isVoiceSessionStarted()) return;
         
         const currentCount = messages.length;
+        if (currentCount < lastMessageCountRef.current) {
+            lastMessageCountRef.current = 0;
+        }
         if (currentCount <= lastMessageCountRef.current) return;
         
         // Get only new messages (messages since last check)
@@ -30,9 +53,9 @@ export function useVoiceContext() {
         lastMessageCountRef.current = currentCount;
         
         // Format for voice hooks (extract role and content)
-        const formattedMessages = newMessages.map(m => ({
-            role: m.info.role,
-            content: m.parts.map(p => ('text' in p ? p.text : '')).join('')
+        const formattedMessages = newMessages.map((message) => ({
+            role: message.role,
+            content: extractPiVoiceMessageText(message),
         }));
         
         voiceHooks.onMessages(currentSessionId, formattedMessages);

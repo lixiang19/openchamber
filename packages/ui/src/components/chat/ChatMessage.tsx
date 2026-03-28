@@ -1,4 +1,5 @@
 import React from 'react';
+import type { PiMessageViewState, PiSessionViewState } from '@/lib/pi/types';
 import type { Message, Part } from '@/lib/runtime/types';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -21,7 +22,6 @@ import type { StreamPhase, ToolPopupContent } from './message/types';
 import { deriveMessageRole } from './message/messageRole';
 import { filterVisibleParts } from './message/partUtils';
 import { normalizeUserDisplayParts } from './message/normalizeUserDisplayParts';
-import { flattenAssistantTextParts } from '@/lib/messages/messageText';
 import { isLikelyProviderAuthFailure, PROVIDER_AUTH_FAILURE_MESSAGE } from '@/lib/messages/providerAuthError';
 import type { TurnGroupingContext } from './lib/turns/types';
 import { copyTextToClipboard } from '@/lib/clipboard';
@@ -106,7 +106,50 @@ const getMessageInfoProp = (info: unknown, key: string): unknown => {
     return undefined;
 };
 
+const findPiMessageById = (session: PiSessionViewState | null, messageId: string | null | undefined): PiMessageViewState | null => {
+    if (!session || !messageId) {
+        return null;
+    }
+    return session.messages.find((message) => message.id === messageId) ?? null;
+};
+
+const mapPiStopReasonToFinish = (stopReason: string | null | undefined): string | undefined => {
+    if (stopReason === 'stop' || stopReason === 'endTurn') {
+        return 'stop';
+    }
+    if (stopReason === 'toolUse') {
+        return 'tool';
+    }
+    return undefined;
+};
+
+const extractPiAssistantText = (message: PiMessageViewState | null): string => {
+    if (!message || message.role !== 'assistant') {
+        return '';
+    }
+    return message.content
+        .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
+};
+
+const extractPiUserText = (message: PiMessageViewState | null): string => {
+    if (!message || message.role !== 'user') {
+        return '';
+    }
+
+    if (typeof message.content === 'string') {
+        return message.content;
+    }
+
+    return message.content
+        .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
+};
+
 interface ChatMessageProps {
+    piSession?: PiSessionViewState | null;
     message: {
         info: Message;
         parts: Part[];
@@ -128,6 +171,7 @@ interface ChatMessageProps {
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({
+    piSession,
     message,
     previousMessage,
     nextMessage,
@@ -140,17 +184,21 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     const { isMobile, hasTouchInput } = useDeviceInfo();
     const { currentTheme } = useThemeSystem();
     const messageContainerRef = React.useRef<HTMLDivElement | null>(null);
+    const sessionId = React.useMemo(() => {
+        if (piSession?.id) {
+            return piSession.id;
+        }
+        const rawSessionId = getMessageInfoProp(message.info, 'sessionID');
+        return typeof rawSessionId === 'string' && rawSessionId.trim().length > 0 ? rawSessionId : undefined;
+    }, [message.info, piSession?.id]);
 
     const sessionState = useSessionStore(
         useShallow((state) => ({
             lifecyclePhase: state.messageStreamStates.get(message.info.id)?.phase ?? null,
             isStreamingMessage: (() => {
-                const sessionId =
-                    (message.info as { sessionID?: string }).sessionID ??
-                    state.currentSessionId ??
-                    null;
-                if (!sessionId) return false;
-                return (state.streamingMessageIds.get(sessionId) ?? null) === message.info.id;
+                const candidateSessionId = sessionId ?? state.currentSessionId ?? null;
+                if (!candidateSessionId) return false;
+                return (state.streamingMessageIds.get(candidateSessionId) ?? null) === message.info.id;
             })(),
             currentSessionId: state.currentSessionId,
             getAgentModelForSession: state.getAgentModelForSession,
@@ -169,6 +217,15 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         revertToMessage,
         forkFromMessage,
     } = sessionState;
+
+    const fallbackPiSession = useSessionStore((state) => {
+        const candidateSessionId = sessionId ?? state.currentSessionId ?? null;
+        if (!candidateSessionId) {
+            return null;
+        }
+        return state.piSessions.get(candidateSessionId) ?? null;
+    });
+    const currentPiSession = piSession ?? fallbackPiSession;
 
     const providers = useConfigStore((state) => state.providers);
     const { showReasoningTraces, stickyUserHeader, chatRenderMode, showExpandedBashTools, showExpandedEditTools } = useUIStore(
@@ -204,13 +261,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
 
 
 
-    const messageRole = React.useMemo(() => deriveMessageRole(message.info), [message.info]);
-    const isUser = messageRole.isUser;
-    const useExternalUserActionsRow = isUser && (isMobile || !stickyUserHeader);
-    const showStickyInlineHoverRow = isUser && !isMobile && stickyUserHeader && !useExternalUserActionsRow;
-
-    const sessionId = message.info.sessionID;
-
     // Subscribe to context changes so badges update immediately on mode switches.
     const { currentContextAgent, savedSessionAgentSelection } = useContextStore(
         useShallow((state) => ({
@@ -218,6 +268,29 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             savedSessionAgentSelection: sessionId ? state.sessionAgentSelections.get(sessionId) : undefined,
         }))
     );
+
+    const rawCurrentPiMessage = React.useMemo(
+        () => findPiMessageById(currentPiSession, message.info.id),
+        [currentPiSession, message.info.id]
+    );
+
+    const rawPreviousPiMessage = React.useMemo(
+        () => findPiMessageById(currentPiSession, previousMessage?.info.id),
+        [currentPiSession, previousMessage?.info.id]
+    );
+
+    const messageRole = React.useMemo(() => {
+        if (rawCurrentPiMessage?.role === 'user') {
+            return { role: 'user', isUser: true };
+        }
+        if (rawCurrentPiMessage?.role) {
+            return { role: rawCurrentPiMessage.role, isUser: false };
+        }
+        return deriveMessageRole(message.info);
+    }, [message.info, rawCurrentPiMessage]);
+    const isUser = messageRole.isUser;
+    const useExternalUserActionsRow = isUser && (isMobile || !stickyUserHeader);
+    const showStickyInlineHoverRow = isUser && !isMobile && stickyUserHeader && !useExternalUserActionsRow;
 
     const normalizedParts = React.useMemo(() => {
         if (!isUser) {
@@ -232,18 +305,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             return null;
         }
 
+        const rawPrevious = rawPreviousPiMessage as Record<string, unknown> | null;
         const clientRole = getMessageInfoProp(previousMessage.info, 'clientRole');
         const role = getMessageInfoProp(previousMessage.info, 'role');
-        const previousRole = typeof clientRole === 'string' ? clientRole : (typeof role === 'string' ? role : undefined);
+        const previousRole = rawPreviousPiMessage?.role ?? (typeof clientRole === 'string' ? clientRole : (typeof role === 'string' ? role : undefined));
         if (previousRole !== 'user') {
             return null;
         }
 
-        const mode = getMessageInfoProp(previousMessage.info, 'mode');
-        const agent = getMessageInfoProp(previousMessage.info, 'agent');
-        const providerID = getMessageInfoProp(previousMessage.info, 'providerID');
-        const modelID = getMessageInfoProp(previousMessage.info, 'modelID');
-        const variant = getMessageInfoProp(previousMessage.info, 'variant');
+        const mode = rawPrevious?.mode ?? getMessageInfoProp(previousMessage.info, 'mode');
+        const agent = rawPrevious?.agent ?? getMessageInfoProp(previousMessage.info, 'agent');
+        const providerID = rawPrevious?.providerID ?? getMessageInfoProp(previousMessage.info, 'providerID');
+        const modelID = rawPrevious?.modelID ?? getMessageInfoProp(previousMessage.info, 'modelID');
+        const variant = rawPrevious?.variant ?? getMessageInfoProp(previousMessage.info, 'variant');
         const resolvedAgent =
             typeof mode === 'string' && mode.trim().length > 0
                 ? mode
@@ -262,10 +336,16 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             modelId: resolvedModel,
             variant: resolvedVariant,
         };
-    }, [isUser, previousMessage]);
+    }, [isUser, previousMessage, rawPreviousPiMessage]);
 
     const previousIsModeSwitchMessage = React.useMemo(() => {
         if (isUser || !previousMessage) return false;
+
+        const rawPreviousText = extractPiUserText(rawPreviousPiMessage).trim();
+        if (rawPreviousText.startsWith('User has requested to enter plan mode') || rawPreviousText.startsWith('The plan at ')) {
+            return true;
+        }
+
         const parts = Array.isArray(previousMessage.parts) ? previousMessage.parts : [];
         for (let i = 0; i < parts.length; i++) {
             const part = parts[i] as unknown as { type?: string; text?: string; synthetic?: boolean };
@@ -277,7 +357,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             }
         }
         return false;
-    }, [isUser, previousMessage]);
+    }, [isUser, previousMessage, rawPreviousPiMessage]);
 
     const agentName = React.useMemo(() => {
         if (isUser) return undefined;
@@ -290,12 +370,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             return previousUserMetadata.agentName;
         }
 
-        const messageMode = getMessageInfoProp(message.info, 'mode');
+        const rawMessageRecord = rawCurrentPiMessage as Record<string, unknown> | null;
+        const messageMode = rawMessageRecord?.mode ?? getMessageInfoProp(message.info, 'mode');
         if (typeof messageMode === 'string' && messageMode.trim().length > 0) {
             return messageMode;
         }
 
-        const messageAgent = getMessageInfoProp(message.info, 'agent');
+        const messageAgent = rawMessageRecord?.agent ?? getMessageInfoProp(message.info, 'agent');
         if (typeof messageAgent === 'string' && messageAgent.trim().length > 0) {
             return messageAgent;
         }
@@ -313,10 +394,18 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         }
 
         return savedSessionAgentSelection ?? undefined;
-    }, [isUser, message.info, previousIsModeSwitchMessage, previousUserMetadata, sessionId, currentContextAgent, savedSessionAgentSelection]);
+    }, [isUser, message.info, previousIsModeSwitchMessage, previousUserMetadata, rawCurrentPiMessage, sessionId, currentContextAgent, savedSessionAgentSelection]);
 
-    const messageProviderID = !isUser ? getMessageInfoProp(message.info, 'providerID') : null;
-    const messageModelID = !isUser ? getMessageInfoProp(message.info, 'modelID') : null;
+    const messageProviderID = !isUser
+        ? (rawCurrentPiMessage?.role === 'assistant'
+            ? rawCurrentPiMessage.provider
+            : getMessageInfoProp(message.info, 'providerID'))
+        : null;
+    const messageModelID = !isUser
+        ? (rawCurrentPiMessage?.role === 'assistant'
+            ? rawCurrentPiMessage.model
+            : getMessageInfoProp(message.info, 'modelID'))
+        : null;
 
     const contextModelSelection = React.useMemo(() => {
         if (isUser || !sessionId) return null;
@@ -401,14 +490,22 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     const headerModelName = displayModelName ?? undefined;
 
     const messageCompletedAt = React.useMemo(() => {
+        if (rawCurrentPiMessage?.role === 'assistant') {
+            return rawCurrentPiMessage.stopReason && rawCurrentPiMessage.stopReason !== 'toolUse'
+                ? rawCurrentPiMessage.timestamp
+                : null;
+        }
         const timeInfo = message.info.time as { completed?: number } | undefined;
         return typeof timeInfo?.completed === 'number' ? timeInfo.completed : null;
-    }, [message.info.time]);
+    }, [message.info.time, rawCurrentPiMessage]);
 
     const messageCreatedAt = React.useMemo(() => {
+        if (rawCurrentPiMessage) {
+            return rawCurrentPiMessage.timestamp;
+        }
         const timeInfo = message.info.time as { created?: number } | undefined;
         return typeof timeInfo?.created === 'number' ? timeInfo.created : null;
-    }, [message.info.time]);
+    }, [message.info.time, rawCurrentPiMessage]);
 
     const isMessageCompleted = React.useMemo(() => {
         if (isUser) return true;
@@ -416,9 +513,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     }, [isUser, messageCompletedAt]);
 
     const messageFinish = React.useMemo(() => {
+        if (rawCurrentPiMessage?.role === 'assistant') {
+            return mapPiStopReasonToFinish(rawCurrentPiMessage.stopReason);
+        }
         const finish = (message.info as { finish?: string }).finish;
         return typeof finish === 'string' ? finish : undefined;
-    }, [message.info]);
+    }, [message.info, rawCurrentPiMessage]);
 
     const visibleParts = React.useMemo(
         () =>
@@ -562,16 +662,31 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
 
     const shouldAnimateMessage = React.useMemo(() => {
         if (isUser) return false;
+        const targetSessionId = currentSessionId || sessionId;
+        if (!targetSessionId) {
+            return false;
+        }
         const freshnessDetector = MessageFreshnessDetector.getInstance();
-        return freshnessDetector.shouldAnimateMessage(message.info, currentSessionId || message.info.sessionID);
-    }, [message.info, currentSessionId, isUser]);
+        return freshnessDetector.shouldAnimateMessage(message.info, targetSessionId);
+    }, [message.info, currentSessionId, isUser, sessionId]);
 
     const [hasStartedStreamingHeader, setHasStartedStreamingHeader] = React.useState(false);
 
+    const rawNextPiMessage = React.useMemo(
+        () => findPiMessageById(currentPiSession, nextMessage?.info.id),
+        [currentPiSession, nextMessage?.info.id]
+    );
+
     const nextRole = React.useMemo(() => {
+        if (rawNextPiMessage?.role === 'user') {
+            return { role: 'user', isUser: true };
+        }
+        if (rawNextPiMessage?.role) {
+            return { role: rawNextPiMessage.role, isUser: false };
+        }
         if (!nextMessage) return null;
         return deriveMessageRole(nextMessage.info);
-    }, [nextMessage]);
+    }, [nextMessage, rawNextPiMessage]);
 
     const hasTurnGrouping = Boolean(turnGroupingContext);
     const isLastAssistantInTurn = turnGroupingContext?.isLastAssistantInTurn ?? false;
@@ -666,6 +781,15 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         if (isUser) {
             return undefined;
         }
+
+        if (rawCurrentPiMessage?.role === 'assistant' && typeof rawCurrentPiMessage.errorMessage === 'string' && rawCurrentPiMessage.errorMessage.trim().length > 0) {
+            const detail = rawCurrentPiMessage.errorMessage.trim();
+            if (isLikelyProviderAuthFailure(detail)) {
+                return PROVIDER_AUTH_FAILURE_MESSAGE;
+            }
+            return `Pi failed to send message with error:\n\`${detail}\``;
+        }
+
         const errorInfo = (message.info as { error?: unknown } | undefined)?.error as
             | { data?: { message?: unknown }; message?: unknown; name?: unknown }
             | undefined;
@@ -686,7 +810,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             return PROVIDER_AUTH_FAILURE_MESSAGE;
         }
         return `Opencode failed to send message with error:\n\`${detail}\``;
-    }, [isUser, message.info]);
+    }, [isUser, message.info, rawCurrentPiMessage]);
 
     const messageTextContent = React.useMemo(() => {
         if (isUser) {
@@ -730,8 +854,34 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             return assistantErrorText;
         }
 
-        return flattenAssistantTextParts(displayParts);
-    }, [assistantErrorText, displayParts, isUser]);
+        const rawAssistantText = extractPiAssistantText(rawCurrentPiMessage);
+        if (rawAssistantText.trim().length > 0) {
+            return rawAssistantText;
+        }
+
+        const textParts = displayParts
+            .filter((part): part is Part & { type: 'text'; text?: string; content?: string } => part.type === 'text')
+            .map((part) => (part.text || part.content || '').trim())
+            .filter((text) => text.length > 0);
+
+        return textParts.join('\n').replace(/\n\s*\n+/g, '\n');
+    }, [assistantErrorText, displayParts, isUser, rawCurrentPiMessage]);
+
+    const assistantTextContent = React.useMemo(() => {
+        if (isUser) {
+            return '';
+        }
+        const rawAssistantText = extractPiAssistantText(rawCurrentPiMessage);
+        if (rawAssistantText.trim().length > 0) {
+            return rawAssistantText;
+        }
+        return displayParts
+            .filter((part): part is Part & { type: 'text'; text?: string; content?: string } => part.type === 'text')
+            .map((part) => (part.text || part.content || '').trim())
+            .filter((text) => text.length > 0)
+            .join('\n')
+            .replace(/\n\s*\n+/g, '\n');
+    }, [displayParts, isUser, rawCurrentPiMessage]);
 
     const hasTextContent = messageTextContent.length > 0;
 
@@ -1031,6 +1181,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                                 onRevert={handleRevert}
                                                 onFork={isUser ? handleFork : undefined}
                                                 errorMessage={assistantErrorText}
+                                                assistantTextContent={assistantTextContent}
+                                                assistantToolExecutions={currentPiSession?.toolExecutions ?? []}
                                                 userActionsMode={useExternalUserActionsRow ? 'external-content' : 'inline'}
                                                 stickyUserHeaderEnabled={stickyUserHeader}
                                             />
@@ -1063,6 +1215,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                                 onRevert={handleRevert}
                                                 onFork={isUser ? handleFork : undefined}
                                                 errorMessage={assistantErrorText}
+                                                assistantTextContent={assistantTextContent}
+                                                assistantToolExecutions={currentPiSession?.toolExecutions ?? []}
                                                 userActionsMode="external-actions"
                                                 stickyUserHeaderEnabled={stickyUserHeader}
                                             />
@@ -1113,6 +1267,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                 agentMention={agentMention}
                                 turnGroupingContext={turnGroupingContext}
                                 errorMessage={assistantErrorText}
+                                assistantTextContent={assistantTextContent}
+                                assistantToolExecutions={currentPiSession?.toolExecutions ?? []}
                             />
 
                         </div>

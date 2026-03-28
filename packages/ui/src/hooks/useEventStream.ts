@@ -11,64 +11,66 @@ import {
 } from '@/lib/pi/reducer';
 import {
   buildRuntimeSessionsByDirectory,
-  projectPiSessionToRuntimeMessages,
   projectPiSessionToRuntimeSession,
-  projectPiSessionsToQuestions,
   projectPiSessionsToRuntimeStatus,
 } from '@/lib/runtime/projections';
 import { useSessionStore as useSessionManagementStore } from '@/stores/sessionStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useMessageStore } from '@/stores/messageStore';
-import { useQuestionStore } from '@/stores/questionStore';
 import type { MessageStreamLifecycle, SessionHistoryMeta, SessionMemoryState } from '@/stores/types/sessionTypes';
 
 const projectPiStateToStores = (state: PiClientState) => {
   const sessions = Object.values(state.sessions).sort((a, b) => b.updatedAt - a.updatedAt);
+  // NOTE: Pi-native 化路径 - 保留旧 Session 投影作为 UI 过渡，但优先使用 PiSessions
   const uiSessions = sessions.map(projectPiSessionToRuntimeSession);
-  const sessionIds = new Set(uiSessions.map((session) => session.id));
+  const sessionIds = new Set(sessions.map((session) => session.id));
 
   const sessionStore = useSessionManagementStore.getState();
   const previousCurrent = sessionStore.currentSessionId;
   const currentSessionId = previousCurrent && sessionIds.has(previousCurrent)
     ? previousCurrent
-    : uiSessions[0]?.id ?? null;
+    : sessions[0]?.id ?? null;
 
   useSessionManagementStore.setState({
+    // Pi-native: piSessions 作为唯一真相源
+    piSessions: new Map(sessions.map((session) => [session.id, session])),
+    // 兼容：保留旧 Session 投影作为 UI 过渡
     sessions: uiSessions,
     archivedSessions: [],
     sessionsByDirectory: buildRuntimeSessionsByDirectory(uiSessions),
     currentSessionId,
     lastLoadedDirectory: currentSessionId
-      ? ((uiSessions.find((session) => session.id === currentSessionId) as { directory?: string | null } | undefined)?.directory ?? null)
+      ? (sessions.find((session) => session.id === currentSessionId)?.cwd ?? null)
       : null,
     isLoading: false,
     error: null,
   });
 
+  // Pi-native: 不再维护旧消息缓存投影，状态直接从 piSessions 消费
   const previousMessageState = useMessageStore.getState();
-  const messages = new Map<string, { info: import('@/lib/runtime/types').Message; parts: import('@/lib/runtime/types').Part[] }[]>();
   const sessionHistoryMeta = new Map<string, SessionHistoryMeta>();
   const sessionMemoryState = new Map<string, SessionMemoryState>();
   const streamingMessageIds = new Map<string, string | null>();
   const messageStreamStates = new Map<string, MessageStreamLifecycle>();
 
   for (const session of sessions) {
-    messages.set(session.id, projectPiSessionToRuntimeMessages(session));
+    const previousMemory = previousMessageState.sessionMemoryState.get(session.id);
+    const messageCount = session.messages.length;
+
     sessionHistoryMeta.set(session.id, {
       limit: Number.MAX_SAFE_INTEGER,
       complete: true,
       loading: false,
     });
 
-    const previousMemory = previousMessageState.sessionMemoryState.get(session.id);
     sessionMemoryState.set(session.id, {
       viewportAnchor: previousMemory?.viewportAnchor ?? 0,
       isStreaming: session.isStreaming,
       streamStartTime: previousMemory?.streamStartTime,
       lastAccessedAt: previousMemory?.lastAccessedAt ?? Date.now(),
       backgroundMessageCount: previousMemory?.backgroundMessageCount ?? 0,
-      loadedTurnCount: messages.get(session.id)?.length ?? 0,
-      totalAvailableMessages: messages.get(session.id)?.length ?? 0,
+      loadedTurnCount: messageCount,
+      totalAvailableMessages: messageCount,
       hasMoreAbove: false,
       hasMoreTurnsAbove: false,
       historyLoading: false,
@@ -87,7 +89,6 @@ const projectPiStateToStores = (state: PiClientState) => {
   }
 
   useMessageStore.setState({
-    messages,
     sessionHistoryMeta,
     sessionMemoryState,
     streamingMessageIds,
@@ -95,11 +96,15 @@ const projectPiStateToStores = (state: PiClientState) => {
     isSyncing: false,
   });
 
-  useQuestionStore.setState({
-    questions: projectPiSessionsToQuestions(state.sessions),
-  });
-
   useSessionStore.setState({
+    piSessions: new Map(
+      Object.values(state.sessions).map((session) => [session.id, session])
+    ),
+    interactiveRequests: new Map(
+      Object.values(state.sessions)
+        .filter((session) => session.interactiveRequests.length > 0)
+        .map((session) => [session.id, [...session.interactiveRequests]])
+    ),
     sessionStatus: projectPiSessionsToRuntimeStatus(state.sessions),
   });
 };

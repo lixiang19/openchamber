@@ -11,7 +11,7 @@ import { QuestionCard } from './QuestionCard';
 import TurnItem from './components/TurnItem';
 import TurnList from './components/TurnList';
 import type { PermissionRequest } from '@/types/permission';
-import type { QuestionRequest } from '@/types/question';
+import type { PiInteractiveRequestViewState, PiMessageViewState, PiSessionViewState } from '@/lib/pi/types';
 import type { AnimationHandlers, ContentChangeReason } from '@/hooks/useChatScrollManager';
 import { useCurrentSessionActivity } from '@/hooks/useSessionActivity';
 import { filterSyntheticParts } from '@/lib/messages/synthetic';
@@ -90,14 +90,66 @@ const useMessageListVirtualizer = <TItemElement extends Element>(
 
 const USER_SHELL_MARKER = 'The following tool was executed by the user';
 
-const resolveMessageRole = (message: ChatMessageEntry): string | null => {
-    const info = message.info as unknown as { clientRole?: string | null | undefined; role?: string | null | undefined };
+const findPiMessageById = (session: PiSessionViewState | null | undefined, messageId: string | null | undefined): PiMessageViewState | null => {
+    if (!session || !messageId) {
+        return null;
+    }
+    return session.messages.find((message) => message.id === messageId) ?? null;
+};
+
+const extractPiUserText = (message: PiMessageViewState | null): string => {
+    if (!message || message.role !== 'user') {
+        return '';
+    }
+    if (typeof message.content === 'string') {
+        return message.content;
+    }
+    return message.content
+        .filter((block): block is Extract<typeof block, { type: 'text'; text: string }> => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
+};
+
+const extractPiAssistantText = (message: PiMessageViewState | null): string => {
+    if (!message || message.role !== 'assistant') {
+        return '';
+    }
+    return message.content
+        .filter((block): block is Extract<typeof block, { type: 'text'; text: string }> => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
+};
+
+const findPiToolCallBlock = (message: PiMessageViewState | null) => {
+    if (!message || message.role !== 'assistant') {
+        return null;
+    }
+    return message.content.find((block): block is Extract<typeof block, { type: 'toolCall'; id: string | null; name: string | null }> => block.type === 'toolCall') ?? null;
+};
+
+const resolveMessageRole = (message: ChatMessageEntry, piSession?: PiSessionViewState | null): string | null => {
+    const piRole = findPiMessageById(piSession, getMessageId(message))?.role;
+    if (typeof piRole === 'string' && piRole.length > 0) {
+        return piRole;
+    }
+    const info = message.info as unknown as {
+        userMessageMarker?: boolean | null | undefined;
+        clientRole?: string | null | undefined;
+        role?: string | null | undefined;
+    };
+    if (info.userMessageMarker === true) {
+        return 'user';
+    }
     return (typeof info.clientRole === 'string' ? info.clientRole : null)
         ?? (typeof info.role === 'string' ? info.role : null)
         ?? null;
 };
 
-const isAssistantMessageCompleted = (message: ChatMessageEntry): boolean => {
+const isAssistantMessageCompleted = (message: ChatMessageEntry, piSession?: PiSessionViewState | null): boolean => {
+    const rawPiMessage = findPiMessageById(piSession, getMessageId(message));
+    if (rawPiMessage?.role === 'assistant') {
+        return Boolean(rawPiMessage.stopReason && rawPiMessage.stopReason !== 'toolUse');
+    }
     const info = message.info as { time?: { completed?: unknown }; status?: unknown };
     const completed = info.time?.completed;
     const status = info.status;
@@ -110,9 +162,15 @@ const isAssistantMessageCompleted = (message: ChatMessageEntry): boolean => {
     return true;
 };
 
-const isUserSubtaskMessage = (message: ChatMessageEntry | undefined): boolean => {
+const isUserSubtaskMessage = (message: ChatMessageEntry | undefined, piSession?: PiSessionViewState | null): boolean => {
     if (!message) return false;
-    if (resolveMessageRole(message) !== 'user') return false;
+    if (resolveMessageRole(message, piSession) !== 'user') return false;
+
+    const rawPiText = extractPiUserText(findPiMessageById(piSession, getMessageId(message)));
+    if (/\b(task|subtask|delegate)\b/i.test(rawPiText)) {
+        return true;
+    }
+
     return message.parts.some((part) => part?.type === 'subtask');
 };
 
@@ -127,9 +185,14 @@ const getMessageParentId = (message: ChatMessageEntry): string | null => {
     return typeof parentID === 'string' && parentID.trim().length > 0 ? parentID : null;
 };
 
-const isUserShellMarkerMessage = (message: ChatMessageEntry | undefined): boolean => {
+const isUserShellMarkerMessage = (message: ChatMessageEntry | undefined, piSession?: PiSessionViewState | null): boolean => {
     if (!message) return false;
-    if (resolveMessageRole(message) !== 'user') return false;
+    if (resolveMessageRole(message, piSession) !== 'user') return false;
+
+    const rawPiText = extractPiUserText(findPiMessageById(piSession, getMessageId(message)));
+    if (rawPiText.trim().startsWith(USER_SHELL_MARKER)) {
+        return true;
+    }
 
     return message.parts.some((part) => {
         if (part?.type !== 'text') return false;
@@ -145,13 +208,38 @@ type ShellBridgeDetails = {
     status?: string;
 };
 
-const getShellBridgeAssistantDetails = (message: ChatMessageEntry, expectedParentId: string | null): { hide: boolean; details: ShellBridgeDetails | null } => {
-    if (resolveMessageRole(message) !== 'assistant') {
+const getShellBridgeAssistantDetails = (message: ChatMessageEntry, expectedParentId: string | null, piSession?: PiSessionViewState | null): { hide: boolean; details: ShellBridgeDetails | null } => {
+    if (resolveMessageRole(message, piSession) !== 'assistant') {
         return { hide: false, details: null };
     }
 
     if (expectedParentId && getMessageParentId(message) !== expectedParentId) {
         return { hide: false, details: null };
+    }
+
+    const rawPiMessage = findPiMessageById(piSession, getMessageId(message));
+    const toolCallBlock = findPiToolCallBlock(rawPiMessage);
+    if (rawPiMessage?.role === 'assistant' && toolCallBlock) {
+        const toolCallId = toolCallBlock.id;
+        const toolName = typeof toolCallBlock.name === 'string'
+            ? toolCallBlock.name.toLowerCase()
+            : '';
+        if (toolName === 'bash') {
+            const execution = toolCallId
+                ? piSession?.toolExecutions.find((entry) => entry.toolCallId === toolCallId)
+                : undefined;
+            const command = execution?.args && typeof execution.args === 'object' && typeof (execution.args as { command?: unknown }).command === 'string'
+                ? (execution.args as { command?: string }).command
+                : undefined;
+            const output = typeof execution?.result === 'string'
+                ? execution.result
+                : (typeof execution?.partialResult === 'string' ? execution.partialResult : undefined);
+            const status = execution?.status;
+            return {
+                hide: true,
+                details: { command, output, status },
+            };
+        }
     }
 
     if (message.parts.length !== 1) {
@@ -225,9 +313,34 @@ const readTaskSessionId = (toolPart: Part): string | null => {
     return null;
 };
 
-const isSyntheticSubtaskBridgeAssistant = (message: ChatMessageEntry): { hide: boolean; taskSessionId: string | null } => {
-    if (resolveMessageRole(message) !== 'assistant') {
+const isSyntheticSubtaskBridgeAssistant = (message: ChatMessageEntry, piSession?: PiSessionViewState | null): { hide: boolean; taskSessionId: string | null } => {
+    if (resolveMessageRole(message, piSession) !== 'assistant') {
         return { hide: false, taskSessionId: null };
+    }
+
+    const rawPiMessage = findPiMessageById(piSession, getMessageId(message));
+    const toolCallBlock = findPiToolCallBlock(rawPiMessage);
+    if (rawPiMessage?.role === 'assistant' && toolCallBlock) {
+        const toolName = typeof toolCallBlock.name === 'string'
+            ? toolCallBlock.name.toLowerCase()
+            : '';
+        if (toolName === 'task') {
+            const toolCallId = toolCallBlock.id;
+            const execution = toolCallId
+                ? piSession?.toolExecutions.find((entry) => entry.toolCallId === toolCallId)
+                : undefined;
+            const args = execution?.args && typeof execution.args === 'object' ? execution.args as Record<string, unknown> : null;
+            const taskSessionIdFromArgs = typeof args?.sessionId === 'string'
+                ? args.sessionId
+                : (typeof args?.taskSessionId === 'string' ? args.taskSessionId : null);
+            const taskSessionIdFromResult = typeof execution?.result === 'string'
+                ? (execution.result.match(/task_id\s*:\s*([^\s<"']+)/i)?.[1] ?? null)
+                : null;
+            return {
+                hide: true,
+                taskSessionId: taskSessionIdFromArgs ?? taskSessionIdFromResult,
+            };
+        }
     }
 
     if (message.parts.length !== 1) {
@@ -321,14 +434,16 @@ const withShellBridgeDetails = (message: ChatMessageEntry, details: ShellBridgeD
 
 const normalizedMessageBySource = new WeakMap<ChatMessageEntry, ChatMessageEntry>();
 
-const getNormalizedMessageForDisplay = (message: ChatMessageEntry): ChatMessageEntry => {
+const getNormalizedMessageForDisplay = (message: ChatMessageEntry, piSession?: PiSessionViewState | null): ChatMessageEntry => {
     const cached = normalizedMessageBySource.get(message);
     if (cached) {
         return cached;
     }
 
     const filteredParts = filterSyntheticParts(message.parts);
-    const normalized = filteredParts === message.parts
+    const rawPiMessage = findPiMessageById(piSession, getMessageId(message));
+    const shouldKeepOriginal = rawPiMessage?.role === 'assistant' && rawPiMessage.content.some((block) => block.type !== 'text');
+    const normalized = filteredParts === message.parts || shouldKeepOriginal
         ? message
         : {
             ...message,
@@ -339,9 +454,13 @@ const getNormalizedMessageForDisplay = (message: ChatMessageEntry): ChatMessageE
     return normalized;
 };
 
-const isAssistantTextOnlyMessage = (message: ChatMessageEntry): boolean => {
-    if (resolveMessageRole(message) !== 'assistant') {
+const isAssistantTextOnlyMessage = (message: ChatMessageEntry, piSession?: PiSessionViewState | null): boolean => {
+    if (resolveMessageRole(message, piSession) !== 'assistant') {
         return false;
+    }
+    const rawPiMessage = findPiMessageById(piSession, getMessageId(message));
+    if (rawPiMessage?.role === 'assistant') {
+        return rawPiMessage.content.length > 0 && rawPiMessage.content.every((block) => block.type === 'text');
     }
     return message.parts.length > 0 && message.parts.every((part) => part?.type === 'text');
 };
@@ -352,7 +471,7 @@ interface MessageListProps {
     disableStaging?: boolean;
     messages: ChatMessageEntry[];
     permissions: PermissionRequest[];
-    questions: QuestionRequest[];
+    interactiveRequests: PiInteractiveRequestViewState[];
     onMessageContentChange: (reason?: ContentChangeReason) => void;
     getAnimationHandlers: (messageId: string) => AnimationHandlers;
     hasMoreAbove: boolean;
@@ -384,6 +503,7 @@ type TurnUiState = { isExpanded: boolean };
 
 
 interface MessageRowProps {
+    piSession?: PiSessionViewState | null;
     message: ChatMessageEntry;
     previousMessage?: ChatMessageEntry;
     nextMessage?: ChatMessageEntry;
@@ -395,7 +515,8 @@ interface MessageRowProps {
     scrollToBottom?: (options?: { instant?: boolean; force?: boolean }) => void;
 }
 
-const MessageRow = React.memo<MessageRowProps>(({
+const MessageRow = React.memo<MessageRowProps>(({ 
+    piSession,
     message,
     previousMessage,
     nextMessage,
@@ -408,6 +529,7 @@ const MessageRow = React.memo<MessageRowProps>(({
 }) => {
     return (
         <ChatMessage
+            piSession={piSession}
             message={message}
             previousMessage={previousMessage}
             nextMessage={nextMessage}
@@ -424,6 +546,7 @@ const MessageRow = React.memo<MessageRowProps>(({
 MessageRow.displayName = 'MessageRow';
 
 interface TurnBlockProps {
+    piSession?: PiSessionViewState | null;
     turn: TurnRecord;
     isLastTurn: boolean;
     sessionIsWorking: boolean;
@@ -440,6 +563,7 @@ interface TurnBlockProps {
 }
 
 const TurnBlock: React.FC<TurnBlockProps> = ({
+    piSession,
     turn,
     isLastTurn,
     sessionIsWorking,
@@ -469,7 +593,7 @@ const TurnBlock: React.FC<TurnBlockProps> = ({
         if (chatRenderMode === 'live') {
             return turn.assistantMessages;
         }
-        const completed = turn.assistantMessages.filter(isAssistantMessageCompleted);
+        const completed = turn.assistantMessages.filter((message) => isAssistantMessageCompleted(message, piSession));
         if (completed.length === turn.assistantMessages.length) {
             return turn.assistantMessages;
         }
@@ -478,14 +602,14 @@ const TurnBlock: React.FC<TurnBlockProps> = ({
         }
         const firstAssistant = turn.assistantMessages[0];
         return firstAssistant ? [firstAssistant] : [];
-    }, [chatRenderMode, turn.assistantMessages]);
+    }, [chatRenderMode, piSession, turn.assistantMessages]);
 
     const completedAssistantMessages = React.useMemo(() => {
         if (chatRenderMode !== 'sorted') {
             return turn.assistantMessages;
         }
-        return turn.assistantMessages.filter(isAssistantMessageCompleted);
-    }, [chatRenderMode, turn.assistantMessages]);
+        return turn.assistantMessages.filter((message) => isAssistantMessageCompleted(message, piSession));
+    }, [chatRenderMode, piSession, turn.assistantMessages]);
 
     const visibleAssistantIds = React.useMemo(() => {
         const ids = new Map<string, number>();
@@ -583,6 +707,7 @@ const TurnBlock: React.FC<TurnBlockProps> = ({
             return (
                 <MessageRow
                     key={message.info.id}
+                    piSession={piSession}
                     message={message}
                     previousMessage={previousMessage}
                     nextMessage={nextMessage}
@@ -632,6 +757,7 @@ const TurnBlock: React.FC<TurnBlockProps> = ({
 TurnBlock.displayName = 'TurnBlock';
 
 interface UngroupedMessageRowProps {
+    piSession?: PiSessionViewState | null;
     message: ChatMessageEntry;
     previousMessage?: ChatMessageEntry;
     nextMessage?: ChatMessageEntry;
@@ -643,6 +769,7 @@ interface UngroupedMessageRowProps {
 }
 
 const UngroupedMessageRow: React.FC<UngroupedMessageRowProps> = React.memo(({
+    piSession,
     message,
     previousMessage,
     nextMessage,
@@ -654,6 +781,7 @@ const UngroupedMessageRow: React.FC<UngroupedMessageRowProps> = React.memo(({
 }) => {
     return (
         <MessageRow
+            piSession={piSession}
             message={message}
             previousMessage={previousMessage}
             nextMessage={nextMessage}
@@ -669,6 +797,7 @@ const UngroupedMessageRow: React.FC<UngroupedMessageRowProps> = React.memo(({
 UngroupedMessageRow.displayName = 'UngroupedMessageRow';
 
 interface MessageListEntryProps {
+    piSession?: PiSessionViewState | null;
     entry: RenderEntry;
     onMessageContentChange: (reason?: ContentChangeReason) => void;
     getAnimationHandlers: (messageId: string) => AnimationHandlers;
@@ -684,6 +813,7 @@ interface MessageListEntryProps {
 }
 
 const MessageListEntry: React.FC<MessageListEntryProps> = React.memo(({
+    piSession,
     entry,
     onMessageContentChange,
     getAnimationHandlers,
@@ -700,6 +830,7 @@ const MessageListEntry: React.FC<MessageListEntryProps> = React.memo(({
     if (entry.kind === 'ungrouped') {
         return (
             <UngroupedMessageRow
+                piSession={piSession}
                 message={entry.message}
                 previousMessage={entry.previousMessage}
                 nextMessage={entry.nextMessage}
@@ -714,6 +845,7 @@ const MessageListEntry: React.FC<MessageListEntryProps> = React.memo(({
 
     return (
         <TurnBlock
+            piSession={piSession}
             turn={entry.turn}
             isLastTurn={entry.isLastTurn}
             sessionIsWorking={sessionIsWorking}
@@ -734,6 +866,7 @@ const MessageListEntry: React.FC<MessageListEntryProps> = React.memo(({
 MessageListEntry.displayName = 'MessageListEntry';
 
 function areMessageListEntryPropsEqual(prevProps: MessageListEntryProps, nextProps: MessageListEntryProps): boolean {
+    if (prevProps.piSession !== nextProps.piSession) return false;
     if (prevProps.stickyUserHeader !== nextProps.stickyUserHeader) return false;
     if (prevProps.chatRenderMode !== nextProps.chatRenderMode) return false;
     if (prevProps.shouldAnimateUserMessage !== nextProps.shouldAnimateUserMessage) return false;
@@ -774,6 +907,7 @@ function areMessageListEntryPropsEqual(prevProps: MessageListEntryProps, nextPro
 
 // Inner component that renders staged turn entries.
 const MessageListContent: React.FC<{
+    piSession?: PiSessionViewState | null;
     entries: RenderEntry[];
     onMessageContentChange: (reason?: ContentChangeReason) => void;
     getAnimationHandlers: (messageId: string) => AnimationHandlers;
@@ -786,11 +920,12 @@ const MessageListContent: React.FC<{
     chatRenderMode: 'sorted' | 'live';
     shouldAnimateUserMessage: (message: ChatMessageEntry) => boolean;
     onUserAnimationConsumed: (messageId: string) => void;
-}> = ({ entries, onMessageContentChange, getAnimationHandlers, scrollToBottom, stickyUserHeader, sessionIsWorking, defaultActivityExpanded, turnUiStates, onToggleTurnGroup, chatRenderMode, shouldAnimateUserMessage, onUserAnimationConsumed }) => {
+}> = ({ piSession, entries, onMessageContentChange, getAnimationHandlers, scrollToBottom, stickyUserHeader, sessionIsWorking, defaultActivityExpanded, turnUiStates, onToggleTurnGroup, chatRenderMode, shouldAnimateUserMessage, onUserAnimationConsumed }) => {
     const renderEntry = React.useCallback((entry: RenderEntry) => {
         return (
             <MessageListEntry
                 key={entry.key}
+                piSession={piSession}
                 entry={entry}
                 onMessageContentChange={onMessageContentChange}
                 getAnimationHandlers={getAnimationHandlers}
@@ -812,13 +947,13 @@ const MessageListContent: React.FC<{
     );
 };
 
-const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({ 
+const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
     sessionKey,
     turnStart,
     disableStaging,
     messages,
     permissions,
-    questions,
+    interactiveRequests,
     onMessageContentChange,
     getAnimationHandlers,
     hasMoreAbove,
@@ -856,11 +991,11 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
     });
 
     React.useEffect(() => {
-        if (permissions.length === 0 && questions.length === 0) {
+        if (permissions.length === 0 && interactiveRequests.length === 0) {
             return;
         }
         stableOnMessageContentChange('permission');
-    }, [permissions, questions, stableOnMessageContentChange]);
+    }, [interactiveRequests, permissions, stableOnMessageContentChange]);
 
     React.useEffect(() => {
         setTurnUiStates(new Map());
@@ -876,10 +1011,17 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
     }, [defaultActivityExpanded]);
 
 
+    const currentPiSession = useSessionStore((state) => {
+        if (!sessionKey) {
+            return null;
+        }
+        return state.piSessions.get(sessionKey) ?? null;
+    });
+
     const baseDisplayMessages = React.useMemo(() => {
         const cached = baseDisplayCacheRef.current;
         const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
-        const canUseTailFastPath = Boolean(lastMessage && isAssistantTextOnlyMessage(lastMessage));
+        const canUseTailFastPath = Boolean(lastMessage && isAssistantTextOnlyMessage(lastMessage, currentPiSession));
 
         if (cached && canUseTailFastPath && cached.input.length === messages.length && messages.length > 0) {
             let changedCount = 0;
@@ -903,13 +1045,13 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
             if (idsStable && changedCount === 1 && changedIndex === messages.length - 1) {
                 const changedMessage = messages[changedIndex];
                 const previousMessage = changedIndex > 0 ? messages[changedIndex - 1] : undefined;
-                const bridgeSensitive = isUserSubtaskMessage(previousMessage) || isUserShellMarkerMessage(previousMessage);
+                const bridgeSensitive = isUserSubtaskMessage(previousMessage, currentPiSession) || isUserShellMarkerMessage(previousMessage, currentPiSession);
 
-                if (changedMessage && isAssistantTextOnlyMessage(changedMessage) && !bridgeSensitive) {
+                if (changedMessage && isAssistantTextOnlyMessage(changedMessage, currentPiSession) && !bridgeSensitive) {
                     const outputIndex = cached.outputIndexById.get(changedMessage.info.id);
                     if (outputIndex !== undefined) {
                         const nextOutput = [...cached.output];
-                        nextOutput[outputIndex] = getNormalizedMessageForDisplay(changedMessage);
+                        nextOutput[outputIndex] = getNormalizedMessageForDisplay(changedMessage, currentPiSession);
                         baseDisplayCacheRef.current = {
                             input: messages,
                             output: nextOutput,
@@ -932,7 +1074,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
                 }
                 seenIdsFromTail.add(messageId);
             }
-            dedupedMessages.push(getNormalizedMessageForDisplay(message));
+            dedupedMessages.push(getNormalizedMessageForDisplay(message, currentPiSession));
         }
         dedupedMessages.reverse();
 
@@ -941,16 +1083,16 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
             const current = dedupedMessages[index];
             const previous = output.length > 0 ? output[output.length - 1] : undefined;
 
-            if (isUserSubtaskMessage(previous)) {
-                const bridge = isSyntheticSubtaskBridgeAssistant(current);
+            if (isUserSubtaskMessage(previous, currentPiSession)) {
+                const bridge = isSyntheticSubtaskBridgeAssistant(current, currentPiSession);
                 if (bridge.hide) {
                     output[output.length - 1] = withSubtaskSessionId(previous as ChatMessageEntry, bridge.taskSessionId);
                     continue;
                 }
             }
 
-            if (isUserShellMarkerMessage(previous)) {
-                const bridge = getShellBridgeAssistantDetails(current, getMessageId(previous));
+            if (isUserShellMarkerMessage(previous, currentPiSession)) {
+                const bridge = getShellBridgeAssistantDetails(current, getMessageId(previous), currentPiSession);
                 if (bridge.hide) {
                     output[output.length - 1] = withShellBridgeDetails(previous as ChatMessageEntry, bridge.details);
                     continue;
@@ -974,7 +1116,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
         };
 
         return output;
-    }, [messages]);
+    }, [currentPiSession, messages]);
 
     const activeRetryStatus = useSessionStore(
         useShallow((state) => {
@@ -1032,6 +1174,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
 
     const { projection, staticTurns, streamingTurn } = useTurnRecords(displayMessages, {
         showTextJustificationActivity: chatRenderMode === 'sorted',
+        piSession: currentPiSession,
     });
     const turns = React.useMemo(() => {
         if (!streamingTurn) {
@@ -1096,10 +1239,15 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
     }, [renderEntries, staging.stageStartIndex]);
 
     const currentUserOrder = React.useMemo(() => {
+        if (currentPiSession) {
+            return currentPiSession.messages
+                .filter((message) => message.role === 'user' && typeof message.id === 'string' && message.id.length > 0)
+                .map((message) => message.id as string);
+        }
         return messages
-            .filter((message) => resolveMessageRole(message) === 'user')
+            .filter((message) => resolveMessageRole(message, currentPiSession) === 'user')
             .map((message) => message.info.id);
-    }, [messages]);
+    }, [currentPiSession, messages]);
 
     // Detect new user messages SYNCHRONOUSLY during render.
     // Must happen during render (not in useEffect) so that ToolRevealOnMount
@@ -1134,7 +1282,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
     }
 
     const shouldAnimateUserMessage = React.useCallback((message: ChatMessageEntry): boolean => {
-        if (resolveMessageRole(message) !== 'user') return false;
+        if (resolveMessageRole(message, currentPiSession) !== 'user') return false;
         return userAnimationRef.current.animatedIds.has(message.info.id);
     }, []);
 
@@ -1158,7 +1306,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
                     TURN_ESTIMATE_BASE_PX + assistantCount * TURN_ESTIMATE_PER_ASSISTANT_PX,
                 );
             }
-            const role = resolveMessageRole(entry.message);
+            const role = resolveMessageRole(entry.message, currentPiSession);
             return role === 'user' ? 100 : 220;
         },
         [stagedEntries]
@@ -1428,7 +1576,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
                     <div className="flex justify-center py-3">
                         {isLoadingOlder ? (
                             <span className="text-xs uppercase tracking-wide text-muted-foreground/80">
-                                Loading…
+                                Loading...
                             </span>
                         ) : (
                             <button
@@ -1445,7 +1593,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
                 {staging.isStaging ? (
                     <div className="flex justify-center py-1">
                         <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
-                            Revealing history…
+                            Revealing history...
                         </span>
                     </div>
                 ) : null}
@@ -1471,6 +1619,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
                                         style={{ transform: `translateY(${virtualRow.start}px)` }}
                                     >
                                         <MessageListEntry
+                                            piSession={currentPiSession}
                                             entry={entry}
                                             onMessageContentChange={stableOnMessageContentChange}
                                             getAnimationHandlers={stableGetAnimationHandlers}
@@ -1491,6 +1640,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
                     ) : (
                         <div className="relative w-full">
                         <MessageListContent
+                            piSession={currentPiSession}
                             entries={stagedEntries}
                             onMessageContentChange={stableOnMessageContentChange}
                             getAnimationHandlers={stableGetAnimationHandlers}
@@ -1508,10 +1658,10 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
                     )}
                 </FadeInDisabledProvider>
 
-                {(questions.length > 0 || permissions.length > 0) && (
+                {(interactiveRequests.length > 0 || permissions.length > 0) && (
                     <div>
-                        {questions.map((question) => (
-                            <QuestionCard key={question.id} question={question} />
+                        {interactiveRequests.map((request) => (
+                            <QuestionCard key={request.id} request={request} />
                         ))}
                         {permissions.map((permission) => (
                             <PermissionCard key={permission.id} permission={permission} />

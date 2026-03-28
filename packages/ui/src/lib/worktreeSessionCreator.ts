@@ -131,7 +131,7 @@ export async function createWorktreeSession(): Promise<{ id: string } | null> {
     // Initialize the session
     const configState = useConfigStore.getState();
     const agents = configState.agents;
-    sessionStore.initializeNewOpenChamberSession(session.id, agents);
+    sessionStore.initializeNewRidgeSession(session.id, agents);
     sessionStore.setSessionDirectory(session.id, metadata.path);
     sessionStore.setWorktreeMetadata(session.id, createdMetadataWithStatus);
 
@@ -392,7 +392,7 @@ export async function createWorktreeSessionForBranch(
     // Initialize the session
     const configState = useConfigStore.getState();
     const agents = configState.agents;
-    sessionStore.initializeNewOpenChamberSession(session.id, agents);
+    sessionStore.initializeNewRidgeSession(session.id, agents);
     sessionStore.setSessionDirectory(session.id, metadata.path);
     sessionStore.setWorktreeMetadata(session.id, createdMetadataWithStatus);
 
@@ -573,7 +573,7 @@ export async function createWorktreeSessionForNewBranch(
         }
 
         const configState = useConfigStore.getState();
-        sessionStore.initializeNewOpenChamberSession(session.id, configState.agents);
+        sessionStore.initializeNewRidgeSession(session.id, configState.agents);
         sessionStore.setSessionDirectory(session.id, metadata.path);
         sessionStore.setWorktreeMetadata(session.id, createdMetadataWithStatus);
 

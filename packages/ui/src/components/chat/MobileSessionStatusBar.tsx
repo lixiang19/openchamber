@@ -1430,9 +1430,21 @@ export const MobileSessionStatusBar: React.FC<MobileSessionStatusBarProps> = ({
 }) => {
   const { currentTheme } = useThemeSystem();
   const sessions = useSessionStore((state) => state.sessions);
+  const piSessions = useSessionStore((state) => state.piSessions);
   const currentSessionId = useSessionStore((state) => state.currentSessionId);
-  const sessionStatus = useSessionStore((state) => state.sessionStatus);
   const sessionAttentionStates = useSessionStore((state) => state.sessionAttentionStates);
+
+  // Pi-native: 从 piSessions 派生 sessionStatus
+  const sessionStatus = React.useMemo(() => {
+    const statusMap = new Map<string, { type: string }>();
+    for (const [id, session] of piSessions.entries()) {
+      const status = session.status;
+      statusMap.set(id, {
+        type: status === 'retrying' ? 'retry' : (status === 'streaming' || status === 'compacting') ? 'busy' : 'idle',
+      });
+    }
+    return statusMap;
+  }, [piSessions]);
   const setCurrentSession = useSessionStore((state) => state.setCurrentSession);
   const openNewSessionDraft = useSessionStore((state) => state.openNewSessionDraft);
   const getContextUsage = useSessionStore((state) => state.getContextUsage);

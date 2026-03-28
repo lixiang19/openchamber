@@ -856,7 +856,7 @@ Nice-to-have:
         void useSessionStore.getState().updateSessionTitle(session.id, sessionTitle).catch(() => undefined);
 
         try {
-          useSessionStore.getState().initializeNewOpenChamberSession(session.id, useConfigStore.getState().agents);
+          useSessionStore.getState().initializeNewRidgeSession(session.id, useConfigStore.getState().agents);
         } catch {
           // ignore
         }

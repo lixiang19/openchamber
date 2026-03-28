@@ -1,10 +1,9 @@
 import React from 'react';
-import type { AssistantMessage, Message, Part, ReasoningPart, TextPart, ToolPart } from '@/lib/runtime/types';
 import { useShallow } from 'zustand/react/shallow';
 
+import type { PiContentBlock, PiMessageViewState } from '@/lib/pi/types';
 import type { MessageStreamPhase } from '@/stores/types/sessionTypes';
 import { useSessionStore } from '@/stores/useSessionStore';
-import { isFullySyntheticMessage } from '@/lib/messages/synthetic';
 import { useCurrentSessionActivity } from './useSessionActivity';
 
 export type AssistantActivity = 'idle' | 'streaming' | 'tooling' | 'cooldown' | 'permission';
@@ -41,16 +40,7 @@ export interface AssistantStatusSnapshot {
     working: WorkingSummary;
 }
 
-type AssistantMessageWithState = AssistantMessage & {
-    status?: string;
-    streaming?: boolean;
-    abortedAt?: number;
-};
-
-interface AssistantSessionMessageRecord {
-    info: AssistantMessageWithState;
-    parts: Part[];
-}
+type AssistantPiMessage = Extract<PiMessageViewState, { role: 'assistant' }>;
 
 const DEFAULT_WORKING: WorkingSummary = {
     activity: 'idle',
@@ -74,76 +64,100 @@ const DEFAULT_WORKING: WorkingSummary = {
     retryInfo: null,
 };
 
-const isAssistantMessage = (message: Message): message is AssistantMessageWithState => message.role === 'assistant';
+const isTextBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'text' }> => block.type === 'text';
+const isThinkingBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'thinking' }> => block.type === 'thinking';
+const isToolCallBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'toolCall' }> => block.type === 'toolCall';
 
-const isReasoningPart = (part: Part): part is ReasoningPart => part.type === 'reasoning';
-
-const isTextPart = (part: Part): part is TextPart => part.type === 'text';
-
-const getLegacyTextContent = (part: Part): string | undefined => {
-    if (isTextPart(part)) {
-        return part.text;
-    }
-    const candidate = part as Partial<{ text?: unknown; content?: unknown; value?: unknown }>;
-    if (typeof candidate.text === 'string') {
-        return candidate.text;
-    }
-    if (typeof candidate.content === 'string') {
-        return candidate.content;
-    }
-    if (typeof candidate.value === 'string') {
-        return candidate.value;
-    }
-    return undefined;
+const TOOL_STATUS_PHRASES: Record<string, string> = {
+    read: 'reading file',
+    write: 'writing file',
+    edit: 'editing file',
+    multiedit: 'editing files',
+    apply_patch: 'applying patch',
+    bash: 'running command',
+    grep: 'searching content',
+    glob: 'finding files',
+    list: 'listing directory',
+    task: 'delegating task',
+    webfetch: 'fetching URL',
+    websearch: 'searching web',
+    codesearch: 'web code search',
+    todowrite: 'updating todos',
+    todoread: 'reading todos',
+    skill: 'learning skill',
+    question: 'asking question',
+    plan_enter: 'switching to planning',
+    plan_exit: 'switching to building',
 };
 
-const getPartTimeInfo = (part: Part): { end?: number } | undefined => {
-    if (isTextPart(part) || isReasoningPart(part)) {
-        return part.time;
-    }
-    const candidate = part as Partial<{ time?: { end?: number } }>;
-    return candidate.time;
-};
+const WORKING_PHRASES = [
+    'working',
+    'processing',
+    'preparing',
+    'warming up',
+    'gears turning',
+    'computing',
+    'calculating',
+    'analyzing',
+    'wheels spinning',
+    'calibrating',
+    'synthesizing',
+    'connecting dots',
+    'inspecting logic',
+    'weighing options',
+];
 
-const getToolDisplayName = (part: ToolPart): string => {
-    if (part.tool) {
-        return part.tool;
-    }
-    const candidate = part as ToolPart & Partial<{ name?: unknown }>;
-    return typeof candidate.name === 'string' ? candidate.name : 'tool';
-};
+const getToolStatusPhrase = (toolName: string): string => TOOL_STATUS_PHRASES[toolName] ?? `using ${toolName}`;
+const getRandomWorkingPhrase = (): string => WORKING_PHRASES[Math.floor(Math.random() * WORKING_PHRASES.length)];
 
 export function useAssistantStatus(): AssistantStatusSnapshot {
-    const { currentSessionId, messages, permissions, sessionAbortFlags } = useSessionStore(
+    const { currentSessionId, piSessions, permissions, interactiveRequests, sessionAbortFlags } = useSessionStore(
         useShallow((state) => ({
             currentSessionId: state.currentSessionId,
-            messages: state.messages,
+            piSessions: state.piSessions,
             permissions: state.permissions,
+            interactiveRequests: state.interactiveRequests,
             sessionAbortFlags: state.sessionAbortFlags,
         }))
     );
 
     const { phase: activityPhase, isWorking: isPhaseWorking } = useCurrentSessionActivity();
 
-    const sessionRetryAttempt = useSessionStore((state) => {
-        if (!currentSessionId || !state.sessionStatus) return undefined;
-        const s = state.sessionStatus.get(currentSessionId);
-        return s?.type === 'retry' ? s.attempt : undefined;
-    });
-
-    const sessionRetryNext = useSessionStore((state) => {
-        if (!currentSessionId || !state.sessionStatus) return undefined;
-        const s = state.sessionStatus.get(currentSessionId);
-        return s?.type === 'retry' ? s.next : undefined;
-    });
-
-    const sessionMessages = React.useMemo<Array<{ info: Message; parts: Part[] }>>(() => {
+    const currentPiSession = React.useMemo(() => {
         if (!currentSessionId) {
+            return null;
+        }
+        return piSessions.get(currentSessionId) ?? null;
+    }, [currentSessionId, piSessions]);
+
+    // Pi-native: 直接从 piSessions 获取 retry 状态
+    const sessionRetryInfo = React.useMemo(() => {
+        if (!currentSessionId || !currentPiSession) return null;
+        if (currentPiSession.status !== 'retrying') return null;
+        // Pi-native retry 状态目前只返回基本状态，扩展字段需后端支持
+        return { attempt: undefined as number | undefined, next: undefined as number | undefined };
+    }, [currentSessionId, currentPiSession]);
+
+    const assistantMessages = React.useMemo<AssistantPiMessage[]>(() => {
+        if (!currentPiSession) {
             return [];
         }
-        const records = messages.get(currentSessionId) ?? [];
-        return records as Array<{ info: Message; parts: Part[] }>;
-    }, [currentSessionId, messages]);
+        return currentPiSession.messages.filter(
+            (message): message is AssistantPiMessage => message.role === 'assistant'
+        );
+    }, [currentPiSession]);
+
+    const lastAssistantMessage = React.useMemo<AssistantPiMessage | null>(() => {
+        if (assistantMessages.length === 0) {
+            return null;
+        }
+        return [...assistantMessages].sort((a, b) => {
+            if (a.timestamp !== b.timestamp) {
+                return a.timestamp - b.timestamp;
+            }
+            return (a.id ?? '').localeCompare(b.id ?? '');
+        })[assistantMessages.length - 1] ?? null;
+    }, [assistantMessages]);
 
     type ParsedStatusResult = {
         activePartType: 'text' | 'tool' | 'reasoning' | 'editing' | undefined;
@@ -153,129 +167,50 @@ export function useAssistantStatus(): AssistantStatusSnapshot {
     };
 
     const parsedStatus = React.useMemo<ParsedStatusResult>(() => {
-        if (sessionMessages.length === 0) {
+        if (!currentPiSession || !lastAssistantMessage) {
             return { activePartType: undefined, activeToolName: undefined, statusText: 'working', isGenericStatus: true };
         }
-
-        const assistantMessages = sessionMessages
-            .filter(
-                (msg): msg is AssistantSessionMessageRecord =>
-                    isAssistantMessage(msg.info) && !isFullySyntheticMessage(msg.parts)
-            );
-
-        if (assistantMessages.length === 0) {
-            return { activePartType: undefined, activeToolName: undefined, statusText: 'working', isGenericStatus: true };
-        }
-
-        const sortedAssistantMessages = [...assistantMessages].sort((a, b) => {
-            const aCreated = typeof a.info.time?.created === 'number' ? a.info.time.created : null;
-            const bCreated = typeof b.info.time?.created === 'number' ? b.info.time.created : null;
-
-            if (aCreated !== null && bCreated !== null && aCreated !== bCreated) {
-                return aCreated - bCreated;
-            }
-
-            return a.info.id.localeCompare(b.info.id);
-        });
-
-        const lastAssistant = sortedAssistantMessages[sortedAssistantMessages.length - 1];
 
         let activePartType: 'text' | 'tool' | 'reasoning' | 'editing' | undefined = undefined;
         let activeToolName: string | undefined = undefined;
 
         const editingTools = new Set(['edit', 'write', 'apply_patch']);
+        const toolExecutionsById = new Map(currentPiSession.toolExecutions.map((execution) => [execution.toolCallId, execution]));
+        const contentBlocks = Array.isArray(lastAssistantMessage.content) ? lastAssistantMessage.content : [];
 
-        for (let i = (lastAssistant.parts ?? []).length - 1; i >= 0; i -= 1) {
-            const part = lastAssistant.parts?.[i];
-            if (!part) continue;
+        for (let i = contentBlocks.length - 1; i >= 0; i -= 1) {
+            const block = contentBlocks[i];
+            if (!block) continue;
 
-            switch (part.type) {
-                case 'reasoning': {
-                    const time = part.time ?? getPartTimeInfo(part);
-                    const stillRunning = !time || typeof time.end === 'undefined';
-                    if (stillRunning && !activePartType) {
-                        activePartType = 'reasoning';
+            if (isThinkingBlock(block) && block.thinking.trim().length > 0 && !activePartType) {
+                activePartType = 'reasoning';
+                continue;
+            }
+
+            if (isToolCallBlock(block) && !activePartType) {
+                const execution = block.id ? toolExecutionsById.get(block.id) : undefined;
+                const toolStatus = execution?.status;
+                const toolName = execution?.toolName || block.name || 'tool';
+                if (toolStatus === 'running') {
+                    if (editingTools.has(toolName)) {
+                        activePartType = 'editing';
+                    } else {
+                        activePartType = 'tool';
+                        activeToolName = toolName;
                     }
-                    break;
+                    continue;
                 }
-                case 'tool': {
-                    const toolStatus = part.state?.status;
-                    if ((toolStatus === 'running' || toolStatus === 'pending') && !activePartType) {
-                        const toolName = getToolDisplayName(part);
-                        if (editingTools.has(toolName)) {
-                            activePartType = 'editing';
-                        } else {
-                            activePartType = 'tool';
-                            activeToolName = toolName;
-                        }
-                    }
-                    break;
-                }
-                case 'text': {
-                    const rawContent = getLegacyTextContent(part) ?? '';
-                    if (typeof rawContent === 'string' && rawContent.trim().length > 0) {
-                        const time = getPartTimeInfo(part);
-                        const streamingPart = !time || typeof time.end === 'undefined';
-                        if (streamingPart && !activePartType) {
-                            activePartType = 'text';
-                        }
-                    }
-                    break;
-                }
-                default:
-                    break;
+            }
+
+            if (isTextBlock(block) && block.text.trim().length > 0 && currentPiSession.isStreaming && !activePartType) {
+                activePartType = 'text';
             }
         }
 
-        const TOOL_STATUS_PHRASES: Record<string, string> = {
-            read: 'reading file',
-            write: 'writing file',
-            edit: 'editing file',
-            multiedit: 'editing files',
-            apply_patch: 'applying patch',
-            bash: 'running command',
-            grep: 'searching content',
-            glob: 'finding files',
-            list: 'listing directory',
-            task: 'delegating task',
-            webfetch: 'fetching URL',
-            websearch: 'searching web',
-            codesearch: 'web code search',
-            todowrite: 'updating todos',
-            todoread: 'reading todos',
-            skill: 'learning skill',
-            question: 'asking question',
-            plan_enter: 'switching to planning',
-            plan_exit: 'switching to building',
-        };
-
-        const WORKING_PHRASES = [
-            'working',
-            'processing',
-            'preparing',
-            'warming up',
-            'gears turning',
-            'computing',
-            'calculating',
-            'analyzing',
-            'wheels spinning',
-            'calibrating',
-            'synthesizing',
-            'connecting dots',
-            'inspecting logic',
-            'weighing options',
-        ];
-
-        const getToolStatusPhrase = (toolName: string): string => {
-            return TOOL_STATUS_PHRASES[toolName] ?? `using ${toolName}`;
-        };
-
-        const getRandomWorkingPhrase = (): string => {
-            return WORKING_PHRASES[Math.floor(Math.random() * WORKING_PHRASES.length)];
-        };
-
         const isGenericStatus = activePartType === undefined;
         const statusText = (() => {
+            const nativeWorkingMessage = currentPiSession.workingMessage?.trim();
+            if (nativeWorkingMessage) return nativeWorkingMessage;
             if (activePartType === 'editing') return 'editing file';
             if (activePartType === 'tool' && activeToolName) return getToolStatusPhrase(activeToolName);
             if (activePartType === 'reasoning') return 'thinking';
@@ -284,7 +219,7 @@ export function useAssistantStatus(): AssistantStatusSnapshot {
         })();
 
         return { activePartType, activeToolName, statusText, isGenericStatus };
-    }, [sessionMessages]);
+    }, [currentPiSession, lastAssistantMessage]);
 
     const abortState = React.useMemo(() => {
         const sessionId = currentSessionId;
@@ -294,7 +229,6 @@ export function useAssistantStatus(): AssistantStatusSnapshot {
     }, [currentSessionId, sessionAbortFlags]);
 
     const baseWorking = React.useMemo<WorkingSummary>(() => {
-
         if (abortState.wasAborted) {
             return {
                 ...DEFAULT_WORKING,
@@ -316,23 +250,23 @@ export function useAssistantStatus(): AssistantStatusSnapshot {
         const isCooldown = false;
         const isRetry = activityPhase === 'retry';
 
+        const hasNativeActiveTools = currentPiSession?.toolExecutions.some((execution) => execution.status === 'running') ?? false;
+
         let activity: AssistantActivity = 'idle';
         if (isWorking) {
-            if (parsedStatus.activePartType === 'tool' || parsedStatus.activePartType === 'editing') {
+            if (hasNativeActiveTools || parsedStatus.activePartType === 'tool' || parsedStatus.activePartType === 'editing') {
                 activity = 'tooling';
             } else {
                 activity = isCooldown ? 'cooldown' : 'streaming';
             }
         }
 
-        const retryInfo = isRetry
-            ? { attempt: sessionRetryAttempt, next: sessionRetryNext }
-            : null;
+        const retryInfo = isRetry ? sessionRetryInfo : null;
 
         return {
             activity,
             hasWorkingContext: isWorking,
-            hasActiveTools: parsedStatus.activePartType === 'tool' || parsedStatus.activePartType === 'editing',
+            hasActiveTools: hasNativeActiveTools || parsedStatus.activePartType === 'tool' || parsedStatus.activePartType === 'editing',
             isWorking,
             isStreaming,
             isCooldown,
@@ -350,38 +284,25 @@ export function useAssistantStatus(): AssistantStatusSnapshot {
             isComplete: false,
             retryInfo,
         };
-    }, [activityPhase, isPhaseWorking, parsedStatus, abortState, sessionRetryAttempt, sessionRetryNext]);
+    }, [activityPhase, isPhaseWorking, parsedStatus, abortState, currentPiSession, sessionRetryInfo]);
 
     const forming = React.useMemo<FormingSummary>(() => {
-
         const isActive = isPhaseWorking && parsedStatus.activePartType === 'text';
 
-        if (!isActive || sessionMessages.length === 0) {
+        if (!isActive || !lastAssistantMessage) {
             return { isActive, characterCount: 0 };
         }
 
-        const assistantMessages = sessionMessages.filter(
-            (msg): msg is AssistantSessionMessageRecord =>
-                isAssistantMessage(msg.info) && !isFullySyntheticMessage(msg.parts)
-        );
-
-        if (assistantMessages.length === 0) {
-            return { isActive, characterCount: 0 };
-        }
-
-        const lastAssistant = assistantMessages[assistantMessages.length - 1];
         let characterCount = 0;
-
-        (lastAssistant.parts ?? []).forEach((part) => {
-            if (part.type !== 'text') return;
-            const rawContent = getLegacyTextContent(part) ?? '';
-            if (typeof rawContent === 'string' && rawContent.trim().length > 0) {
-                characterCount += rawContent.length;
+        (lastAssistantMessage.content ?? []).forEach((block) => {
+            if (!isTextBlock(block)) return;
+            if (block.text.trim().length > 0) {
+                characterCount += block.text.length;
             }
         });
 
         return { isActive, characterCount };
-    }, [sessionMessages, isPhaseWorking, parsedStatus.activePartType]);
+    }, [isPhaseWorking, lastAssistantMessage, parsedStatus.activePartType]);
 
     const working = React.useMemo<WorkingSummary>(() => {
         if (baseWorking.wasAborted || baseWorking.abortActive) {
@@ -390,20 +311,32 @@ export function useAssistantStatus(): AssistantStatusSnapshot {
 
         const sessionId = currentSessionId;
         const permissionList = sessionId ? permissions?.get(sessionId) ?? [] : [];
+        const requestList = sessionId ? interactiveRequests?.get(sessionId) ?? [] : [];
         const hasPendingPermission = permissionList.length > 0;
+        const hasPendingQuestion = requestList.length > 0;
 
-        if (!hasPendingPermission) {
+        if (!hasPendingPermission && !hasPendingQuestion) {
             return baseWorking;
+        }
+
+        if (hasPendingPermission) {
+            return {
+                ...baseWorking,
+                statusText: 'waiting for permission',
+                isWaitingForPermission: true,
+                canAbort: false,
+                retryInfo: null,
+            };
         }
 
         return {
             ...baseWorking,
-            statusText: 'waiting for permission',
-            isWaitingForPermission: true,
+            statusText: 'waiting for input',
+            isWaitingForPermission: false,
             canAbort: false,
             retryInfo: null,
         };
-    }, [currentSessionId, permissions, baseWorking]);
+    }, [currentSessionId, permissions, interactiveRequests, baseWorking]);
 
     return {
         forming,

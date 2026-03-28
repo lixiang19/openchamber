@@ -3,19 +3,21 @@ import { RiArrowRightSLine, RiCheckLine, RiCloseLine, RiEditLine, RiListCheck3, 
 import { Checkbox } from '@/components/ui/checkbox';
 
 import { cn } from '@/lib/utils';
-import type { QuestionInfo, QuestionRequest } from '@/types/question';
+import type { PiInteractiveRequestViewState } from '@/lib/pi/types';
 import { useSessionStore } from '@/stores/useSessionStore';
 
 interface QuestionCardProps {
-  question: QuestionRequest;
+  request: PiInteractiveRequestViewState;
 }
 
 type TabKey = string;
 const SUMMARY_TAB = 'summary';
 
-const getQuestionOptions = (item: QuestionInfo | null | undefined) => item?.options ?? [];
+type InteractiveQuestionItem = NonNullable<PiInteractiveRequestViewState['questions']>[number];
 
-const allowsCustomAnswer = (item: QuestionInfo | null | undefined) => {
+const getQuestionOptions = (item: InteractiveQuestionItem | null | undefined) => item?.options ?? [];
+
+const allowsCustomAnswer = (item: InteractiveQuestionItem | null | undefined) => {
   if (!item) {
     return false;
   }
@@ -25,19 +27,19 @@ const allowsCustomAnswer = (item: QuestionInfo | null | undefined) => {
   return item.allowCustom === true;
 };
 
-const startsInCustomMode = (item: QuestionInfo | null | undefined) => (
+const startsInCustomMode = (item: InteractiveQuestionItem | null | undefined) => (
   allowsCustomAnswer(item) && getQuestionOptions(item).length === 0
 );
 
-export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
+export const QuestionCard: React.FC<QuestionCardProps> = ({ request }) => {
   const { respondToQuestion, rejectQuestion } = useSessionStore();
   const isFromSubagent = useSessionStore(
     React.useCallback((state) => {
       const currentSessionId = state.currentSessionId;
-      if (!currentSessionId || question.sessionID === currentSessionId) return false;
-      const sourceSession = state.sessions.find((session) => session.id === question.sessionID);
+      if (!currentSessionId || request.sessionId === currentSessionId) return false;
+      const sourceSession = state.sessions.find((session) => session.id === request.sessionId);
       return Boolean(sourceSession?.parentID && sourceSession.parentID === currentSessionId);
-    }, [question.sessionID])
+    }, [request.sessionId])
   );
   const [activeTab, setActiveTab] = React.useState<TabKey>('0');
   const [isResponding, setIsResponding] = React.useState(false);
@@ -48,7 +50,18 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
   const [customMode, setCustomMode] = React.useState<Record<number, boolean>>({});
   const [customText, setCustomText] = React.useState<Record<number, string>>({});
 
-  const questions = React.useMemo(() => question.questions ?? [], [question.questions]);
+  const questions = React.useMemo<InteractiveQuestionItem[]>(() => {
+    if (Array.isArray(request.questions) && request.questions.length > 0) {
+      return request.questions;
+    }
+    return [{
+      header: request.title || 'Input needed',
+      question: request.message || request.title || 'Agent is waiting for your input',
+      options: [],
+      multiple: false,
+      allowCustom: true,
+    }];
+  }, [request.message, request.questions, request.title]);
   const isSummaryTab = activeTab === SUMMARY_TAB;
   const activeIndex = isSummaryTab ? -1 : Math.max(0, Math.min(questions.length - 1, Number(activeTab) || 0));
   const activeQuestion = isSummaryTab ? null : questions[activeIndex];
@@ -63,7 +76,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
     setSelectedOptions({});
     setCustomMode(() => {
       const initial: Record<number, boolean> = {};
-      (question.questions ?? []).forEach((item, index) => {
+      questions.forEach((item, index) => {
         initial[index] = startsInCustomMode(item);
       });
       return initial;
@@ -71,7 +84,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
     setCustomText({});
     setHasResponded(false);
     setResponseError(null);
-  }, [question.id, question.questions]);
+  }, [questions, request.id]);
 
   const tabs = React.useMemo(() => {
     const questionTabs = questions.map((q, index) => ({
@@ -195,27 +208,27 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question }) => {
     setIsResponding(true);
     try {
       const answers = buildAnswersPayload();
-      await respondToQuestion(question.sessionID, question.id, answers);
+      await respondToQuestion(request.sessionId, request.id, answers);
       setHasResponded(true);
     } catch (error) {
       setResponseError(error instanceof Error ? error.message : 'Failed to submit answer.');
     } finally {
       setIsResponding(false);
     }
-  }, [buildAnswersPayload, question.id, question.sessionID, requiredSatisfied, respondToQuestion]);
+  }, [buildAnswersPayload, request.id, request.sessionId, requiredSatisfied, respondToQuestion]);
 
   const handleDismiss = React.useCallback(async () => {
     setResponseError(null);
     setIsResponding(true);
     try {
-      await rejectQuestion(question.sessionID, question.id);
+      await rejectQuestion(request.sessionId, request.id);
       setHasResponded(true);
     } catch (error) {
       setResponseError(error instanceof Error ? error.message : 'Failed to dismiss question.');
     } finally {
       setIsResponding(false);
     }
-  }, [question.id, question.sessionID, rejectQuestion]);
+  }, [rejectQuestion, request.id, request.sessionId]);
 
   if (hasResponded || questions.length === 0) {
     return null;

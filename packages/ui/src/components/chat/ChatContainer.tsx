@@ -1,7 +1,6 @@
 import React from 'react';
 import { RiArrowLeftLine } from '@remixicon/react';
 import { useShallow } from 'zustand/react/shallow';
-import type { Message, Part } from '@/lib/runtime/types';
 
 import { ChatInput } from './ChatInput';
 import { useSessionStore } from '@/stores/useSessionStore';
@@ -20,16 +19,15 @@ import { OverlayScrollbar } from '@/components/ui/OverlayScrollbar';
 import { TimelineDialog } from './TimelineDialog';
 import { WeChatSessionDialog } from './WeChatSessionDialog';
 import type { PermissionRequest } from '@/types/permission';
-import type { QuestionRequest } from '@/types/question';
+import type { PiInteractiveRequestViewState } from '@/lib/pi/types';
 import { cn } from '@/lib/utils';
 import {
     collectVisibleSessionIdsForBlockingRequests,
     flattenBlockingRequests,
 } from './lib/blockingRequests';
 
-const EMPTY_MESSAGES: Array<{ info: Message; parts: Part[] }> = [];
 const EMPTY_PERMISSIONS: PermissionRequest[] = [];
-const EMPTY_QUESTIONS: QuestionRequest[] = [];
+const EMPTY_INTERACTIVE_REQUESTS: PiInteractiveRequestViewState[] = [];
 const IDLE_SESSION_STATUS = { type: 'idle' as const };
 const SESSION_RESELECTED_EVENT = 'openchamber:session-reselected';
 
@@ -108,40 +106,33 @@ export const ChatContainer: React.FC = () => {
         chatRenderMode,
     } = useUIStore();
 
-    const sessionMessages = useSessionStore(
+    const currentPiSession = useSessionStore(
         React.useCallback(
-            (state) => (currentSessionId ? state.messages.get(currentSessionId) ?? EMPTY_MESSAGES : EMPTY_MESSAGES),
+            (state) => (currentSessionId ? state.piSessions.get(currentSessionId) ?? null : null),
             [currentSessionId]
         )
     );
 
+
     const sessions = useSessionStore((state) => state.sessions);
 
-    const blockingRequestState = useSessionStore(
-        useShallow((state) => ({
-            sessions: state.sessions,
-            permissions: state.permissions,
-            questions: state.questions,
-        }))
-    );
+    // Pi-native: 直接从当前 session 获取 interactiveRequests
+    const sessionInteractiveRequests = React.useMemo(() => {
+        if (!currentPiSession?.interactiveRequests) return EMPTY_INTERACTIVE_REQUESTS;
+        return currentPiSession.interactiveRequests;
+    }, [currentPiSession?.interactiveRequests]);
 
-    const scopedSessionIds = React.useMemo(
-        () => collectVisibleSessionIdsForBlockingRequests(
-            blockingRequestState.sessions.map((session) => ({ id: session.id, parentID: session.parentID })),
-            currentSessionId,
-        ),
-        [blockingRequestState.sessions, currentSessionId]
-    );
-
+    // NOTE: permissions 仍从旧 store 读取（按用户要求冻结 permission 相关改动）
     const sessionPermissions = React.useMemo(() => {
+        const scopedSessionIds = collectVisibleSessionIdsForBlockingRequests(
+            (sessions || []).map((session) => ({ id: session.id, parentID: session.parentID })),
+            currentSessionId,
+        );
         if (scopedSessionIds.length === 0) return EMPTY_PERMISSIONS;
-        return flattenBlockingRequests(blockingRequestState.permissions, scopedSessionIds);
-    }, [blockingRequestState.permissions, scopedSessionIds]);
 
-    const sessionQuestions = React.useMemo(() => {
-        if (scopedSessionIds.length === 0) return EMPTY_QUESTIONS;
-        return flattenBlockingRequests(blockingRequestState.questions, scopedSessionIds);
-    }, [blockingRequestState.questions, scopedSessionIds]);
+        const permissionState = useSessionStore.getState().permissions;
+        return flattenBlockingRequests(permissionState, scopedSessionIds);
+    }, [sessions, currentSessionId]);
 
     const historyMeta = useSessionStore(
         React.useCallback(
@@ -157,16 +148,17 @@ export const ChatContainer: React.FC = () => {
         )
     );
 
-    const sessionStatusForCurrent = useSessionStore(
-        React.useCallback(
-            (state) => (currentSessionId ? state.sessionStatus?.get(currentSessionId) ?? IDLE_SESSION_STATUS : IDLE_SESSION_STATUS),
-            [currentSessionId]
-        )
-    );
+    // Pi-native: 直接从 currentPiSession 获取状态
+    const sessionStatusForCurrent = React.useMemo(() => {
+        if (!currentPiSession) return IDLE_SESSION_STATUS;
+        const status = currentPiSession.status;
+        return {
+            type: status === 'retrying' ? 'retry' : (status === 'streaming' || status === 'compacting') ? 'busy' : 'idle',
+        };
+    }, [currentPiSession]);
 
-    const hasSessionMessagesEntry = useSessionStore(
-        React.useCallback((state) => (currentSessionId ? state.messages.has(currentSessionId) : false), [currentSessionId])
-    );
+    const currentPiMessageCount = currentPiSession?.messages.length ?? 0;
+    const hasSessionMessagesEntry = currentPiMessageCount > 0;
 
     const { isMobile } = useDeviceInfo();
     const draftOpen = Boolean(newSessionDraft?.open);
@@ -227,8 +219,8 @@ export const ChatContainer: React.FC = () => {
     }, [currentSessionId, draftOpen, openNewSessionDraft]);
 
     const sessionBlockingCards = React.useMemo(() => {
-        return [...sessionPermissions, ...sessionQuestions];
-    }, [sessionPermissions, sessionQuestions]);
+        return [...sessionPermissions, ...sessionInteractiveRequests];
+    }, [sessionInteractiveRequests, sessionPermissions]);
 
     const activeTurnChangeRef = React.useRef<(turnId: string | null) => void>(() => {});
 
@@ -243,7 +235,7 @@ export const ChatContainer: React.FC = () => {
         isProgrammaticFollowActive,
     } = useChatScrollManager({
         currentSessionId,
-        sessionMessages,
+        messageCount: currentPiMessageCount,
         streamingMessageId,
         sessionMemoryState: sessionMemoryStateMap,
         updateViewportAnchor,
@@ -259,7 +251,7 @@ export const ChatContainer: React.FC = () => {
 
     const timelineController = useChatTimelineController({
         sessionId: currentSessionId,
-        messages: sessionMessages,
+        session: currentPiSession,
         historyMeta,
         scrollRef,
         messageListRef,
@@ -379,7 +371,7 @@ export const ChatContainer: React.FC = () => {
         };
 
         void load();
-    }, [currentSessionId, hasHistoryMetadata, hasSessionMessagesEntry, isPinned, loadMessages, scrollToBottom, sessionMessages.length, sessionStatusForCurrent.type]);
+    }, [currentPiMessageCount, currentSessionId, hasHistoryMetadata, hasSessionMessagesEntry, isPinned, loadMessages, scrollToBottom, sessionStatusForCurrent.type]);
 
     if (!currentSessionId && !draftOpen) {
         return (
@@ -421,7 +413,7 @@ export const ChatContainer: React.FC = () => {
         return null;
     }
 
-    if (isSessionHydrating && sessionMessages.length === 0 && !streamingMessageId) {
+    if (isSessionHydrating && currentPiMessageCount === 0 && !streamingMessageId) {
         return (
             <div
                 className="relative flex flex-col h-full bg-background gap-0"
@@ -462,7 +454,7 @@ export const ChatContainer: React.FC = () => {
         );
     }
 
-    if (sessionMessages.length === 0 && !streamingMessageId) {
+    if (currentPiMessageCount === 0 && !streamingMessageId) {
         return (
             <div
                 className="relative flex flex-col h-full bg-background transform-gpu"
@@ -522,7 +514,7 @@ export const ChatContainer: React.FC = () => {
                                 disableStaging={timelineController.pendingRevealWork}
                                 messages={timelineController.renderedMessages}
                                 permissions={sessionPermissions}
-                                questions={sessionQuestions}
+                                interactiveRequests={sessionInteractiveRequests}
                                 onMessageContentChange={handleMessageContentChange}
                                 getAnimationHandlers={getAnimationHandlers}
                                 hasMoreAbove={timelineController.historySignals.hasMoreAboveTurns}
@@ -547,7 +539,7 @@ export const ChatContainer: React.FC = () => {
                         : 'bg-background/95 supports-[backdrop-filter]:bg-background/80'
                 )}
             >
-                {!isDesktopExpandedInput && sessionMessages.length > 0 && (
+                {!isDesktopExpandedInput && currentPiMessageCount > 0 && (
                     <ScrollToBottomButton
                         visible={timelineController.showScrollToBottom}
                         onClick={navigation.resumeToLatest}

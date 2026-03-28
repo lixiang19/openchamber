@@ -1,10 +1,12 @@
 import React from 'react';
-import { projectTurnRecords } from '../lib/turns/projectTurnRecords';
+import type { PiSessionViewState } from '@/lib/pi/types';
+import { projectPiSessionToTurnRecords } from '../lib/turns/projectTurnRecords';
 import { stabilizeTurnProjection } from '../lib/turns/stabilizeTurnProjection';
-import type { ChatMessageEntry, TurnProjectionResult } from '../lib/turns/types';
+import type { TurnProjectionResult } from '../lib/turns/types';
 
 interface UseTurnRecordsOptions {
     showTextJustificationActivity: boolean;
+    piSession?: PiSessionViewState | null;
 }
 
 export interface TurnRecordsResult {
@@ -14,7 +16,7 @@ export interface TurnRecordsResult {
 }
 
 export const useTurnRecords = (
-    messages: ChatMessageEntry[],
+    _messages: unknown[],
     options: UseTurnRecordsOptions,
 ): TurnRecordsResult => {
     const previousProjectionRef = React.useRef<TurnProjectionResult | null>(null);
@@ -23,15 +25,26 @@ export const useTurnRecords = (
         previousProjectionRef.current = null;
     }, [options.showTextJustificationActivity]);
 
+    // Pi-native: 直接从 Pi session 构建 turn 记录
     const projection = React.useMemo(() => {
-        const rawProjection = projectTurnRecords(messages, {
+        if (!options.piSession) {
+            return {
+                turns: [],
+                indexes: { turnById: new Map(), messageToTurnId: new Map(), messageMetaById: new Map() },
+                lastTurnId: null,
+                lastTurnMessageIds: new Set(),
+                ungroupedMessageIds: new Set(),
+                piMessages: new Map(),
+            } as TurnProjectionResult;
+        }
+        const rawProjection = projectPiSessionToTurnRecords(options.piSession, {
             previousProjection: previousProjectionRef.current,
             showTextJustificationActivity: options.showTextJustificationActivity,
         });
         const stabilizedProjection = stabilizeTurnProjection(rawProjection, previousProjectionRef.current);
         previousProjectionRef.current = stabilizedProjection;
         return stabilizedProjection;
-    }, [messages, options.showTextJustificationActivity]);
+    }, [options.piSession, options.showTextJustificationActivity]);
 
     const staticTurns = React.useMemo(() => {
         if (projection.turns.length <= 1) {

@@ -39,8 +39,7 @@ import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CodeMirrorEditor } from '@/components/ui/CodeMirrorEditor';
-import { PreviewToggleButton } from './PreviewToggleButton';
-import { SimpleMarkdownRenderer } from '@/components/chat/MarkdownRenderer';
+import { MarkdownMilkdownEditor } from './MarkdownMilkdownEditor';
 import { languageByExtension, loadLanguageByExtension } from '@/lib/codemirror/languageByExtension';
 import { createFlexokiCodeMirrorTheme } from '@/lib/codemirror/flexokiTheme';
 import { File as PierreFile } from '@pierre/diffs/react';
@@ -493,7 +492,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [isSearchOpen, setIsSearchOpen] = React.useState(false);
   const [textViewMode, setTextViewMode] = React.useState<'view' | 'edit'>('edit');
-  const [mdViewMode, setMdViewMode] = React.useState<'preview' | 'edit'>('edit');
 
   const lightTheme = React.useMemo(
     () => availableThemes.find((theme) => theme.metadata.id === lightThemeId) ?? getDefaultTheme(false),
@@ -1684,34 +1682,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
     setTextViewMode('edit');
   }, [selectedFile?.path]);
 
-  const MD_VIEWER_MODE_KEY = 'ridge:files:md-viewer-mode';
-
-  React.useEffect(() => {
-    try {
-      const stored = localStorage.getItem(MD_VIEWER_MODE_KEY);
-      if (stored === 'preview') {
-        setMdViewMode('preview');
-      } else if (stored === 'edit') {
-        setMdViewMode('edit');
-      }
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, []);
-
-  const saveMdViewMode = React.useCallback((mode: 'preview' | 'edit') => {
-    setMdViewMode(mode);
-    try {
-      localStorage.setItem(MD_VIEWER_MODE_KEY, mode);
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, []);
-
-  const getMdViewMode = React.useCallback((): 'preview' | 'edit' => {
-    return mdViewMode;
-  }, [mdViewMode]);
-
   React.useEffect(() => {
     if (!pendingFileNavigation || !root) {
       return;
@@ -2150,6 +2120,28 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
     );
   }, [currentTheme.metadata.variant, pierreTheme, wrapLines]);
 
+  const renderMarkdownEditor = React.useCallback(() => {
+    return (
+      <ErrorBoundary
+        fallback={
+          <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
+            <div className="mb-1 font-medium text-destructive">Markdown editor unavailable</div>
+            <div className="text-sm text-muted-foreground">
+              The dedicated editor failed to load for this file.
+            </div>
+          </div>
+        }
+      >
+        <MarkdownMilkdownEditor
+          documentKey={selectedFilePath}
+          value={draftContent}
+          onChange={setDraftContent}
+          className="h-full"
+        />
+      </ErrorBoundary>
+    );
+  }, [draftContent, selectedFilePath]);
+
   const renderFloatingFileControls = ({ exitFullscreenOnly = false }: { exitFullscreenOnly?: boolean } = {}) => {
     if (!selectedFile) {
       return null;
@@ -2217,7 +2209,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {!isSelectedImage && (
+        {!isSelectedImage && !isMarkdown && (
           <>
             <Button
               variant="ghost"
@@ -2246,13 +2238,6 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
               </Button>
             )}
           </>
-        )}
-
-        {isMarkdown && (
-          <PreviewToggleButton
-            currentMode={getMdViewMode()}
-            onToggle={() => saveMdViewMode(getMdViewMode() === 'preview' ? 'edit' : 'preview')}
-          />
         )}
 
         {canCopy && (
@@ -2550,30 +2535,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                 className="max-w-full max-h-[70vh] object-contain rounded-md border border-border/30 bg-primary/10"
               />
             </div>
-          ) : selectedFile && isMarkdown && getMdViewMode() === 'preview' ? (
-            <div className="h-full overflow-auto p-3">
-              {fileContent.length > 500 * 1024 && (
-                <div className="mb-3 rounded-md border border-status-warning/20 bg-status-warning/10 px-3 py-2 text-sm text-status-warning">
-                  This file is large ({Math.round(fileContent.length / 1024)}KB). Preview may be limited.
-                </div>
-              )}
-              <ErrorBoundary
-                fallback={
-                  <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
-                    <div className="mb-1 font-medium text-destructive">Preview unavailable</div>
-                    <div className="text-sm text-muted-foreground">
-                      Switch to edit mode to fix the issue.
-                    </div>
-                  </div>
-                }
-              >
-                <SimpleMarkdownRenderer
-                  content={fileContent}
-                  className="typography-markdown-body"
-                  stripFrontmatter
-                />
-              </ErrorBoundary>
-            </div>
+          ) : selectedFile && isMarkdown && canEdit ? (
+            renderMarkdownEditor()
           ) : selectedFile && canUseShikiFileView && textViewMode === 'view' ? (
             renderShikiFileView(selectedFile, draftContent)
           ) : (
@@ -2589,6 +2552,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                   onChange={setDraftContent}
                   extensions={editorExtensions}
                   className="h-full"
+                  readOnly={!canEdit}
                   blockWidgets={blockWidgets}
                   onViewReady={(view) => {
                     editorViewRef.current = view;
@@ -2829,30 +2793,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                 className="max-w-full max-h-full object-contain rounded-md border border-border/30 bg-primary/10"
               />
             </div>
-          ) : isMarkdown && getMdViewMode() === 'preview' ? (
-            <div className="h-full overflow-auto p-4">
-              {fileContent.length > 500 * 1024 && (
-                <div className="mb-3 rounded-md border border-status-warning/20 bg-status-warning/10 px-3 py-2 text-sm text-status-warning">
-                  This file is large ({Math.round(fileContent.length / 1024)}KB). Preview may be limited.
-                </div>
-              )}
-              <ErrorBoundary
-                fallback={
-                  <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
-                    <div className="mb-1 font-medium text-destructive">Preview unavailable</div>
-                    <div className="text-sm text-muted-foreground">
-                      Switch to edit mode to fix the issue.
-                    </div>
-                  </div>
-                }
-              >
-                <SimpleMarkdownRenderer
-                  content={fileContent}
-                  className="typography-markdown-body"
-                  stripFrontmatter
-                />
-              </ErrorBoundary>
-            </div>
+          ) : isMarkdown && canEdit ? (
+            renderMarkdownEditor()
           ) : canUseShikiFileView && textViewMode === 'view' ? (
             renderShikiFileView(selectedFile, draftContent)
           ) : (
@@ -2863,6 +2805,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                 onChange={setDraftContent}
                 extensions={editorExtensions}
                 className="h-full"
+                readOnly={!canEdit}
                 onViewReady={(view) => {
                   editorViewRef.current = view;
                   window.requestAnimationFrame(() => {

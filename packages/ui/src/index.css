@@ -53,6 +53,151 @@ textarea[data-chat-input="true"]:focus-visible {
   font-family: "IBM Plex Sans", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
 }
 
+.ridge-markdown-editor,
+.ridge-markdown-editor .milkdown {
+  min-height: 100%;
+  background: transparent;
+  color: var(--foreground);
+}
+
+.ridge-markdown-editor .milkdown {
+  --crepe-color-background: transparent;
+  --crepe-color-on-background: var(--foreground);
+  --crepe-color-surface: transparent;
+  --crepe-color-on-surface: var(--foreground);
+}
+
+.ridge-markdown-editor .ProseMirror {
+  min-height: 100%;
+  padding: 3.75rem 1.5rem 1.5rem;
+  color: var(--foreground);
+  font-family: "IBM Plex Sans", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.75;
+  outline: none;
+}
+
+.ridge-markdown-editor .ProseMirror > :first-child {
+  margin-top: 0;
+}
+
+.ridge-markdown-editor .ProseMirror > :last-child {
+  margin-bottom: 0;
+}
+
+.ridge-markdown-editor .ProseMirror h1,
+.ridge-markdown-editor .ProseMirror h2,
+.ridge-markdown-editor .ProseMirror h3,
+.ridge-markdown-editor .ProseMirror h4,
+.ridge-markdown-editor .ProseMirror h5,
+.ridge-markdown-editor .ProseMirror h6 {
+  color: var(--foreground);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.ridge-markdown-editor .ProseMirror h1 {
+  font-size: 1.7rem;
+}
+
+.ridge-markdown-editor .ProseMirror h2 {
+  font-size: 1.4rem;
+}
+
+.ridge-markdown-editor .ProseMirror h3 {
+  font-size: 1.15rem;
+}
+
+.ridge-markdown-editor .ProseMirror p,
+.ridge-markdown-editor .ProseMirror ul,
+.ridge-markdown-editor .ProseMirror ol,
+.ridge-markdown-editor .ProseMirror blockquote,
+.ridge-markdown-editor .ProseMirror pre,
+.ridge-markdown-editor .ProseMirror table {
+  margin-block: 0.85rem;
+}
+
+.ridge-markdown-editor .ProseMirror a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.ridge-markdown-editor .ProseMirror blockquote {
+  border-left: 3px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  margin-left: 0;
+  padding-left: 1rem;
+  color: color-mix(in srgb, var(--foreground) 78%, var(--muted-foreground) 22%);
+}
+
+.ridge-markdown-editor .ProseMirror code {
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--surface-elevated) 82%, transparent);
+  padding: 0.15rem 0.35rem;
+  font-family: "IBM Plex Mono", "SF Mono", Menlo, monospace;
+  font-size: 0.92em;
+}
+
+.ridge-markdown-editor .ProseMirror pre {
+  overflow-x: auto;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--surface-elevated) 88%, transparent);
+  padding: 0.9rem 1rem;
+}
+
+.ridge-markdown-editor .ProseMirror pre code {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+.ridge-markdown-editor .ProseMirror hr {
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  margin: 1.25rem 0;
+}
+
+.ridge-markdown-editor .ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ridge-markdown-editor .ProseMirror th,
+.ridge-markdown-editor .ProseMirror td {
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ridge-markdown-editor .ProseMirror th {
+  background: color-mix(in srgb, var(--surface-elevated) 90%, transparent);
+}
+
+.ridge-markdown-editor .ProseMirror img {
+  max-width: 100%;
+  border-radius: 0.9rem;
+}
+
+.ridge-markdown-editor .ProseMirror-selectednode {
+  outline: 2px solid color-mix(in srgb, var(--primary) 70%, transparent);
+  outline-offset: 0.15rem;
+}
+
+.ridge-markdown-editor .ProseMirror:focus {
+  outline: none;
+}
+
+.ridge-markdown-editor .ProseMirror-focused {
+  outline: none;
+}
+
+.ridge-markdown-editor .ProseMirror ::selection {
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
 /* Codemirror syntax fallback for classHighlighter tokens */
 .cm-editor .tok-comment,
 .cm-editor .tok-docComment,

@@ -6,6 +6,8 @@ import { getAgentDefaultEditPermission } from "./utils/permissionUtils";
 import { extractTokensFromMessage } from "./utils/tokenUtils";
 import { calculateContextUsage } from "./utils/contextUtils";
 import { getSafeStorage } from "./utils/safeStorage";
+import { useSessionStore as useSessionManagementStore } from "./sessionStore";
+import type { PiContentBlock, PiMessageViewState, PiSessionViewState } from "@/lib/pi/types";
 
 interface ContextUsage {
     totalTokens: number;
@@ -67,6 +69,77 @@ interface ContextActions {
 }
 
 type ContextStore = ContextState & ContextActions;
+
+const isPiTextBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'text' }> => block.type === 'text';
+
+const buildContextMessagesFromPiSession = (session: PiSessionViewState): { info: any; parts: any[] }[] => {
+    return session.messages.flatMap((message: PiMessageViewState, index: number) => {
+        const messageId = typeof message.id === 'string' && message.id.length > 0
+            ? message.id
+            : `${session.id}:message:${index}`;
+        const timestamp = message.timestamp ?? session.updatedAt;
+
+        if (message.role === 'assistant') {
+            const usage = message.usage as {
+                input?: number;
+                output?: number;
+                reasoning?: number;
+                cacheRead?: number;
+                cacheWrite?: number;
+            } | undefined;
+            return [{
+                info: {
+                    id: messageId,
+                    role: 'assistant',
+                    providerID: message.provider,
+                    modelID: message.model,
+                    time: { created: timestamp, completed: timestamp },
+                    tokens: usage ? {
+                        input: usage.input ?? 0,
+                        output: usage.output ?? 0,
+                        reasoning: usage.reasoning ?? 0,
+                        cache: {
+                            read: usage.cacheRead ?? 0,
+                            write: usage.cacheWrite ?? 0,
+                        },
+                    } : undefined,
+                },
+                parts: [],
+            }];
+        }
+
+        if (message.role === 'user') {
+            const text = typeof message.content === 'string'
+                ? message.content
+                : message.content.filter(isPiTextBlock).map((block) => block.text).join('');
+            return [{
+                info: {
+                    id: messageId,
+                    role: 'user',
+                    time: { created: timestamp, completed: timestamp },
+                },
+                parts: text ? [{ type: 'text', text }] : [],
+            }];
+        }
+
+        return [];
+    });
+};
+
+const getSessionMessages = (
+    messages: Map<string, { info: any; parts: any[] }[]>,
+    sessionId: string,
+): { info: any; parts: any[] }[] => {
+    const cached = messages.get(sessionId);
+    if (cached) {
+        return cached;
+    }
+    const snapshot = useSessionManagementStore.getState().piSessions.get(sessionId);
+    if (!snapshot) {
+        return [];
+    }
+    return buildContextMessagesFromPiSession(snapshot);
+};
 
 const EDIT_PERMISSION_SEQUENCE: EditPermissionMode[] = ['ask', 'allow', 'full'];
 const GLOBAL_EDIT_MODE_SESSION_ID = '__global__';
@@ -244,7 +317,7 @@ export const useContextStore = create<ContextStore>()(
 
                         if (messageIndex > 0 && messageInfo.providerID && messageInfo.modelID) {
 
-                            const sessionMessages = messages.get(sessionId) || [];
+                            const sessionMessages = getSessionMessages(messages, sessionId);
                             const assistantMessages = sessionMessages.filter((m) => m.info.role === "assistant").sort((a, b) => a.info.time.created - b.info.time.created);
 
                             for (let i = messageIndex - 1; i >= 0; i--) {
@@ -277,7 +350,7 @@ export const useContextStore = create<ContextStore>()(
                         return null;
                     };
 
-                    const sessionMessages = messages.get(sessionId) || [];
+                    const sessionMessages = getSessionMessages(messages, sessionId);
 
                     const allMessages = sessionMessages.filter((m: any) => m.info.role === "assistant" || m.info.role === "user").sort((a: any, b: any) => a.info.time.created - b.info.time.created);
                     const assistantMessages = sessionMessages.filter((m: any) => m.info.role === "assistant").sort((a: any, b: any) => a.info.time.created - b.info.time.created);
@@ -378,7 +451,7 @@ export const useContextStore = create<ContextStore>()(
                         return null;
                     }
 
-                    const sessionMessages = messages.get(sessionId) || [];
+                    const sessionMessages = getSessionMessages(messages, sessionId);
                     const assistantMessages = sessionMessages.filter(m => m.info.role === 'assistant');
 
                     if (assistantMessages.length === 0) return null;
@@ -469,7 +542,7 @@ export const useContextStore = create<ContextStore>()(
                 },
 
                 updateSessionContextUsage: (sessionId: string, contextLimit: number, outputLimit: number, messages: Map<string, { info: any; parts: any[] }[]>) => {
-                    const sessionMessages = messages.get(sessionId) || [];
+                    const sessionMessages = getSessionMessages(messages, sessionId);
                     const assistantMessages = sessionMessages.filter(m => m.info.role === 'assistant');
 
                     if (assistantMessages.length === 0) return;
@@ -510,7 +583,7 @@ export const useContextStore = create<ContextStore>()(
 
                     const poll = () => {
                         attempts++;
-                        const sessionMessages = messages.get(sessionId) || [];
+                        const sessionMessages = getSessionMessages(messages, sessionId);
                         const message = sessionMessages.find(m => m.info.id === messageId);
 
                         if (message && message.info.role === 'assistant') {

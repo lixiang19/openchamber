@@ -1,4 +1,5 @@
 import type { Message, Part } from '@/lib/runtime/types';
+import type { PiMessageViewState } from '@/lib/pi/types';
 
 export interface ChatMessageEntry {
     info: Message;
@@ -99,6 +100,13 @@ export interface TurnProjectionResult {
     lastTurnId: string | null;
     lastTurnMessageIds: Set<string>;
     ungroupedMessageIds: Set<string>;
+    /**
+     * Pi-native source reference
+     * When turns are projected directly from PiSessionViewState,
+     * this field stores the source Pi messages for direct access by UI components.
+     * This allows components to bypass the ChatMessageEntry wrapper when needed.
+     */
+    piMessages?: Map<string, PiMessageViewState>;
 }
 
 export type Turn = Pick<TurnRecord, 'turnId' | 'userMessage' | 'assistantMessages'>;

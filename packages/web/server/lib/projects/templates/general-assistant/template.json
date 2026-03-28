@@ -1,0 +1,40 @@
+{
+  "id": "general-assistant",
+  "label": "通用助手",
+  "description": "全能型个人助理，适合日常生活、问答、任务管理。平衡专业性与亲和力，是默认推荐的助手类型。",
+  "category": "personal",
+  "tags": ["assistant", "general", "daily", "productivity", "default"],
+  "icon": "sparkles",
+  "author": "ridge",
+  "version": "1.0.0",
+  "isDefault": true,
+  "variables": {
+    "PROJECT_NAME": {
+      "description": "项目名称",
+      "default": "我的助理"
+    },
+    "AI_NAME": {
+      "description": "AI 助手名称",
+      "default": "小助手"
+    },
+    "USER_NAME": {
+      "description": "用户称呼",
+      "default": "主人",
+      "required": true
+    },
+    "DATE": {
+      "description": "创建日期",
+      "default": "{{DATE}}"
+    }
+  },
+  "renderFiles": [
+    "README.md",
+    "SOUL.md",
+    "IDENTITY.md",
+    "USER.md",
+    "MEMORY.md",
+    "AGENTS.md",
+    "ridge.md"
+  ],
+  "postCreateMessage": "项目已创建！请先编辑 USER.md 填写你的信息，然后根据需要调整 SOUL.md 中的性格设置。"
+}

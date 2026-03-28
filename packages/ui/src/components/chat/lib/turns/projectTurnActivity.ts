@@ -1,3 +1,4 @@
+import type { PiMessageViewState } from '@/lib/pi/types';
 import { ACTIVITY_STANDALONE_TOOL_NAMES } from './constants';
 import type {
     ChatMessageEntry,
@@ -31,12 +32,29 @@ const getPartText = (part: unknown): string | undefined => {
     return undefined;
 };
 
-const getMessageFinish = (message: ChatMessageEntry): string | undefined => {
+const getMessageFinish = (
+    message: ChatMessageEntry,
+    piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
+): string | undefined => {
+    const piMessage = piAssistantById?.get(message.info.id);
+    if (piMessage?.stopReason === 'stop' || piMessage?.stopReason === 'endTurn') {
+        return 'stop';
+    }
+    if (piMessage?.stopReason === 'toolUse') {
+        return 'tool';
+    }
     const finish = (message.info as { finish?: unknown }).finish;
     return typeof finish === 'string' ? finish : undefined;
 };
 
-const isAssistantMessageCompleted = (message: ChatMessageEntry): boolean => {
+const isAssistantMessageCompleted = (
+    message: ChatMessageEntry,
+    piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
+): boolean => {
+    const piMessage = piAssistantById?.get(message.info.id);
+    if (piMessage) {
+        return Boolean(piMessage.stopReason && piMessage.stopReason !== 'toolUse');
+    }
     const info = message.info as { time?: { completed?: unknown }; status?: unknown };
     const completed = info.time?.completed;
     const status = info.status;
@@ -70,6 +88,8 @@ interface ProjectActivityInput {
     assistantMessages: ChatMessageEntry[];
     summarySourceMessageId?: string;
     showTextJustificationActivity: boolean;
+    piAssistantMetaById?: Map<string, { hasToolCall: boolean; hasReasoning: boolean }>;
+    piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>;
 }
 
 interface ProjectActivityResult {
@@ -84,14 +104,24 @@ export const projectTurnActivity = (input: ProjectActivityInput): ProjectActivit
     let hasTools = false;
     let hasReasoning = false;
 
+    input.assistantMessages.forEach((message) => {
+        const meta = input.piAssistantMetaById?.get(message.info.id);
+        if (meta?.hasToolCall) {
+            hasTools = true;
+        }
+        if (meta?.hasReasoning) {
+            hasReasoning = true;
+        }
+    });
+
     const taskMessageById = new Map<string, string>();
     const taskOrder: string[] = [];
     const partsByAfterTool = new Map<string | null, TurnActivityRecord[]>();
     let currentAfterToolPartId: string | null = null;
 
     input.assistantMessages.forEach((message) => {
-        const messageCompleted = isAssistantMessageCompleted(message);
-        const finish = getMessageFinish(message);
+        const messageCompleted = isAssistantMessageCompleted(message, input.piAssistantById);
+        const finish = getMessageFinish(message, input.piAssistantById);
 
         message.parts.forEach((part, partIndex) => {
             const isTool = part.type === 'tool';

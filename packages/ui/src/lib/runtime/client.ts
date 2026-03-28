@@ -15,12 +15,9 @@ import type {
   Session,
 } from "@/lib/runtime/types";
 import type { PermissionRequest } from "@/types/permission";
-import type { QuestionRequest } from "@/types/question";
 import type { PiAgentInfo, PiInteractiveRequestViewState, PiServerEvent, PiSessionViewState } from "@/lib/pi/types";
 import {
-  projectPiInteractiveRequestToQuestionRequest,
   projectPiSessionStatusToRuntimeStatus,
-  projectPiSessionToRuntimeMessages,
   projectPiSessionToRuntimeSession,
 } from "@/lib/runtime/projections";
 export type RoutedOpencodeEvent = {
@@ -732,15 +729,6 @@ class RuntimeService {
     return projectPiSessionToRuntimeSession(snapshot);
   }
 
-  async getSessionMessages(id: string, limit?: number): Promise<{ info: Message; parts: Part[] }[]> {
-    const snapshot = await this.getPiSession(id);
-    const entries = projectPiSessionToRuntimeMessages(snapshot);
-    if (typeof limit === 'number' && Number.isFinite(limit)) {
-      return entries.slice(-limit);
-    }
-    return entries;
-  }
-
   async getSessionTodos(sessionId: string): Promise<Array<{ id: string; content: string; status: string; priority: string }>> {
     try {
       const base = this.baseUrl.replace(/\/$/, "");
@@ -1173,7 +1161,7 @@ class RuntimeService {
     return true;
   }
 
-  async listPendingQuestions(options?: { directories?: Array<string | null | undefined> }): Promise<QuestionRequest[]> {
+  async listPendingQuestions(options?: { directories?: Array<string | null | undefined> }): Promise<PiInteractiveRequestViewState[]> {
     const normalizedDirectories = new Set(
       (options?.directories ?? [])
         .map((entry) => this.normalizeCandidatePath(entry ?? null))
@@ -1181,7 +1169,7 @@ class RuntimeService {
     );
 
     const sessions = await this.listPiSessions().catch(() => []);
-    const requests: QuestionRequest[] = [];
+    const requests: PiInteractiveRequestViewState[] = [];
 
     for (const session of sessions) {
       const directory = this.normalizeCandidatePath(session.cwd);
@@ -1190,7 +1178,7 @@ class RuntimeService {
       }
 
       for (const request of session.interactiveRequests) {
-        requests.push(projectPiInteractiveRequestToQuestionRequest(request));
+        requests.push(request);
       }
     }
 

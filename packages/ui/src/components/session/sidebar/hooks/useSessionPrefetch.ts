@@ -34,9 +34,9 @@ export const useSessionPrefetch = ({ currentSessionId, sortedSessions, recentSes
         continue;
       }
 
-      const hasMessages = state.messages.has(nextSessionId);
+      const hasPiSnapshot = state.piSessions.has(nextSessionId);
       const historyMeta = state.sessionHistoryMeta.get(nextSessionId);
-      const isHydrated = hasMessages && typeof historyMeta?.complete === 'boolean';
+      const isHydrated = hasPiSnapshot && typeof historyMeta?.complete === 'boolean';
       if (isHydrated) {
         continue;
       }
@@ -57,9 +57,9 @@ export const useSessionPrefetch = ({ currentSessionId, sortedSessions, recentSes
     }
 
     const state = useSessionStore.getState();
-    const hasMessages = state.messages.has(sessionId);
+    const hasPiSnapshot = state.piSessions.has(sessionId);
     const historyMeta = state.sessionHistoryMeta.get(sessionId);
-    const isHydrated = hasMessages && typeof historyMeta?.complete === 'boolean';
+    const isHydrated = hasPiSnapshot && typeof historyMeta?.complete === 'boolean';
     if (isHydrated) {
       return;
     }

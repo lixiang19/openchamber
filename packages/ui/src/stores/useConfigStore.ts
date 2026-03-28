@@ -1397,7 +1397,7 @@ export const useConfigStore = create<ConfigStore>()(
                         const sessionStore = window.__zustand_session_store__;
                         if (sessionStore) {
                             const sessionState = sessionStore.getState();
-                            const { currentSessionId, isOpenChamberCreatedSession, initializeNewOpenChamberSession, getAgentModelForSession } = sessionState;
+                            const { currentSessionId, isRidgeCreatedSession, initializeNewRidgeSession, getAgentModelForSession } = sessionState;
 
                             if (currentSessionId) {
 
@@ -1408,11 +1408,11 @@ export const useConfigStore = create<ConfigStore>()(
                                 });
                             }
 
-                            if (currentSessionId && isOpenChamberCreatedSession(currentSessionId)) {
+                            if (currentSessionId && isRidgeCreatedSession(currentSessionId)) {
                                 const existingAgentModel = getAgentModelForSession(currentSessionId, agentName);
                                 if (!existingAgentModel) {
 
-                                    initializeNewOpenChamberSession(currentSessionId, agents);
+                                    initializeNewRidgeSession(currentSessionId, agents);
                                 }
                             }
                         }

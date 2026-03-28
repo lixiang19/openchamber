@@ -13,6 +13,7 @@ import { applyPersistedDirectoryPreferences } from './lib/directoryPersistence'
 import { startTypographyWatcher } from './lib/typographyWatcher'
 import { startModelPrefsAutoSave } from './lib/modelPrefsAutoSave'
 import type { RuntimeAPIs } from './lib/api/types'
+import type { PiMessageViewState } from './lib/pi/types'
 
 declare global {
   interface Window {
@@ -33,7 +34,7 @@ await applyPersistedDirectoryPreferences();
 
 if (typeof window !== 'undefined') {
   (window as { debugContextTokens?: () => void }).debugContextTokens = () => {
-    const sessionStore = (window as { __zustand_session_store__?: { getState: () => { currentSessionId?: string; messages: Map<string, { info: { role: string }; parts: { type: string }[] }[]>; sessionContextUsage: Map<string, unknown>; getContextUsage: (contextLimit: number, outputLimit: number) => unknown } } }).__zustand_session_store__;
+    const sessionStore = (window as { __zustand_session_store__?: { getState: () => { currentSessionId?: string; piSessions: Map<string, unknown>; sessionContextUsage: Map<string, unknown>; getContextUsage: (contextLimit: number, outputLimit: number) => unknown } } }).__zustand_session_store__;
     if (!sessionStore) {
       return;
     }
@@ -45,15 +46,26 @@ if (typeof window !== 'undefined') {
       return;
     }
 
-    const sessionMessages = state.messages.get(currentSessionId) || [];
-    const assistantMessages = sessionMessages.filter((m: { info: { role: string } }) => m.info.role === 'assistant');
+    const currentPiSession = state.piSessions.get(currentSessionId) as { messages?: PiMessageViewState[] } | undefined;
+    const assistantMessages = (currentPiSession?.messages ?? []).filter(
+      (message): message is Extract<PiMessageViewState, { role: 'assistant' }> => message.role === 'assistant'
+    );
 
     if (assistantMessages.length === 0) {
       return;
     }
 
     const lastMessage = assistantMessages[assistantMessages.length - 1];
-    const tokens = (lastMessage.info as { tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } } }).tokens;
+    const usage = (lastMessage as { usage?: { input?: number; output?: number; reasoning?: number; cacheRead?: number; cacheWrite?: number } }).usage;
+    const tokens = usage ? {
+      input: usage.input || 0,
+      output: usage.output || 0,
+      reasoning: usage.reasoning || 0,
+      cache: {
+        read: usage.cacheRead || 0,
+        write: usage.cacheWrite || 0,
+      },
+    } : null;
 
     if (tokens && typeof tokens === 'object') {
 

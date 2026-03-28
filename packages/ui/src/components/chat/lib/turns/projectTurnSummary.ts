@@ -1,3 +1,4 @@
+import type { PiContentBlock, PiMessageViewState, PiSessionViewState } from '@/lib/pi/types';
 import type { ChatMessageEntry, TurnDiffStats, TurnSummaryRecord } from './types';
 
 interface SummaryDiff {
@@ -9,6 +10,8 @@ interface UserSummaryPayload {
     body?: string | null;
     diffs?: SummaryDiff[] | null;
 }
+
+const isPiTextBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'text' }> => block.type === 'text';
 
 const getTextFromPart = (part: unknown): string | undefined => {
     const text = (part as { text?: unknown }).text;
@@ -22,25 +25,81 @@ const getTextFromPart = (part: unknown): string | undefined => {
     return undefined;
 };
 
-export const projectTurnSummary = (assistantMessages: ChatMessageEntry[]): TurnSummaryRecord => {
+const getAssistantFallbackText = (assistantMessage: ChatMessageEntry): { text: string; sourcePartId: string } | null => {
+    for (let partIndex = assistantMessage.parts.length - 1; partIndex >= 0; partIndex -= 1) {
+        const part = assistantMessage.parts[partIndex];
+        if (!part || part.type !== 'text') continue;
+
+        const text = getTextFromPart(part);
+        if (!text) continue;
+
+        return {
+            text,
+            sourcePartId: part.id ?? `${assistantMessage.info.id}-part-${partIndex}-text`,
+        };
+    }
+
+    return null;
+};
+
+export const buildPiAssistantTextById = (session: PiSessionViewState | null | undefined): Map<string, string> => {
+    const next = new Map<string, string>();
+    if (!session) {
+        return next;
+    }
+
+    session.messages.forEach((message) => {
+        if (message.role !== 'assistant' || typeof message.id !== 'string' || message.id.length === 0) {
+            return;
+        }
+        const text = message.content
+            .filter(isPiTextBlock)
+            .map((block) => block.text)
+            .join('')
+            .trim();
+        if (text.length > 0) {
+            next.set(message.id, text);
+        }
+    });
+
+    return next;
+};
+
+export const projectTurnSummary = (
+    assistantMessages: ChatMessageEntry[],
+    options?: {
+        piAssistantTextById?: Map<string, string> | null;
+        piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>> | null;
+    },
+): TurnSummaryRecord => {
+    const piAssistantTextById = options?.piAssistantTextById ?? null;
+    const piAssistantById = options?.piAssistantById ?? null;
+
     for (let messageIndex = assistantMessages.length - 1; messageIndex >= 0; messageIndex -= 1) {
         const assistantMessage = assistantMessages[messageIndex];
         if (!assistantMessage) continue;
 
-        const finish = (assistantMessage.info as { finish?: string | null }).finish;
+        const piMessage = piAssistantById?.get(assistantMessage.info.id);
+        const finish = piMessage?.stopReason === 'stop' || piMessage?.stopReason === 'endTurn'
+            ? 'stop'
+            : (assistantMessage.info as { finish?: string | null }).finish;
         if (finish !== 'stop') continue;
 
-        for (let partIndex = assistantMessage.parts.length - 1; partIndex >= 0; partIndex -= 1) {
-            const part = assistantMessage.parts[partIndex];
-            if (!part || part.type !== 'text') continue;
-
-            const text = getTextFromPart(part);
-            if (!text) continue;
-
+        const piText = piAssistantTextById?.get(assistantMessage.info.id);
+        if (piText) {
             return {
-                text,
+                text: piText,
                 sourceMessageId: assistantMessage.info.id,
-                sourcePartId: part.id ?? `${assistantMessage.info.id}-part-${partIndex}-text`,
+                sourcePartId: `${assistantMessage.info.id}-pi-text`,
+            };
+        }
+
+        const fallback = getAssistantFallbackText(assistantMessage);
+        if (fallback) {
+            return {
+                text: fallback.text,
+                sourceMessageId: assistantMessage.info.id,
+                sourcePartId: fallback.sourcePartId,
             };
         }
     }
@@ -49,17 +108,21 @@ export const projectTurnSummary = (assistantMessages: ChatMessageEntry[]): TurnS
         const assistantMessage = assistantMessages[messageIndex];
         if (!assistantMessage) continue;
 
-        for (let partIndex = assistantMessage.parts.length - 1; partIndex >= 0; partIndex -= 1) {
-            const part = assistantMessage.parts[partIndex];
-            if (!part || part.type !== 'text') continue;
-
-            const text = getTextFromPart(part);
-            if (!text) continue;
-
+        const piText = piAssistantTextById?.get(assistantMessage.info.id);
+        if (piText) {
             return {
-                text,
+                text: piText,
                 sourceMessageId: assistantMessage.info.id,
-                sourcePartId: part.id ?? `${assistantMessage.info.id}-part-${partIndex}-text`,
+                sourcePartId: `${assistantMessage.info.id}-pi-text`,
+            };
+        }
+
+        const fallback = getAssistantFallbackText(assistantMessage);
+        if (fallback) {
+            return {
+                text: fallback.text,
+                sourceMessageId: assistantMessage.info.id,
+                sourcePartId: fallback.sourcePartId,
             };
         }
     }

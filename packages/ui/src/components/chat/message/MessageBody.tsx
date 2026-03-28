@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Part } from '@/lib/runtime/types';
+import type { PiToolExecutionViewState } from '@/lib/pi/types';
 
 import UserTextPart from './parts/UserTextPart';
 import ToolPart from './parts/ToolPart';
@@ -21,7 +22,6 @@ import type { ContentChangeReason } from '@/hooks/useChatScrollManager';
 import { SimpleMarkdownRenderer } from '../MarkdownRenderer';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useUIStore } from '@/stores/useUIStore';
-import { flattenAssistantTextParts } from '@/lib/messages/messageText';
 import { MULTIRUN_EXECUTION_FORK_PROMPT_META_TEXT } from '@/lib/messages/executionMeta';
 import { useMessageTTS } from '@/hooks/useMessageTTS';
 import { useConfigStore } from '@/stores/useConfigStore';
@@ -286,6 +286,8 @@ interface MessageBodyProps {
     onRevert?: () => void;
     onFork?: () => void;
     errorMessage?: string;
+    assistantTextContent?: string;
+    assistantToolExecutions?: PiToolExecutionViewState[];
     userActionsMode?: 'inline' | 'external-content' | 'external-actions';
     stickyUserHeaderEnabled?: boolean;
 }
@@ -585,6 +587,8 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
     showReasoningTraces = false,
     turnGroupingContext,
     errorMessage,
+    assistantTextContent = '',
+    assistantToolExecutions = [],
 }) => {
     const streamPhase = _streamPhase;
     void _allowAnimation;
@@ -720,21 +724,47 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
 
     const hasTools = toolParts.length > 0;
 
+    const assistantToolExecutionsById = React.useMemo(() => {
+        return new Map(assistantToolExecutions.map((execution) => [execution.toolCallId, execution]));
+    }, [assistantToolExecutions]);
+
+    const getToolExecutionForPart = React.useCallback((toolPart: ToolPartType) => {
+        const toolCallId = typeof toolPart.callID === 'string' && toolPart.callID.length > 0
+            ? toolPart.callID
+            : (typeof toolPart.id === 'string' && toolPart.id.length > 0 ? toolPart.id : null);
+        if (!toolCallId) {
+            return undefined;
+        }
+        return assistantToolExecutionsById.get(toolCallId);
+    }, [assistantToolExecutionsById]);
+
     const hasPendingTools = React.useMemo(() => {
         return toolParts.some((toolPart) => {
+            const execution = getToolExecutionForPart(toolPart);
+            if (execution) {
+                return execution.status === 'running';
+            }
             const state = (toolPart as Record<string, unknown>).state as Record<string, unknown> | undefined ?? {};
             const status = state?.status;
             return status === 'pending' || status === 'running' || status === 'started';
         });
-    }, [toolParts]);
+    }, [getToolExecutionForPart, toolParts]);
 
     const isActiveTool = React.useCallback((toolPart: ToolPartType): boolean => {
+        const execution = getToolExecutionForPart(toolPart);
+        if (execution) {
+            return execution.status === 'running';
+        }
         const state = (toolPart as Record<string, unknown>).state as Record<string, unknown> | undefined ?? {};
         const status = state?.status;
         return status === 'pending' || status === 'running' || status === 'started';
-    }, []);
+    }, [getToolExecutionForPart]);
 
     const isToolFinalized = React.useCallback((toolPart: ToolPartType) => {
+        const execution = getToolExecutionForPart(toolPart);
+        if (execution) {
+            return execution.status === 'completed' || execution.status === 'error';
+        }
         const state = (toolPart as Record<string, unknown>).state as Record<string, unknown> | undefined ?? {};
         const status = state?.status;
         if (status === 'pending' || status === 'running' || status === 'started') {
@@ -750,7 +780,7 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
             return false;
         }
         return true;
-    }, []);
+    }, [getToolExecutionForPart]);
 
     const shouldShowTool = React.useCallback((toolPart: ToolPartType): boolean => {
         return isActiveTool(toolPart) || isToolFinalized(toolPart);
@@ -775,11 +805,14 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
         if (reasoningParts.length === 0) {
             return true;
         }
+        if (!awaitingMessageCompletion) {
+            return true;
+        }
         return reasoningParts.every((part) => {
             const time = (part as Record<string, unknown>).time as { end?: number } | undefined;
             return typeof time?.end === 'number';
         });
-    }, [reasoningParts]);
+    }, [awaitingMessageCompletion, reasoningParts]);
 
     // Message is considered to have an "open step" if info.finish is not yet present
     const hasOpenStep = typeof messageFinish !== 'string';
@@ -901,15 +934,15 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
             event.stopPropagation();
             event.preventDefault();
 
-            const assistantPlanText = flattenAssistantTextParts(assistantTextParts);
-            if (!assistantPlanText.trim()) {
+            const assistantPlanText = assistantTextContent.trim();
+            if (!assistantPlanText) {
                 return;
             }
 
             const prefilledPrompt = `${MULTIRUN_EXECUTION_FORK_PROMPT_META_TEXT}\n\n${assistantPlanText}`;
             openMultiRunLauncherWithPrompt(prefilledPrompt);
         },
-        [assistantTextParts, openMultiRunLauncherWithPrompt]
+        [assistantTextContent, openMultiRunLauncherWithPrompt]
     );
 
     const handleTTSClick = React.useCallback(
@@ -922,12 +955,12 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
                 return;
             }
             
-            const messageText = flattenAssistantTextParts(assistantTextParts);
-            if (messageText.trim()) {
+            const messageText = assistantTextContent.trim();
+            if (messageText) {
                 void playTTS(messageText);
             }
         },
-        [assistantTextParts, isTTSPlaying, playTTS, stopTTS]
+        [assistantTextContent, isTTSPlaying, playTTS, stopTTS]
     );
 
     const [isSharing, setIsSharing] = React.useState(false);
@@ -1298,15 +1331,17 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
 
     const showErrorMessage = Boolean(errorMessage);
 
-    const shouldShowFooter = isLastAssistantInTurn && hasTextContent && (hasStopFinish || Boolean(errorMessage));
+    const shouldShowFooter = isLastAssistantInTurn
+        && hasTextContent
+        && (!awaitingMessageCompletion || Boolean(errorMessage));
 
     const turnDurationText = React.useMemo(() => {
-        if (!isLastAssistantInTurn || !hasStopFinish) return undefined;
+        if (!isLastAssistantInTurn || awaitingMessageCompletion) return undefined;
         const userCreatedAt = turnGroupingContext?.userMessageCreatedAt;
         if (typeof userCreatedAt !== 'number' || typeof messageCompletedAt !== 'number') return undefined;
         if (messageCompletedAt <= userCreatedAt) return undefined;
         return formatTurnDuration(messageCompletedAt - userCreatedAt);
-    }, [isLastAssistantInTurn, hasStopFinish, turnGroupingContext?.userMessageCreatedAt, messageCompletedAt]);
+    }, [awaitingMessageCompletion, isLastAssistantInTurn, turnGroupingContext?.userMessageCreatedAt, messageCompletedAt]);
 
     const footerTimestamp = React.useMemo(() => {
         const timestamp = typeof messageCompletedAt === 'number' && messageCompletedAt > 0

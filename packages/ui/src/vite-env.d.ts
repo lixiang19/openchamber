@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 interface Window {
+  __RIDGE_LOCAL_ORIGIN__?: string;
     __opencodeDebug?: {
         getLastAssistantMessage: () => unknown;
         getAllMessages: (truncate?: boolean) => unknown[];

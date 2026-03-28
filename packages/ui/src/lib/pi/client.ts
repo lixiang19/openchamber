@@ -50,6 +50,17 @@ export const piClient = {
     });
     return parseResponse<PiSessionViewState>(response);
   },
+  async updateSession(sessionId: string, payload: { title?: string }): Promise<PiSessionViewState> {
+    const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(payload || {}),
+    });
+    return parseResponse<PiSessionViewState>(response);
+  },
   async prompt(sessionId: string, text: string, options?: { agent?: string }): Promise<void> {
     const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/prompt`, {
       method: 'POST',

@@ -4,16 +4,12 @@ import React from 'react';
 import { useSessionStore } from '@/stores/useSessionStore';
 
 // Mirrors OpenCode SessionStatus: busy|retry|idle.
-export type SessionActivityPhase = 'idle' | 'busy' | 'retry';
+export type SessionActivityPhase = 'idle' | 'busy' | 'retry' | 'streaming' | 'compacting';
 
 export interface SessionActivityResult {
-
   phase: SessionActivityPhase;
-
   isWorking: boolean;
-
   isBusy: boolean;
-
   // Kept for backward compatibility; always false with server session.status.
   isCooldown: boolean;
 }
@@ -25,30 +21,51 @@ const IDLE_RESULT: SessionActivityResult = {
   isCooldown: false,
 };
 
+/**
+ * Pi-native 化：直接从 Pi session 状态获取活动状态
+ * 不再依赖旧的 sessionStatus 投影
+ */
 export function useSessionActivity(sessionId: string | null | undefined): SessionActivityResult {
-
-  const phase = useSessionStore((state) => {
-    if (!sessionId || !state.sessionStatus) {
-      return 'idle' as SessionActivityPhase;
-    }
-    const status = state.sessionStatus.get(sessionId);
-    return (status?.type ?? 'idle') as SessionActivityPhase;
+  const piSession = useSessionStore((state) => {
+    if (!sessionId) return null;
+    return state.piSessions.get(sessionId) ?? null;
   });
 
   return React.useMemo<SessionActivityResult>(() => {
-    if (phase === 'idle') {
+    if (!piSession) {
       return IDLE_RESULT;
     }
-    const isBusy = phase === 'busy';
-    // No cooldown in server session.status; treat retry as working.
-    const isCooldown = false;
+
+    // 直接从 Pi-native status 计算
+    const status = piSession.status;
+    const isStreaming = status === 'streaming';
+    const isCompacting = status === 'compacting';
+    const isRetrying = status === 'retrying';
+    const isBusy = isStreaming || isCompacting || isRetrying;
+
+    if (!isBusy) {
+      return IDLE_RESULT;
+    }
+
+    // Map Pi status to activity phase
+    let phase: SessionActivityPhase;
+    if (isRetrying) {
+      phase = 'retry';
+    } else if (isStreaming) {
+      phase = 'streaming';
+    } else if (isCompacting) {
+      phase = 'compacting';
+    } else {
+      phase = 'busy';
+    }
+
     return {
       phase,
-      isWorking: phase === 'busy' || phase === 'retry',
-      isBusy,
-      isCooldown,
+      isWorking: true,
+      isBusy: true,
+      isCooldown: false,
     };
-  }, [phase]);
+  }, [piSession]);
 }
 
 export function useCurrentSessionActivity(): SessionActivityResult {

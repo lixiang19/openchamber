@@ -3,7 +3,7 @@ import type { StoreApi, UseBoundStore } from "zustand";
 import { devtools } from "zustand/middleware";
 import type { Session, Message, Part } from "@/lib/runtime/types";
 import type { PermissionRequest, PermissionResponse } from "@/types/permission";
-import type { QuestionRequest } from "@/types/question";
+import type { PiContentBlock, PiInteractiveRequestViewState, PiMessageViewState, PiSessionViewState } from "@/lib/pi/types";
 import type { SessionStore, AttachedFile, EditPermissionMode, SyntheticContextPart } from "./types/sessionTypes";
 
 import { useSessionStore as useSessionManagementStore } from "./sessionStore";
@@ -11,7 +11,6 @@ import { useMessageStore } from "./messageStore";
 import { useFileStore } from "./fileStore";
 import { useContextStore } from "./contextStore";
 import { usePermissionStore } from "./permissionStore";
-import { useQuestionStore } from "./questionStore";
 import { runtimeClient } from "@/lib/runtime/client";
 import { useDirectoryStore } from "./useDirectoryStore";
 import { useConfigStore } from "./useConfigStore";
@@ -116,6 +115,62 @@ const buildSessionChoiceAnalysisSignature = (messages: Array<{ info: Message; pa
     return `${messages.length}:${lastMessageId}:${lastAssistantId}`;
 };
 
+const buildPiSessionChoiceAnalysisSignature = (session: PiSessionViewState): string => {
+    const lastMessage = session.messages[session.messages.length - 1];
+    const lastMessageId = typeof lastMessage?.id === 'string' ? lastMessage.id : '';
+    const lastAssistant = [...session.messages]
+        .reverse()
+        .find((message) => message.role === 'assistant');
+    const lastAssistantId = typeof lastAssistant?.id === 'string' ? lastAssistant.id : '';
+    return `${session.messages.length}:${lastMessageId}:${lastAssistantId}`;
+};
+
+const extractPiTextBlocks = (content: string | PiContentBlock[]): string => {
+    if (typeof content === 'string') {
+        return content;
+    }
+    return content
+        .filter((block): block is Extract<PiContentBlock, { type: 'text' }> => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
+};
+
+const findPiMessageById = (
+    piSessions: Map<string, PiSessionViewState>,
+    messageId: string,
+): { sessionId: string; message: PiMessageViewState } | null => {
+    for (const [sessionId, session] of piSessions.entries()) {
+        const message = session.messages.find((entry) => entry.id === messageId);
+        if (message) {
+            return { sessionId, message };
+        }
+    }
+    return null;
+};
+
+const resolvePiSessionMessageCount = (
+    piSessions: Map<string, PiSessionViewState>,
+    sessionId: string | null | undefined,
+): number => {
+    if (!sessionId) {
+        return 0;
+    }
+    return piSessions.get(sessionId)?.messages.length ?? 0;
+};
+
+const resolvePiUserMessages = (
+    piSessions: Map<string, PiSessionViewState>,
+    sessionId: string,
+): Array<Extract<PiMessageViewState, { role: 'user' }>> => {
+    const session = piSessions.get(sessionId);
+    if (!session) {
+        return [];
+    }
+    return session.messages.filter(
+        (message): message is Extract<PiMessageViewState, { role: 'user' }> => message.role === 'user'
+    );
+};
+
 const resolveSessionDirectory = (
     sessions: Session[],
     sessionId: string | null | undefined,
@@ -143,6 +198,7 @@ export const useSessionStore = create<SessionStore>()(
             sessions: [],
             archivedSessions: [],
             sessionsByDirectory: new Map(),
+            piSessions: new Map<string, PiSessionViewState>(),
             currentSessionId: null,
             lastLoadedDirectory: null,
             messages: new Map(),
@@ -152,7 +208,7 @@ export const useSessionStore = create<SessionStore>()(
             sessionCompactionUntil: new Map(),
             sessionAbortFlags: new Map(),
             permissions: new Map(),
-            questions: new Map(),
+            interactiveRequests: new Map<string, PiInteractiveRequestViewState[]>(),
             attachedFiles: [],
             isLoading: false,
             error: null,
@@ -371,22 +427,25 @@ export const useSessionStore = create<SessionStore>()(
 
                     const messageStore = useMessageStore.getState();
                     const { messages, lastUsedProvider } = messageStore;
-                    let sourceEntry: { info: Message; parts: Part[] } | undefined;
                     let sourceSessionId: string | undefined;
+                    let assistantPlanText = '';
 
                     messages.forEach((messageList, sessionId) => {
                         const found = messageList.find((entry) => entry.info?.id === sourceMessageId);
-                        if (found && !sourceEntry) {
-                            sourceEntry = found;
+                        if (found && found.info.role === 'assistant' && !assistantPlanText) {
+                            assistantPlanText = flattenAssistantTextParts(found.parts);
                             sourceSessionId = sessionId;
                         }
                     });
 
-                    if (!sourceEntry || sourceEntry.info.role !== "assistant") {
-                        return;
+                    if (!assistantPlanText) {
+                        const found = findPiMessageById(get().piSessions, sourceMessageId);
+                        if (found && found.message.role === 'assistant') {
+                            assistantPlanText = extractPiTextBlocks(found.message.content);
+                            sourceSessionId = found.sessionId;
+                        }
                     }
 
-                    const assistantPlanText = flattenAssistantTextParts(sourceEntry.parts);
                     if (!assistantPlanText.trim()) {
                         return;
                     }
@@ -451,10 +510,11 @@ export const useSessionStore = create<SessionStore>()(
                     if (previousSessionId && previousSessionId !== id) {
                         const memoryState = get().sessionMemoryState.get(previousSessionId);
                         if (!memoryState?.isStreaming) {
-
-                            const previousMessages = get().messages.get(previousSessionId) || [];
-                            if (previousMessages.length > 0) {
-                                get().updateViewportAnchor(previousSessionId, previousMessages.length - 1);
+                            const previousMessageCount = resolvePiSessionMessageCount(get().piSessions, previousSessionId)
+                                || get().messages.get(previousSessionId)?.length
+                                || 0;
+                            if (previousMessageCount > 0) {
+                                get().updateViewportAnchor(previousSessionId, previousMessageCount - 1);
                             }
                         }
                     }
@@ -463,7 +523,9 @@ export const useSessionStore = create<SessionStore>()(
 
                     if (id) {
 
-                        const existingMessages = get().messages.get(id);
+                        const existingMessages = resolvePiSessionMessageCount(get().piSessions, id) > 0
+                            ? get().piSessions.get(id)?.messages
+                            : get().messages.get(id);
                         const historyMeta = get().sessionHistoryMeta.get(id);
                         const needsHistoryBootstrap =
                             !historyMeta ||
@@ -476,11 +538,15 @@ export const useSessionStore = create<SessionStore>()(
 
                         // Analyze session messages to extract agent/model/variant choices
                         // This ensures context is available even when ModelControls isn't mounted
-                        const sessionMessages = get().messages.get(id);
-                        if (sessionMessages && sessionMessages.length > 0) {
+                        const piSession = get().piSessions.get(id) ?? null;
+                        const sessionMessages = get().messages.get(id) ?? [];
+                        const sessionHasMessages = (piSession?.messages.length ?? 0) > 0 || sessionMessages.length > 0;
+                        if (sessionHasMessages) {
                             const agents = useConfigStore.getState().agents;
                             if (agents.length > 0) {
-                                const analysisSignature = buildSessionChoiceAnalysisSignature(sessionMessages);
+                                const analysisSignature = piSession
+                                    ? buildPiSessionChoiceAnalysisSignature(piSession)
+                                    : buildSessionChoiceAnalysisSignature(sessionMessages);
                                 if (sessionChoiceAnalysisSignature.get(id) === analysisSignature) {
                                     return;
                                 }
@@ -573,7 +639,7 @@ export const useSessionStore = create<SessionStore>()(
                         try {
                             useSessionManagementStore
                                 .getState()
-                                .initializeNewOpenChamberSession(created.id, configState.agents);
+                                .initializeNewRidgeSession(created.id, configState.agents);
                         } catch {
                             // ignored
                         }
@@ -711,10 +777,26 @@ export const useSessionStore = create<SessionStore>()(
                 respondToPermission: (sessionId: string, requestId: string, response: PermissionResponse) => usePermissionStore.getState().respondToPermission(sessionId, requestId, response),
                 dismissPermission: (sessionId: string, requestId: string) => usePermissionStore.getState().dismissPermission(sessionId, requestId),
 
-                addQuestion: (question: QuestionRequest) => useQuestionStore.getState().addQuestion(question),
-                dismissQuestion: (sessionId: string, requestId: string) => useQuestionStore.getState().dismissQuestion(sessionId, requestId),
-                respondToQuestion: (sessionId: string, requestId: string, answers: string[] | string[][]) => useQuestionStore.getState().respondToQuestion(sessionId, requestId, answers),
-                rejectQuestion: (sessionId: string, requestId: string) => useQuestionStore.getState().rejectQuestion(sessionId, requestId),
+                respondToQuestion: async (sessionId: string, requestId: string, answers: string[] | string[][]) => {
+                    const directory = get().getDirectoryForSession(sessionId);
+                    await runtimeClient.withDirectory(directory, () => runtimeClient.replyToQuestion(requestId, answers));
+                    set((state) => {
+                        const next = new Map(state.interactiveRequests);
+                        const current = next.get(sessionId) ?? [];
+                        next.set(sessionId, current.filter((entry) => entry.id !== requestId));
+                        return { interactiveRequests: next };
+                    });
+                },
+                rejectQuestion: async (sessionId: string, requestId: string) => {
+                    const directory = get().getDirectoryForSession(sessionId);
+                    await runtimeClient.withDirectory(directory, () => runtimeClient.rejectQuestion(requestId));
+                    set((state) => {
+                        const next = new Map(state.interactiveRequests);
+                        const current = next.get(sessionId) ?? [];
+                        next.set(sessionId, current.filter((entry) => entry.id !== requestId));
+                        return { interactiveRequests: next };
+                    });
+                },
 
                 clearError: () => useSessionManagementStore.getState().clearError(),
                 getSessionsByDirectory: (directory: string) => useSessionManagementStore.getState().getSessionsByDirectory(directory),
@@ -748,9 +830,9 @@ export const useSessionStore = create<SessionStore>()(
                     const messages = useMessageStore.getState().messages;
                     return useContextStore.getState().analyzeAndSaveExternalSessionChoices(sessionId, agents, messages);
                 },
-                isOpenChamberCreatedSession: (sessionId: string) => useSessionManagementStore.getState().isOpenChamberCreatedSession(sessionId),
-                markSessionAsOpenChamberCreated: (sessionId: string) => useSessionManagementStore.getState().markSessionAsOpenChamberCreated(sessionId),
-                initializeNewOpenChamberSession: (sessionId: string, agents: Record<string, unknown>[]) => useSessionManagementStore.getState().initializeNewOpenChamberSession(sessionId, agents),
+                isRidgeCreatedSession: (sessionId: string) => useSessionManagementStore.getState().isRidgeCreatedSession(sessionId),
+                markSessionAsRidgeCreated: (sessionId: string) => useSessionManagementStore.getState().markSessionAsRidgeCreated(sessionId),
+                initializeNewRidgeSession: (sessionId: string, agents: Record<string, unknown>[]) => useSessionManagementStore.getState().initializeNewRidgeSession(sessionId, agents),
                 setWorktreeMetadata: (sessionId: string, metadata) => useSessionManagementStore.getState().setWorktreeMetadata(sessionId, metadata),
                 setSessionDirectory: (sessionId: string, directory: string | null) => useSessionManagementStore.getState().setSessionDirectory(sessionId, directory),
                 getWorktreeMetadata: (sessionId: string) => useSessionManagementStore.getState().getWorktreeMetadata(sessionId),
@@ -773,19 +855,29 @@ export const useSessionStore = create<SessionStore>()(
                     return useContextStore.getState().initializeSessionContextUsage(sessionId, contextLimit, outputLimit, messages);
                 },
                 debugSessionMessages: async (sessionId: string) => {
-                    const messages = normalizeMessageRecordsForProjection(
-                        useMessageStore.getState().messages.get(sessionId) || []
+                    const piSession = get().piSessions.get(sessionId) ?? null;
+                    const fallbackMessages = normalizeMessageRecordsForProjection(
+                        useMessageStore.getState().messages.get(sessionId) ?? []
                     );
                     const session = useSessionManagementStore.getState().sessions.find(s => s.id === sessionId);
                     console.log(`Debug session ${sessionId}:`, {
                         session,
-                        messageCount: messages.length,
-                        messages: messages.map(m => ({
-                            id: m.info.id,
-                            role: m.info.role,
-                            parts: m.parts.length,
-                            tokens: (m.info as Record<string, unknown>).tokens
-                        }))
+                        messageCount: piSession?.messages.length ?? fallbackMessages.length,
+                        messages: piSession
+                            ? piSession.messages.map((message, index) => ({
+                                id: message.id ?? `${sessionId}:message:${index}`,
+                                role: message.role,
+                                blocks: Array.isArray((message as { content?: unknown }).content)
+                                    ? ((message as { content?: unknown[] }).content?.length ?? 0)
+                                    : 1,
+                                usage: message.role === 'assistant' ? message.usage : undefined,
+                            }))
+                            : fallbackMessages.map(m => ({
+                                id: m.info.id,
+                                role: m.info.role,
+                                parts: m.parts.length,
+                                tokens: (m.info as Record<string, unknown>).tokens,
+                            })),
                     });
                 },
                 pollForTokenUpdates: (sessionId: string, messageId: string, maxAttempts?: number) => {
@@ -797,13 +889,15 @@ export const useSessionStore = create<SessionStore>()(
 
                 revertToMessage: async (sessionId: string, messageId: string) => {
                     // Get the message text before reverting
-                    const messages = useMessageStore.getState().messages.get(sessionId) || [];
-                    const targetMessage = messages.find((m) => m.info.id === messageId);
+                    const targetPiMessage = findPiMessageById(get().piSessions, messageId);
+                    const fallbackMessages = useMessageStore.getState().messages.get(sessionId) ?? [];
+                    const fallbackMessage = fallbackMessages.find((message) => message.info.id === messageId);
                     let messageText = '';
 
-                    if (targetMessage && targetMessage.info.role === 'user') {
-                        // Extract text from user message parts
-                        const textParts = targetMessage.parts.filter((p) => p.type === 'text');
+                    if (targetPiMessage?.message.role === 'user') {
+                        messageText = extractPiTextBlocks(targetPiMessage.message.content).trim();
+                    } else if (fallbackMessage && fallbackMessage.info.role === 'user') {
+                        const textParts = fallbackMessage.parts.filter((p) => p.type === 'text');
                         messageText = textParts
                             .map((p) => {
                                 const part = p as { text?: string; content?: string };
@@ -821,7 +915,7 @@ export const useSessionStore = create<SessionStore>()(
 
                     // Filter out reverted messages from the store
                     // Messages with ID >= revert.messageID should be removed
-                    const currentMessages = useMessageStore.getState().messages.get(sessionId) || [];
+                    const currentMessages = useMessageStore.getState().messages.get(sessionId) ?? [];
                     const revertMessageId = updatedSession.revert?.messageID;
 
                     if (revertMessageId) {
@@ -846,8 +940,20 @@ export const useSessionStore = create<SessionStore>()(
                 },
 
                 handleSlashUndo: async (sessionId: string) => {
-                    const messages = get().messages.get(sessionId) || [];
-                    const userMessages = messages.filter(m => m.info.role === 'user');
+                    const piUserMessages = resolvePiUserMessages(get().piSessions, sessionId);
+                    const fallbackMessages = get().messages.get(sessionId) ?? [];
+                    const userMessages = piUserMessages.length > 0
+                        ? piUserMessages.map((message) => ({
+                            id: message.id ?? '',
+                            text: extractPiTextBlocks(message.content),
+                        })).filter((message) => message.id)
+                        : fallbackMessages.filter((message) => message.info.role === 'user').map((message) => {
+                            const textPart = message.parts.find((part) => part.type === 'text');
+                            return {
+                                id: message.info.id,
+                                text: typeof textPart === 'object' && textPart && 'text' in textPart ? String(textPart.text ?? '') : '',
+                            };
+                        });
                     const sessions = get().sessions;
                     const currentSession = sessions.find(s => s.id === sessionId);
 
@@ -862,7 +968,7 @@ export const useSessionStore = create<SessionStore>()(
                     // Find the user message AFTER the revert point (or last message if no revert)
                     let targetMessage;
                     if (revertToId) {
-                        const revertIndex = userMessages.findIndex(m => m.info.id === revertToId);
+                        const revertIndex = userMessages.findIndex(m => m.id === revertToId);
                         targetMessage = userMessages[revertIndex + 1];
                     } else {
                         targetMessage = userMessages[userMessages.length - 1];
@@ -874,12 +980,11 @@ export const useSessionStore = create<SessionStore>()(
                     }
 
                     // Helper to extract text preview
-                    const textPart = targetMessage.parts.find(p => p.type === 'text');
-                    const preview = typeof textPart === 'object' && textPart && 'text' in textPart
-                        ? String(textPart.text).slice(0, 50) + (String(textPart.text).length > 50 ? '...' : '')
+                    const preview = targetMessage.text
+                        ? targetMessage.text.slice(0, 50) + (targetMessage.text.length > 50 ? '...' : '')
                         : '[No text]';
 
-                    await get().revertToMessage(sessionId, targetMessage.info.id);
+                    await get().revertToMessage(sessionId, targetMessage.id);
 
                     const { toast } = await import('sonner');
                     toast.success(`Undid to: ${preview}`);
@@ -895,21 +1000,32 @@ export const useSessionStore = create<SessionStore>()(
                         return;
                     }
 
-                    const messages = get().messages.get(sessionId) || [];
-                    const userMessages = messages.filter(m => m.info.role === 'user');
+                    const piUserMessages = resolvePiUserMessages(get().piSessions, sessionId);
+                    const fallbackMessages = get().messages.get(sessionId) ?? [];
+                    const userMessages = piUserMessages.length > 0
+                        ? piUserMessages.map((message) => ({
+                            id: message.id ?? '',
+                            text: extractPiTextBlocks(message.content),
+                        })).filter((message) => message.id)
+                        : fallbackMessages.filter((message) => message.info.role === 'user').map((message) => {
+                            const textPart = message.parts.find((part) => part.type === 'text');
+                            return {
+                                id: message.info.id,
+                                text: typeof textPart === 'object' && textPart && 'text' in textPart ? String(textPart.text ?? '') : '',
+                            };
+                        });
 
                     // Find the user message BEFORE the revert point
-                    const revertIndex = userMessages.findIndex(m => m.info.id === revertToId);
+                    const revertIndex = userMessages.findIndex(m => m.id === revertToId);
                     const targetMessage = userMessages[revertIndex - 1];
 
                     if (targetMessage) {
                         // Partial redo: move to previous message
-                        const textPart = targetMessage.parts.find(p => p.type === 'text');
-                        const preview = typeof textPart === 'object' && textPart && 'text' in textPart
-                            ? String(textPart.text).slice(0, 50) + (String(textPart.text).length > 50 ? '...' : '')
+                        const preview = targetMessage.text
+                            ? targetMessage.text.slice(0, 50) + (targetMessage.text.length > 50 ? '...' : '')
                             : '[No text]';
 
-                        await get().revertToMessage(sessionId, targetMessage.info.id);
+                        await get().revertToMessage(sessionId, targetMessage.id);
 
                         const { toast } = await import('sonner');
                         toast.success(`Redid to: ${preview}`);
@@ -940,21 +1056,25 @@ export const useSessionStore = create<SessionStore>()(
                         }
 
                         // 2. Extract fork point content for input field (text + file attachments)
-                        const messages = get().messages.get(sessionId) || [];
-                        const message = messages.find(m => m.info.id === messageId);
+                        const foundPiMessage = findPiMessageById(get().piSessions, messageId);
+                        const fallbackMessages = get().messages.get(sessionId) ?? [];
+                        const fallbackMessage = fallbackMessages.find((message) => message.info.id === messageId);
 
-                        if (!message) {
+                        if (!foundPiMessage && !fallbackMessage) {
                             const { toast } = await import('sonner');
                             toast.error('Message not found');
                             return;
                         }
 
-                        // Extract text content from non-synthetic, non-ignored text parts
                         let inputText = '';
-                        for (const part of message.parts) {
-                            if (part.type === 'text' && !part.synthetic && !part.ignored) {
-                                const typedPart = part as { text?: string };
-                                inputText += typedPart.text || '';
+                        if (foundPiMessage && foundPiMessage.message.role === 'user') {
+                            inputText = extractPiTextBlocks(foundPiMessage.message.content);
+                        } else if (fallbackMessage) {
+                            for (const part of fallbackMessage.parts) {
+                                if (part.type === 'text' && !part.synthetic && !part.ignored) {
+                                    const typedPart = part as { text?: string };
+                                    inputText += typedPart.text || '';
+                                }
                             }
                         }
 
@@ -1029,7 +1149,8 @@ useSessionManagementStore.subscribe((state, prevState) => {
         state.webUICreatedSessions === prevState.webUICreatedSessions &&
         state.worktreeMetadata === prevState.worktreeMetadata &&
         state.availableWorktrees === prevState.availableWorktrees &&
-        state.availableWorktreesByProject === prevState.availableWorktreesByProject
+        state.availableWorktreesByProject === prevState.availableWorktreesByProject &&
+        state.piSessions === prevState.piSessions
     ) {
         return;
     }
@@ -1048,6 +1169,7 @@ useSessionManagementStore.subscribe((state, prevState) => {
         worktreeMetadata: state.worktreeMetadata,
         availableWorktrees: state.availableWorktrees,
         availableWorktreesByProject: state.availableWorktreesByProject,
+        piSessions: state.piSessions,
     });
 });
 
@@ -1181,16 +1303,6 @@ usePermissionStore.subscribe((state, prevState) => {
     });
 });
 
-useQuestionStore.subscribe((state, prevState) => {
-    if (state.questions === prevState.questions) {
-        return;
-    }
-
-    useSessionStore.setState({
-        questions: state.questions,
-    });
-});
-
 useDirectoryStore.subscribe((state, prevState) => {
     const nextDirectory = normalizePath(state.currentDirectory ?? null);
     const prevDirectory = normalizePath(prevState.currentDirectory ?? null);
@@ -1230,6 +1342,7 @@ const bootDraftOpen = useSessionStore.getState().newSessionDraft?.open;
 
 useSessionStore.setState({
     sessions: useSessionManagementStore.getState().sessions,
+    piSessions: useSessionManagementStore.getState().piSessions,
     currentSessionId: bootDraftOpen ? null : useSessionManagementStore.getState().currentSessionId,
     lastLoadedDirectory: useSessionManagementStore.getState().lastLoadedDirectory,
     isLoading: useSessionManagementStore.getState().isLoading,
@@ -1249,7 +1362,7 @@ useSessionStore.setState({
     lastUsedProvider: useMessageStore.getState().lastUsedProvider,
     isSyncing: useMessageStore.getState().isSyncing,
     permissions: usePermissionStore.getState().permissions,
-    questions: useQuestionStore.getState().questions,
+    interactiveRequests: new Map<string, PiInteractiveRequestViewState[]>(),
     attachedFiles: useFileStore.getState().attachedFiles,
     sessionModelSelections: useContextStore.getState().sessionModelSelections,
     sessionAgentSelections: useContextStore.getState().sessionAgentSelections,

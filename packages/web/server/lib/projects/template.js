@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 export const MANAGED_PROJECT_TEMPLATE_VERSION = 1;
 export const DEFAULT_MANAGED_PROJECT_NAME = '默认项目';
-export const DEFAULT_MANAGED_PROJECT_TEMPLATE_ID = 'blank-node';
+export const DEFAULT_MANAGED_PROJECT_TEMPLATE_ID = 'general-assistant';
 export const DEFAULT_MANAGED_PROJECT_DIRECTORY_NAME = 'default-project';
 export const MANAGED_PROJECTS_ROOT_SEGMENTS = ['ridge', 'projects'];
 

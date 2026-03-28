@@ -204,7 +204,7 @@ export const InboxView: React.FC = () => {
   const sessionStatus = useSessionStore((state) => state.sessionStatus);
   const sessionAttentionStates = useSessionStore((state) => state.sessionAttentionStates);
   const permissions = useSessionStore((state) => state.permissions);
-  const questions = useSessionStore((state) => state.questions);
+  const interactiveRequests = useSessionStore((state) => state.interactiveRequests);
   const worktreeMetadata = useSessionStore((state) => state.worktreeMetadata);
 
   const projects = useProjectsStore((state) => state.projects);
@@ -279,13 +279,13 @@ export const InboxView: React.FC = () => {
         sessionState: sessionStatus?.get(session.id),
         attentionState: sessionAttentionStates.get(session.id),
         permissionCount: permissions.get(session.id)?.length ?? 0,
-        questionCount: questions.get(session.id)?.length ?? 0,
+        questionCount: interactiveRequests.get(session.id)?.length ?? 0,
         now,
       }));
     }
 
     return next;
-  }, [now, permissions, questions, recentSessions, sessionAttentionStates, sessionStatus]);
+  }, [interactiveRequests, now, permissions, recentSessions, sessionAttentionStates, sessionStatus]);
 
   const filteredSessions = React.useMemo(() => {
     return recentSessions.filter((session) => {

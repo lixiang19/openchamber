@@ -59,7 +59,7 @@ export const buildOpenCodeStatusReport = async (): Promise<string> => {
       currentSessionId: useSessionStore.getState().currentSessionId,
       sessionCount: useSessionStore.getState().sessions.length,
       statusCount: useSessionStore.getState().sessionStatus?.size ?? 0,
-      questionCount: Array.from(useSessionStore.getState().questions.values()).reduce((sum, entry) => sum + entry.length, 0),
+      questionCount: Array.from(useSessionStore.getState().interactiveRequests.values()).reduce((sum, entry) => sum + entry.length, 0),
     }),
   ];
 

@@ -17,6 +17,7 @@ import {
 } from '@remixicon/react';
 import { BrowserVoiceButton } from '@/components/voice';
 import { useSessionStore } from '@/stores/useSessionStore';
+import type { PiContentBlock, PiMessageViewState } from '@/lib/pi/types';
 import { useSessionStore as useSessionManagementStore } from '@/stores/sessionStore';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useUIStore } from '@/stores/useUIStore';
@@ -73,6 +74,19 @@ const MAX_VISIBLE_TEXTAREA_LINES = 8;
 const EMPTY_QUEUE: QueuedMessage[] = [];
 const FILE_MENTION_TOKEN = /^@[^\s]+$/;
 const CHAT_DRAFT_PERSIST_DEBOUNCE_MS = 500;
+
+const extractPiUserMessageText = (message: PiMessageViewState): string => {
+    if (message.role !== 'user') {
+        return '';
+    }
+    if (typeof message.content === 'string') {
+        return message.content;
+    }
+    return message.content
+        .filter((block): block is Extract<PiContentBlock, { type: 'text' }> => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
+};
 
 const normalizePath = (value?: string | null): string | null => {
     if (typeof value !== 'string') {
@@ -457,28 +471,20 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
     const hasDrafts = draftCount > 0;
 
     // User message history for up/down arrow navigation
-    // Get raw messages from store (stable reference)
-    const sessionMessages = useMessageStore(
+    const currentPiSession = useSessionStore(
         React.useCallback(
-            (state) => (currentSessionId ? state.messages.get(currentSessionId) : undefined),
+            (state) => (currentSessionId ? state.piSessions.get(currentSessionId) ?? null : null),
             [currentSessionId]
         )
     );
-    // Derive user message history with useMemo to avoid infinite re-renders
     const userMessageHistory = React.useMemo(() => {
-        if (!sessionMessages) return [];
-        return sessionMessages
-            .filter((m) => m.info.role === 'user')
-            .map((m) => {
-                const textPart = m.parts.find((p) => p.type === 'text');
-                if (textPart && 'text' in textPart) {
-                    return String(textPart.text);
-                }
-                return '';
-            })
+        if (!currentPiSession) return [];
+        return currentPiSession.messages
+            .filter((message): message is Extract<PiMessageViewState, { role: 'user' }> => message.role === 'user')
+            .map(extractPiUserMessageText)
             .filter((text) => text.length > 0)
-            .reverse(); // Most recent first
-    }, [sessionMessages]);
+            .reverse();
+    }, [currentPiSession]);
 
     // Keep messageRef in sync with message state
     React.useEffect(() => {

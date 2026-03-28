@@ -3,9 +3,14 @@ import { useSessionStore } from '@/stores/useSessionStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { runtimeClient } from '@/lib/runtime/client';
+import type { PiContentBlock, PiMessageViewState, PiSessionViewState, PiToolExecutionViewState } from '@/lib/pi/types';
 import { checkIsGitRepository } from '@/lib/gitApi';
 import { streamDebugEnabled } from '@/stores/utils/streamDebug';
 import { copyTextToClipboard as copyPlainTextToClipboard } from '@/lib/clipboard';
+
+const isPiTextBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'text' }> => block.type === 'text';
+const isPiThinkingBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'thinking' }> => block.type === 'thinking';
+const isPiToolCallBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'toolCall' }> => block.type === 'toolCall';
 
 export interface DebugMessageInfo {
   messageId: string;
@@ -25,6 +30,118 @@ export interface DebugMessageInfo {
   raw: any;
 }
 
+const toDebugParts = (
+  messageId: string,
+  timestamp: number,
+  content: string | PiContentBlock[],
+  toolExecutionsById: Map<string, PiToolExecutionViewState>,
+) => {
+  if (typeof content === 'string') {
+    return [{ id: `${messageId}:text:0`, type: 'text', text: content, time: { start: timestamp, end: timestamp } }];
+  }
+
+  return content.map((block, index) => {
+    if (isPiTextBlock(block)) {
+      return { id: `${messageId}:text:${index}`, type: 'text', text: block.text, time: { start: timestamp, end: timestamp } };
+    }
+    if (isPiThinkingBlock(block)) {
+      return { id: `${messageId}:reasoning:${index}`, type: 'reasoning', text: block.thinking, time: { start: timestamp, end: timestamp } };
+    }
+    if (isPiToolCallBlock(block)) {
+      const execution = block.id ? toolExecutionsById.get(block.id) : undefined;
+      return {
+        id: block.id ?? `${messageId}:tool:${index}`,
+        type: 'tool',
+        tool: execution?.toolName ?? block.name ?? 'tool',
+        state: {
+          status: execution?.status ?? 'running',
+          input: execution?.args ?? block.arguments ?? {},
+          output: execution?.result,
+          time: { start: timestamp, ...(execution?.status === 'running' ? {} : { end: timestamp }) },
+        },
+      };
+    }
+    return { id: `${messageId}:other:${index}`, type: 'text', text: 'raw' in block ? JSON.stringify(block.raw ?? {}) : JSON.stringify(block) };
+  });
+};
+
+const buildDebugMessagesFromPiSession = (session: PiSessionViewState) => {
+  const toolExecutionsById = new Map(session.toolExecutions.map((entry) => [entry.toolCallId, entry]));
+
+  return session.messages.map((message: PiMessageViewState, index: number) => {
+    const messageId = typeof message.id === 'string' && message.id.length > 0
+      ? message.id
+      : `${session.id}:message:${index}`;
+    const timestamp = message.timestamp ?? session.updatedAt;
+
+    if (message.role === 'assistant') {
+      const usage = message.usage as {
+        input?: number;
+        output?: number;
+        reasoning?: number;
+        cacheRead?: number;
+        cacheWrite?: number;
+      } | undefined;
+      return {
+        info: {
+          id: messageId,
+          role: 'assistant',
+          providerID: message.provider,
+          modelID: message.model,
+          time: { created: timestamp, ...(message.stopReason && message.stopReason !== 'toolUse' ? { completed: timestamp } : {}) },
+          finish: message.stopReason === 'endTurn' || message.stopReason === 'stop' ? 'stop' : undefined,
+          status: session.isStreaming ? 'streaming' : 'completed',
+          tokens: usage ? {
+            input: usage.input ?? 0,
+            output: usage.output ?? 0,
+            reasoning: usage.reasoning ?? 0,
+            cache: { read: usage.cacheRead ?? 0, write: usage.cacheWrite ?? 0 },
+          } : undefined,
+          sessionID: session.id,
+        },
+        parts: toDebugParts(messageId, timestamp, message.content, toolExecutionsById),
+      };
+    }
+
+    if (message.role === 'user') {
+      return {
+        info: { id: messageId, role: 'user', time: { created: timestamp, completed: timestamp }, sessionID: session.id },
+        parts: toDebugParts(messageId, timestamp, message.content, toolExecutionsById),
+      };
+    }
+
+    if (message.role === 'toolResult') {
+      return {
+        info: { id: messageId, role: 'assistant', time: { created: timestamp, completed: timestamp }, sessionID: session.id },
+        parts: [{
+          id: message.toolCallId ?? `${messageId}:tool-result`,
+          type: 'tool',
+          tool: message.toolName,
+          state: {
+            status: message.isError ? 'error' : 'completed',
+            output: Array.isArray(message.content) ? message.content.map((block) => isPiTextBlock(block) ? block.text : '').join('\n') : '',
+            time: { start: timestamp, end: timestamp },
+          },
+        }],
+      };
+    }
+
+    return {
+      info: { id: messageId, role: message.role, time: { created: timestamp, completed: timestamp }, sessionID: session.id },
+      parts: [],
+    };
+  });
+};
+
+const getSessionMessagesForDebug = (sessionId: string) => {
+  const state = useSessionStore.getState();
+  const piSession = state.piSessions.get(sessionId);
+  if (piSession) {
+    return buildDebugMessagesFromPiSession(piSession);
+  }
+  return state.messages.get(sessionId) || [];
+};
+
 export const debugUtils = {
 
   getLastAssistantMessage(): DebugMessageInfo | null {
@@ -36,7 +153,7 @@ export const debugUtils = {
       return null;
     }
 
-    const messages = state.messages.get(currentSessionId);
+    const messages = getSessionMessagesForDebug(currentSessionId);
     if (!messages || messages.length === 0) {
       console.log('[ERROR] No messages in current session');
       return null;
@@ -165,7 +282,7 @@ export const debugUtils = {
       return [];
     }
 
-    const messages = state.messages.get(currentSessionId) || [];
+    const messages = getSessionMessagesForDebug(currentSessionId);
     console.log(`[MESSAGES] Total messages in session: ${messages.length}`);
 
     messages.forEach((msg, idx) => {
@@ -433,7 +550,7 @@ export const debugUtils = {
       return [];
     }
 
-    const messages = state.messages.get(currentSessionId) || [];
+    const messages = getSessionMessagesForDebug(currentSessionId);
     const emptyMessages = messages
       .filter((msg) => msg.info.role === 'assistant')
       .filter((msg) => {
@@ -492,7 +609,7 @@ export const debugUtils = {
       return { summary: null, rows: [] };
     }
 
-    const messages = state.messages.get(currentSessionId) || [];
+    const messages = getSessionMessagesForDebug(currentSessionId);
     const targetMessages = includeNonAssistant
       ? messages
       : messages.filter((msg) => msg.info.role === 'assistant');
@@ -621,7 +738,7 @@ export const debugUtils = {
       return null;
     }
 
-    const messages = state.messages.get(currentSessionId) || [];
+    const messages = getSessionMessagesForDebug(currentSessionId);
     const assistantMessages = messages.filter(m => m.info.role === 'assistant');
 
     if (assistantMessages.length === 0) {

@@ -4,7 +4,8 @@ import { devtools, persist, createJSONStorage } from "zustand/middleware";
 import type { Message, Part } from "@/lib/runtime/types";
 import { runtimeClient } from "@/lib/runtime/client";
 import { piClient } from '@/lib/pi/client';
-import { projectPiSessionToRuntimeMessages } from '@/lib/runtime/projections';
+import type { PiSessionViewState } from '@/lib/pi/types';
+import type { TurnRecord } from '@/components/chat/lib/turns/types';
 import { isExecutionForkMetaText } from "@/lib/messages/executionMeta";
 import { isLikelyProviderAuthFailure, PROVIDER_AUTH_FAILURE_MESSAGE } from "@/lib/messages/providerAuthError";
 import type { SessionMemoryState, SessionHistoryMeta, MessageStreamLifecycle, AttachedFile } from "./types/sessionTypes";
@@ -394,8 +395,8 @@ const shouldBatchPartDelta = (
     messageId: string,
     partId: string,
 ): boolean => {
-    const sessionMessages = messagesBySession.get(sessionId);
-    if (!sessionMessages || sessionMessages.length === 0) {
+    const sessionMessages = messagesBySession.get(sessionId) ?? getPiNativeSessionMessages(sessionId) ?? [];
+    if (sessionMessages.length === 0) {
         return false;
     }
     const messageIndex = resolveSessionMessagePosition(sessionId, messageId, sessionMessages);
@@ -433,10 +434,12 @@ const extractSortableId = (id: unknown): string | null => {
     return candidate;
 };
 
-const countLoadedTurns = (messages: Array<{ info: { role?: string; clientRole?: string | null } }>): number => {
+const countLoadedTurns = (messages: Array<{ info: { role?: string; clientRole?: string | null; userMessageMarker?: boolean | null } }>): number => {
     let count = 0;
     for (const message of messages) {
-        const role = message.info.clientRole ?? message.info.role;
+        const role = message.info.userMessageMarker === true
+            ? 'user'
+            : (message.info.clientRole ?? message.info.role);
         if (role === 'user') {
             count += 1;
         }
@@ -489,6 +492,24 @@ const getPartKey = (part: Part | undefined): string | undefined => {
     if (!part) {
         return undefined;
     }
+    const directCallId = (part as Record<string, unknown>).callID;
+    const nestedTool = (part as Record<string, unknown>).tool;
+    const nestedCallId =
+        nestedTool && typeof nestedTool === "object"
+            ? (nestedTool as Record<string, unknown>).callID
+            : undefined;
+    const callId = typeof directCallId === 'string' && directCallId.length > 0
+        ? directCallId
+        : (typeof nestedCallId === 'string' && nestedCallId.length > 0 ? nestedCallId : undefined);
+
+    if (callId) {
+        const toolName = typeof (part as Record<string, unknown>).tool === "string"
+            ? ((part as Record<string, unknown>).tool as string)
+            : "";
+        const reason = (part as Record<string, unknown>).reason;
+        return `${part.type}-${toolName}-${reason ?? ""}-${callId}`;
+    }
+
     if (typeof part.id === "string" && part.id.length > 0) {
         return part.id;
     }
@@ -497,14 +518,7 @@ const getPartKey = (part: Part | undefined): string | undefined => {
         const toolName = typeof (part as Record<string, unknown>).tool === "string"
             ? ((part as Record<string, unknown>).tool as string)
             : "";
-        const directCallId = (part as Record<string, unknown>).callID;
-        const nestedTool = (part as Record<string, unknown>).tool;
-        const nestedCallId =
-            nestedTool && typeof nestedTool === "object"
-                ? (nestedTool as Record<string, unknown>).callID
-                : undefined;
-        const callId = directCallId ?? nestedCallId;
-        return `${part.type}-${toolName}-${reason ?? ""}-${callId ?? ""}`;
+        return `${part.type}-${toolName}-${reason ?? ""}-`;
     }
     return undefined;
 };
@@ -514,21 +528,46 @@ const findMatchingPartIndex = (parts: Part[], incoming: Part): number => {
         return -1;
     }
 
+    const incomingKey = getPartKey(incoming);
+    if (incomingKey) {
+        const byKey = parts.findIndex((part) => getPartKey(part) === incomingKey);
+        if (byKey !== -1) {
+            return byKey;
+        }
+    }
+
     if (typeof incoming.id === "string" && incoming.id.length > 0) {
         const byId = parts.findIndex((part) => part?.id === incoming.id);
         if (byId !== -1) {
             return byId;
         }
-
-        return -1;
     }
 
-    const incomingKey = getPartKey(incoming);
-    if (!incomingKey) {
-        return -1;
+    return -1;
+};
+
+const preserveExistingToolPartIdentity = (normalizedPart: Part, existingPart: Part | undefined): Part => {
+    const normalizedRecord = normalizedPart as Record<string, unknown>;
+    if (normalizedRecord.type !== 'tool') {
+        return normalizedPart;
     }
 
-    return parts.findIndex((part) => getPartKey(part) === incomingKey);
+    const existingKey = getPartKey(existingPart);
+    const normalizedKey = getPartKey(normalizedPart);
+    if (!existingKey || !normalizedKey || existingKey !== normalizedKey) {
+        return normalizedPart;
+    }
+
+    if (typeof existingPart?.id === 'string' && existingPart.id.length > 0) {
+        normalizedRecord.id = existingPart.id;
+    }
+
+    const existingCallId = (existingPart as Record<string, unknown> | undefined)?.callID;
+    if (typeof existingCallId === 'string' && existingCallId.length > 0) {
+        normalizedRecord.callID = existingCallId;
+    }
+
+    return normalizedRecord as Part;
 };
 
 const ignoredAssistantMessageIds = new Set<string>();
@@ -668,6 +707,54 @@ const collectActiveMessageIdsForSession = (state: MessageState, sessionId: strin
     return ids;
 };
 
+const hasActivePiSessionWork = (session: PiSessionViewState | null | undefined): boolean => {
+    if (!session) {
+        return false;
+    }
+    if (session.isStreaming) {
+        return true;
+    }
+    if (session.toolExecutions.some((execution) => execution.status === 'running')) {
+        return true;
+    }
+    return typeof session.workingMessage === 'string' && session.workingMessage.trim().length > 0;
+};
+
+const findLatestPiAssistantMessageId = (session: PiSessionViewState | null | undefined): string | null => {
+    if (!session || !Array.isArray(session.messages) || session.messages.length === 0) {
+        return null;
+    }
+
+    for (let index = session.messages.length - 1; index >= 0; index -= 1) {
+        const message = session.messages[index];
+        if (message?.role !== 'assistant') {
+            continue;
+        }
+        if (typeof message.id === 'string' && message.id.trim().length > 0) {
+            return message.id;
+        }
+    }
+
+    return null;
+};
+
+const extractPiUserMessageText = (session: PiSessionViewState | null | undefined, messageId: string | null | undefined): string => {
+    if (!session || !messageId) {
+        return '';
+    }
+    const message = session.messages.find((entry) => entry.id === messageId);
+    if (!message || message.role !== 'user') {
+        return '';
+    }
+    if (typeof message.content === 'string') {
+        return message.content;
+    }
+    return message.content
+        .filter((block): block is Extract<typeof block, { type: 'text'; text: string }> => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
+};
+
 const isMessageStreamingInSession = (state: MessageState, sessionId: string, messageId: string) => {
     if (state.streamingMessageIds.get(sessionId) === messageId) {
         return true;
@@ -757,6 +844,27 @@ interface MessageActions {
 
 type MessageStore = MessageState & MessageActions;
 
+// Pi-native: 从 piSessions 直接构建消息列表
+const getPiNativeSessionMessages = (sessionId: string): Array<{ info: Message; parts: Part[] }> | null => {
+    const snapshot = useSessionStore.getState().piSessions.get(sessionId);
+    if (!snapshot) {
+        return null;
+    }
+    const { projectPiSessionToTurnRecords } = require('@/components/chat/lib/turns/projectTurnRecords');
+    const turnResult = projectPiSessionToTurnRecords(snapshot, { showTextJustificationActivity: false });
+    if (turnResult?.turns) {
+        return turnResult.turns.flatMap((turn: TurnRecord) => [turn.userMessage, ...turn.assistantMessages]);
+    }
+    return null;
+};
+
+const getCachedOrProjectedSessionMessages = (
+    state: Pick<MessageState, 'messages'>,
+    sessionId: string,
+): Array<{ info: Message; parts: Part[] }> => {
+    return state.messages.get(sessionId) ?? getPiNativeSessionMessages(sessionId) ?? [];
+};
+
 export const useMessageStore = create<MessageStore>()(
     devtools(
         persist(
@@ -825,16 +933,24 @@ export const useMessageStore = create<MessageStore>()(
                                 return;
                             }
 
+                            useSessionStore.getState().setPiSessionSnapshot(session);
+
                             const revertMessageId = getSessionRevertMessageId(sessionId);
-                            const rawMessages = filterMessagesByRevertPoint(projectPiSessionToRuntimeMessages(session), revertMessageId)
+                            // Pi-native: 使用 turn 记录构建消息
+                            const { projectPiSessionToTurnRecords } = require('@/components/chat/lib/turns/projectTurnRecords');
+                            const turnResult = projectPiSessionToTurnRecords(session, { showTextJustificationActivity: false });
+                            const sessionMessages: { info: Message; parts: Part[] }[] = turnResult?.turns
+                                ? turnResult.turns.flatMap((turn: TurnRecord) => [turn.userMessage, ...turn.assistantMessages])
+                                : [];
+                            const rawMessages = filterMessagesByRevertPoint(sessionMessages, revertMessageId)
                                 .sort(compareMessageEntriesChronologically);
-                            const messagesToKeep = targetLimit >= rawMessages.length
+                            const messagesToKeep: { info: Message; parts: Part[] }[] = targetLimit >= rawMessages.length
                                 ? rawMessages
                                 : rawMessages.slice(-targetLimit);
-                            const normalizedMessages = messagesToKeep.map((message) => ({
+                            const normalizedMessages: { info: Message; parts: Part[] }[] = messagesToKeep.map((message) => ({
                                 ...message,
-                                info: normalizeMessageInfoForProjection(message.info as Message) as any,
-                                parts: (Array.isArray(message.parts) ? message.parts : []).map((part) => {
+                                info: normalizeMessageInfoForProjection(message.info) as any,
+                                parts: (Array.isArray(message.parts) ? message.parts : []).map((part: Part) => {
                                     if (part?.type === "text") {
                                         const raw = (part as any).text ?? (part as any).content ?? "";
                                         if (isExecutionForkMetaText(raw)) {
@@ -859,7 +975,7 @@ export const useMessageStore = create<MessageStore>()(
                                     return state;
                                 }
 
-                                const previousMessages = state.messages.get(sessionId) || [];
+                                const previousMessages = getCachedOrProjectedSessionMessages(state, sessionId);
                                 const previousIds = new Set(previousMessages.map((message) => message.info.id));
                                 const nextIds = new Set(mergedMessages.map((message) => message.info.id));
                                 const removedIds: string[] = [];
@@ -1299,7 +1415,7 @@ export const useMessageStore = create<MessageStore>()(
                     discardQueuedPartDeltasForSession(currentSessionId);
 
                     const stateSnapshot = get();
-                    const { abortControllers, messages: storeMessages } = stateSnapshot;
+                    const { abortControllers } = stateSnapshot;
 
                     const controller = abortControllers.get(currentSessionId);
                     controller?.abort();
@@ -1307,24 +1423,33 @@ export const useMessageStore = create<MessageStore>()(
                     const activeIds = collectActiveMessageIdsForSession(stateSnapshot, currentSessionId);
 
                     if (activeIds.size === 0) {
-                        const sessionMessages = currentSessionId ? storeMessages.get(currentSessionId) ?? [] : [];
-                        let fallbackAssistantId: string | null = null;
-                        for (let index = sessionMessages.length - 1; index >= 0; index -= 1) {
-                            const message = sessionMessages[index];
-                            if (!message || message.info.role !== 'assistant') {
-                                continue;
-                            }
+                        const currentPiSession = useSessionStore.getState().piSessions.get(currentSessionId) ?? null;
+                        const latestPiAssistantId = findLatestPiAssistantMessageId(currentPiSession);
+                        const piSessionHasActiveWork = hasActivePiSessionWork(currentPiSession);
+                        if (piSessionHasActiveWork && latestPiAssistantId) {
+                            activeIds.add(latestPiAssistantId);
+                        }
 
-                            if (!fallbackAssistantId) {
-                                fallbackAssistantId = message.info.id;
-                            }
+                        const sessionMessages = currentSessionId ? getCachedOrProjectedSessionMessages(stateSnapshot, currentSessionId) : [];
+                        let fallbackAssistantId: string | null = latestPiAssistantId;
+                        if (!piSessionHasActiveWork) {
+                            for (let index = sessionMessages.length - 1; index >= 0; index -= 1) {
+                                const message = sessionMessages[index];
+                                if (!message || message.info.role !== 'assistant') {
+                                    continue;
+                                }
 
-                            const hasWorkingPart = (message.parts ?? []).some((part) => {
-                                return part.type === 'reasoning' || part.type === 'tool' || part.type === 'step-start';
-                            });
-                            if (hasWorkingPart) {
-                                activeIds.add(message.info.id);
-                                break;
+                                if (!fallbackAssistantId) {
+                                    fallbackAssistantId = message.info.id;
+                                }
+
+                                const hasWorkingPart = (message.parts ?? []).some((part) => {
+                                    return part.type === 'reasoning' || part.type === 'tool' || part.type === 'step-start';
+                                });
+                                if (hasWorkingPart) {
+                                    activeIds.add(message.info.id);
+                                    break;
+                                }
                             }
                         }
 
@@ -1351,7 +1476,7 @@ export const useMessageStore = create<MessageStore>()(
                     set((state) => {
                         const updatedStates = removeLifecycleEntries(state.messageStreamStates, activeIds);
 
-                        const sessionMessages = state.messages.get(currentSessionId) ?? [];
+                        const sessionMessages = getCachedOrProjectedSessionMessages(state, currentSessionId);
                         let messagesChanged = false;
                         let updatedMessages = state.messages;
 
@@ -1377,7 +1502,7 @@ export const useMessageStore = create<MessageStore>()(
                                     if (part.type === 'tool') {
                                         const toolPart = part as any;
                                         const stateData = { ...(toolPart.state ?? {}) };
-                                        if (stateData.status === 'running' || stateData.status === 'pending') {
+                                        if (stateData.status === 'running' || stateData.status === 'pending' || stateData.status === 'started') {
                                             stateData.status = 'aborted';
                                         }
                                         return {
@@ -1460,7 +1585,7 @@ export const useMessageStore = create<MessageStore>()(
                         return;
                     }
 
-                    const existingMessagesSnapshot = stateSnapshot.messages.get(sessionId) || [];
+                    const existingMessagesSnapshot = getCachedOrProjectedSessionMessages(stateSnapshot, sessionId);
                     const existingMessageSnapshotIndex = resolveSessionMessagePosition(sessionId, messageId, existingMessagesSnapshot);
                     const existingMessageSnapshot = existingMessageSnapshotIndex >= 0
                         ? existingMessagesSnapshot[existingMessageSnapshotIndex]
@@ -1497,7 +1622,7 @@ export const useMessageStore = create<MessageStore>()(
                     }
 
                     set((state) => {
-                        const sessionMessages = state.messages.get(sessionId) || [];
+                        const sessionMessages = getCachedOrProjectedSessionMessages(state, sessionId);
                         const messagesArray = [...sessionMessages];
                         const updates: any = {};
 
@@ -1635,9 +1760,12 @@ export const useMessageStore = create<MessageStore>()(
                                 }
                             }
 
-                            const normalizedPart = normalizeStreamingPart(
-                                part,
-                                existingPartIndex !== -1 ? existingMessage.parts[existingPartIndex] : undefined
+                            const normalizedPart = preserveExistingToolPartIdentity(
+                                normalizeStreamingPart(
+                                    part,
+                                    existingPartIndex !== -1 ? existingMessage.parts[existingPartIndex] : undefined
+                                ),
+                                existingPartIndex !== -1 ? existingMessage.parts[existingPartIndex] : undefined,
                             );
                             (window as any).__messageTracker?.(messageId, `user_part_type:${(normalizedPart as any).type || 'unknown'}`);
 
@@ -1664,9 +1792,12 @@ export const useMessageStore = create<MessageStore>()(
                             const existingMessage = messagesArray[messageIndex];
                             const existingPartIndex = findMatchingPartIndex(existingMessage.parts, part);
 
-                            const normalizedPart = normalizeStreamingPart(
-                                part,
-                                existingPartIndex !== -1 ? existingMessage.parts[existingPartIndex] : undefined
+                            const normalizedPart = preserveExistingToolPartIdentity(
+                                normalizeStreamingPart(
+                                    part,
+                                    existingPartIndex !== -1 ? existingMessage.parts[existingPartIndex] : undefined
+                                ),
+                                existingPartIndex !== -1 ? existingMessage.parts[existingPartIndex] : undefined,
                             );
                             (window as any).__messageTracker?.(messageId, `part_type:${(normalizedPart as any).type || 'unknown'}`);
 
@@ -1775,7 +1906,12 @@ export const useMessageStore = create<MessageStore>()(
                                         .reverse()
                                         .find((m) => m.info.role === 'user');
                                     if (latestUser) {
-                                        const latestUserText = latestUser.parts.map((p) => extractTextFromPart(p)).join('').trim();
+                                        const currentPiSession = useSessionStore.getState().piSessions.get(sessionId) ?? null;
+                                        const latestUserId = typeof latestUser.info?.id === 'string' ? latestUser.info.id : null;
+                                        const latestUserPiText = extractPiUserMessageText(currentPiSession, latestUserId).trim();
+                                        const latestUserText = latestUserPiText.length > 0
+                                            ? latestUserPiText
+                                            : latestUser.parts.map((p) => extractTextFromPart(p)).join('').trim();
                                         if (latestUserText.length > 0 && latestUserText === textIncoming) {
                                             // Cap ignoredAssistantMessageIds size — it's only relevant for active streaming
                                             if (ignoredAssistantMessageIds.size > 1000) {
@@ -1793,7 +1929,10 @@ export const useMessageStore = create<MessageStore>()(
                             const pendingParts = pendingEntry ? [...pendingEntry.parts] : [];
                             const pendingIndex = findMatchingPartIndex(pendingParts, part);
                             const existingPendingPart = pendingIndex !== -1 ? pendingParts[pendingIndex] : undefined;
-                            const normalizedPart = normalizeStreamingPart(part, existingPendingPart);
+                            const normalizedPart = preserveExistingToolPartIdentity(
+                                normalizeStreamingPart(part, existingPendingPart),
+                                existingPendingPart,
+                            );
                             (window as any).__messageTracker?.(messageId, `part_type:${(normalizedPart as any).type || 'unknown'}`);
 
                             if ((normalizedPart as any).type === 'text') {
@@ -1803,15 +1942,7 @@ export const useMessageStore = create<MessageStore>()(
                             }
 
                             if (pendingIndex !== -1) {
-                                const normalizedRecord = normalizedPart as Record<string, unknown>;
-                                if (
-                                    normalizedRecord.type === 'tool' &&
-                                    typeof existingPendingPart?.id === 'string' &&
-                                    existingPendingPart.id.length > 0
-                                ) {
-                                    normalizedRecord.id = existingPendingPart.id;
-                                }
-                                pendingParts[pendingIndex] = normalizedRecord as Part;
+                                pendingParts[pendingIndex] = normalizedPart;
                             } else {
                                 pendingParts.push(normalizedPart);
                             }
@@ -1896,17 +2027,13 @@ export const useMessageStore = create<MessageStore>()(
                             const existingPartIndex = findMatchingPartIndex(existingMessage.parts, part);
                             const existingPart = existingPartIndex !== -1 ? existingMessage.parts[existingPartIndex] : undefined;
 
-                            const normalizedPart = normalizeStreamingPart(
-                                part,
-                                existingPart
+                            const normalizedPart = preserveExistingToolPartIdentity(
+                                normalizeStreamingPart(
+                                    part,
+                                    existingPart
+                                ),
+                                existingPart,
                             );
-                            if (
-                                (normalizedPart as Record<string, unknown>).type === 'tool' &&
-                                typeof existingPart?.id === 'string' &&
-                                existingPart.id.length > 0
-                            ) {
-                                (normalizedPart as Record<string, unknown>).id = existingPart.id;
-                            }
                             (window as any).__messageTracker?.(messageId, `part_type:${(normalizedPart as any).type || 'unknown'}`);
 
                             const updatedMessage = { ...existingMessage };
@@ -1977,7 +2104,7 @@ export const useMessageStore = create<MessageStore>()(
 
                 _applyPartDeltaImmediate: (sessionId: string, messageId: string, partId: string, field: string, delta: string, role?: string, currentSessionId?: string) => {
                     set((state) => {
-                        const sessionMessages = state.messages.get(sessionId) || [];
+                        const sessionMessages = getCachedOrProjectedSessionMessages(state, sessionId);
                         const messageIndex = resolveSessionMessagePosition(sessionId, messageId, sessionMessages);
                         if (messageIndex === -1) {
                             return state;
@@ -2118,6 +2245,12 @@ export const useMessageStore = create<MessageStore>()(
                                 return candidateId;
                             }
                         }
+                        for (const candidateId of useSessionStore.getState().piSessions.keys()) {
+                            const sessionMessages = getPiNativeSessionMessages(candidateId) ?? [];
+                            if (sessionMessages.some((msg) => msg.info.id === messageId)) {
+                                return candidateId;
+                            }
+                        }
                         return null;
                     };
 
@@ -2127,7 +2260,7 @@ export const useMessageStore = create<MessageStore>()(
                             return state;
                         }
 
-                        const sessionMessages = state.messages.get(targetSessionId) ?? [];
+                        const sessionMessages = getCachedOrProjectedSessionMessages(state, targetSessionId);
                         const messageIndex = resolveSessionMessagePosition(targetSessionId, messageId, sessionMessages);
                         if (messageIndex === -1) {
                             return state;
@@ -2163,6 +2296,13 @@ export const useMessageStore = create<MessageStore>()(
                             infoChanged = true;
                         }
 
+                        const currentPiSession = useSessionStore.getState().piSessions.get(targetSessionId) ?? null;
+                        const piSessionIndicatesCompletion = Boolean(
+                            currentPiSession
+                            && !currentPiSession.isStreaming
+                            && !currentPiSession.toolExecutions.some((execution) => execution.status === 'running')
+                        );
+
                         let partsChanged = false;
                         const updatedParts = message.parts.map((part) => {
                             if (!part) {
@@ -2176,7 +2316,7 @@ export const useMessageStore = create<MessageStore>()(
                                 }
 
                                 const status = existingState.status;
-                                const needsStatusUpdate = status === "running" || status === "pending" || status === "started";
+                                const needsStatusUpdate = piSessionIndicatesCompletion || status === "running" || status === "pending" || status === "started";
                                 const needsEndTimestamp = !existingState.time || typeof existingState.time?.end !== "number";
 
                                 if (needsStatusUpdate || needsEndTimestamp) {
@@ -2233,6 +2373,9 @@ export const useMessageStore = create<MessageStore>()(
                         });
 
                         if (!infoChanged && !partsChanged) {
+                            if (piSessionIndicatesCompletion && (updatedInfo.status !== 'completed' || updatedInfo.streaming)) {
+                                // handled above through infoChanged; keep explicit fallthrough semantics aligned
+                            }
                             return state;
                         }
 
@@ -2264,16 +2407,23 @@ export const useMessageStore = create<MessageStore>()(
                         let updatedMessages = state.messages;
                         let messagesModified = false;
                         const indexedSessionId = state.messageSessionIndex.get(messageId);
+                        const piSessionIds = Array.from(useSessionStore.getState().piSessions.keys());
                         const sessionIdCandidates = indexedSessionId
                             ? [
                                 indexedSessionId,
-                                ...Array.from(state.messages.keys()).filter((sessionId) => sessionId !== indexedSessionId),
+                                ...Array.from(new Set([
+                                    ...Array.from(state.messages.keys()).filter((sessionId) => sessionId !== indexedSessionId),
+                                    ...piSessionIds.filter((sessionId) => sessionId !== indexedSessionId),
+                                ])),
                             ]
-                            : Array.from(state.messages.keys());
+                            : Array.from(new Set([
+                                ...Array.from(state.messages.keys()),
+                                ...piSessionIds,
+                            ]));
 
                         for (const sessionId of sessionIdCandidates) {
-                            const sessionMessages = state.messages.get(sessionId);
-                            if (!sessionMessages) {
+                            const sessionMessages = getCachedOrProjectedSessionMessages(state, sessionId);
+                            if (sessionMessages.length === 0) {
                                 continue;
                             }
                             const idx = resolveSessionMessagePosition(sessionId, messageId, sessionMessages);
@@ -2316,7 +2466,7 @@ export const useMessageStore = create<MessageStore>()(
 
                 updateMessageInfo: (sessionId: string, messageId: string, messageInfo: any) => {
                     set((state) => {
-                        const sessionMessages = state.messages.get(sessionId) ?? [];
+                        const sessionMessages = getCachedOrProjectedSessionMessages(state, sessionId);
                         const normalizedSessionMessages = [...sessionMessages];
 
                         const messageIndex = resolveSessionMessagePosition(sessionId, messageId, normalizedSessionMessages);
@@ -2466,10 +2616,9 @@ export const useMessageStore = create<MessageStore>()(
                         const existingMessage = normalizedSessionMessages[messageIndex];
 
                         const existingInfo = existingMessage.info as any;
-                        const isUserMessage =
-                            existingInfo.userMessageMarker === true ||
-                            existingInfo.clientRole === 'user' ||
-                            existingInfo.role === 'user';
+                        const isUserMessage = existingInfo.userMessageMarker === true
+                            || (existingInfo.clientRole !== 'assistant' && existingInfo.role === 'user')
+                            || existingInfo.clientRole === 'user';
 
                          if (isUserMessage) {
  
@@ -2520,8 +2669,9 @@ export const useMessageStore = create<MessageStore>()(
                         }
 
                         updatedInfo.clientRole = updatedInfo.clientRole ?? existingMessage.info.clientRole ?? existingMessage.info.role;
-                        if (updatedInfo.clientRole === "user") {
+                        if (updatedInfo.userMessageMarker === true || updatedInfo.clientRole === "user") {
                             updatedInfo.userMessageMarker = true;
+                            updatedInfo.clientRole = 'user';
                         }
 
                         const updatedMessage = {
@@ -2550,8 +2700,12 @@ export const useMessageStore = create<MessageStore>()(
 
                     // Trigger completion when info.finish is present for assistant messages
                     const infoFinish = (messageInfo as { finish?: string })?.finish;
-                    const messageRole = (messageInfo as { role?: string })?.role;
-                    if (typeof infoFinish === 'string' && messageRole !== 'user') {
+                    const infoClientRole = (messageInfo as { clientRole?: string })?.clientRole;
+                    const infoRole = (messageInfo as { role?: string })?.role;
+                    const infoIsUser = (messageInfo as { userMessageMarker?: boolean })?.userMessageMarker === true
+                        || infoClientRole === 'user'
+                        || (infoClientRole !== 'assistant' && infoRole === 'user');
+                    if (typeof infoFinish === 'string' && !infoIsUser) {
                         setTimeout(() => {
                             const store = get();
                             store.completeStreamingMessage(sessionId, messageId);
@@ -2680,7 +2834,7 @@ export const useMessageStore = create<MessageStore>()(
 
                     set((state) => {
                         const newMessages = new Map(state.messages);
-                        const previousMessages = state.messages.get(sessionId) || [];
+                        const previousMessages = getCachedOrProjectedSessionMessages(state, sessionId);
                         const normalizedIncomingMessages = messagesFiltered.map((message) => {
                             const infoWithMarker = {
                                 ...normalizeMessageInfoForProjection(message.info as Message),
@@ -2862,7 +3016,7 @@ export const useMessageStore = create<MessageStore>()(
 
                 loadMoreMessages: async (sessionId: string, direction: "up" | "down" = "up") => {
                     const state = get();
-                    const currentMessages = state.messages.get(sessionId);
+                    const currentMessages = getCachedOrProjectedSessionMessages(state, sessionId);
                     const memoryState = state.sessionMemoryState.get(sessionId);
                     const historyMeta = state.sessionHistoryMeta.get(sessionId);
 
@@ -2890,8 +3044,7 @@ export const useMessageStore = create<MessageStore>()(
                 },
 
                 getLastMessageModel: (sessionId: string) => {
-                    const { messages } = get();
-                    const sessionMessages = messages.get(sessionId);
+                    const sessionMessages = getCachedOrProjectedSessionMessages(get(), sessionId);
 
                     if (!sessionMessages || sessionMessages.length === 0) {
                         return null;

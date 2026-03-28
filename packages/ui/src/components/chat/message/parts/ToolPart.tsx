@@ -12,9 +12,10 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { useOptionalThemeSystem } from '@/contexts/useThemeSystem';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useSessionStore } from '@/stores/useSessionStore';
+import { useSessionStore as useSessionManagementStore } from '@/stores/sessionStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { piClient } from '@/lib/pi/client';
-import { projectPiSessionToRuntimeMessages } from '@/lib/runtime/projections';
+import type { PiSessionViewState, PiToolExecutionViewState } from '@/lib/pi/types';
 import { ScrollShadow } from '@/components/ui/ScrollShadow';
 import { Text } from '@/components/ui/text';
 import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
@@ -577,8 +578,6 @@ type TaskToolSummaryEntry = {
 
 type SessionMessageWithParts = MessageRecord;
 
-const EMPTY_SESSION_MESSAGES: SessionMessageWithParts[] = [];
-
 const normalizeSessionIdCandidate = (value: unknown): string | undefined => {
     if (typeof value !== 'string') {
         return undefined;
@@ -619,38 +618,22 @@ const readTaskSessionIdFromOutput = (output: string | undefined): string | undef
     return normalizeSessionIdCandidate(candidate);
 };
 
-const buildTaskSummaryEntriesFromSession = (messages: SessionMessageWithParts[]): TaskToolSummaryEntry[] => {
-    const entries: TaskToolSummaryEntry[] = [];
-
-    for (const message of messages) {
-        if (message?.info?.role !== 'assistant') {
-            continue;
-        }
-        const parts = Array.isArray(message.parts) ? message.parts : [];
-        for (const part of parts) {
-            if (part?.type !== 'tool') {
-                continue;
-            }
-            const toolName = normalizeToolName(part.tool);
-            if (!toolName || toolName === 'task' || toolName === 'todowrite' || toolName === 'todoread') {
-                continue;
-            }
-            const partState = part.state as { status?: string; title?: string; input?: unknown } | undefined;
-            entries.push({
-                id: part.id,
-                tool: part.tool,
-                state: {
-                    status: partState?.status,
-                    title: partState?.title,
-                    input: partState?.input && typeof partState.input === 'object'
-                        ? (partState.input as Record<string, unknown>)
-                        : undefined,
-                },
-            });
-        }
-    }
-
-    return entries;
+const buildTaskSummaryEntriesFromPiSession = (session: PiSessionViewState): TaskToolSummaryEntry[] => {
+    return session.toolExecutions
+        .filter((execution) => {
+            const toolName = normalizeToolName(execution.toolName);
+            return Boolean(toolName && toolName !== 'task' && toolName !== 'todowrite' && toolName !== 'todoread');
+        })
+        .map((execution) => ({
+            id: execution.toolCallId,
+            tool: execution.toolName,
+            state: {
+                status: execution.status,
+                input: execution.args && typeof execution.args === 'object'
+                    ? (execution.args as Record<string, unknown>)
+                    : undefined,
+            },
+        }));
 };
 
 const getTaskSummaryLabel = (entry: TaskToolSummaryEntry): string => {
@@ -1266,8 +1249,12 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
     const metadata = stateWithData.metadata;
     const input = stateWithData.input;
     const rawOutput = stateWithData.output;
-    const hasStringOutput = typeof rawOutput === 'string' && rawOutput.length > 0;
     const outputString = typeof rawOutput === 'string' ? rawOutput : '';
+    const hasStringOutput = outputString.length > 0;
+    const stateStatus = typeof state.status === 'string' ? state.status : undefined;
+    const stateError = typeof stateWithData.error === 'string' ? stateWithData.error : undefined;
+    const isCompletedState = stateStatus === 'completed';
+    const isErrorState = stateStatus === 'error' || stateStatus === 'failed';
 
     const diffContent = typeof metadata?.diff === 'string' ? (metadata.diff as string) : null;
     const diffEntries = React.useMemo(
@@ -1334,7 +1321,7 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
     const renderResultContent = () => {
         // Question tool: show parsed Q&A summary
         if (part.tool === 'question') {
-            if (state.status === 'completed' && hasStringOutput) {
+            if (isCompletedState && hasStringOutput) {
                 const parsedQA = parseQuestionOutput(outputString);
                 if (parsedQA && parsedQA.length > 0) {
                     return renderScrollableBlock(
@@ -1351,7 +1338,7 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
                 }
             }
 
-            if (state.status === 'error' && 'error' in state) {
+            if (isErrorState && stateError) {
                 return (
                     <div>
                         <div className="typography-meta font-medium text-muted-foreground mb-1">Error:</div>
@@ -1360,7 +1347,7 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
                             color: 'var(--status-error)',
                             borderColor: 'var(--status-error-border)',
                         }}>
-                            {state.error}
+                            {stateError}
                         </div>
                     </div>
                 );
@@ -1474,7 +1461,7 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
                         </div>
                     ) : null}
 
-                    {part.tool !== 'write' && state.status === 'completed' && 'output' in state && (
+                    {part.tool !== 'write' && hasStringOutput && (
                         <div>
                             {(part.tool === 'edit' || part.tool === 'multiedit' || part.tool === 'apply_patch') && diffContent ? (
                                 <div className="mb-1 flex items-center justify-end gap-2">
@@ -1489,7 +1476,7 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
                         </div>
                     )}
 
-                    {state.status === 'error' && 'error' in state && (
+                    {isErrorState && stateError && (
                         <div>
                             <div className="typography-meta font-medium text-muted-foreground/80 mb-1">Error:</div>
                             <div className="typography-meta p-2 rounded-xl border" style={{
@@ -1497,7 +1484,7 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
                                 color: 'var(--status-error)',
                                 borderColor: 'var(--status-error-border)',
                             }}>
-                                {state.error}
+                                {stateError}
                             </div>
                         </div>
                     )}
@@ -1526,9 +1513,26 @@ const ToolPart: React.FC<ToolPartProps> = ({
     const normalizedPartTool = normalizeToolName(part.tool);
     const isTaskTool = normalizedPartTool === 'task';
 
-    const status = state?.status as string | undefined;
+    const sessionId = typeof part.sessionID === 'string' && part.sessionID.trim().length > 0 ? part.sessionID : null;
+    const toolCallId = typeof part.callID === 'string' && part.callID.trim().length > 0
+        ? part.callID
+        : (typeof part.id === 'string' && part.id.trim().length > 0 ? part.id : null);
+    const currentPiExecution = useSessionStore(
+        React.useCallback((store) => {
+            if (!sessionId || !toolCallId) {
+                return null;
+            }
+            const session = store.piSessions.get(sessionId);
+            if (!session) {
+                return null;
+            }
+            return session.toolExecutions.find((execution) => execution.toolCallId === toolCallId) ?? null;
+        }, [sessionId, toolCallId])
+    ) as PiToolExecutionViewState | null;
+
+    const status = currentPiExecution?.status ?? (state?.status as string | undefined);
     const isFinalized = status === 'completed' || status === 'error' || status === 'aborted' || status === 'failed' || status === 'timeout' || status === 'cancelled';
-    const isError = status === 'error' || status === 'failed';
+    const isError = status === 'error' || status === 'failed' || currentPiExecution?.isError === true;
 
     const [activeLatched, setActiveLatched] = React.useState<boolean>(!isFinalized);
     const previousPartIdRef = React.useRef<string | undefined>(part.id);
@@ -1564,8 +1568,58 @@ const ToolPart: React.FC<ToolPartProps> = ({
     const stateWithData = state as ToolStateWithMetadata;
     const metadata = stateWithData.metadata;
     const partMetadata = (part as unknown as { metadata?: unknown }).metadata;
-    const input = stateWithData.input;
-    const time = stateWithData.time;
+    const input = (currentPiExecution?.args && typeof currentPiExecution.args === 'object'
+        ? (currentPiExecution.args as Record<string, unknown>)
+        : stateWithData.input);
+    const time = {
+        ...(stateWithData.time ?? {}),
+        ...(currentPiExecution
+            ? {
+                start: stateWithData.time?.start ?? (typeof part.time?.start === 'number' ? part.time.start : undefined) ?? Date.now(),
+                ...(currentPiExecution.status === 'completed' || currentPiExecution.status === 'error'
+                    ? { end: stateWithData.time?.end ?? (typeof part.time?.end === 'number' ? part.time.end : undefined) ?? Date.now() }
+                    : {}),
+            }
+            : {}),
+    };
+    const executionOutput = React.useMemo(() => {
+        if (!currentPiExecution) {
+            return undefined;
+        }
+        const chunks: string[] = [];
+        if (currentPiExecution.partialResult !== undefined && currentPiExecution.partialResult !== null) {
+            chunks.push(typeof currentPiExecution.partialResult === 'string'
+                ? currentPiExecution.partialResult
+                : JSON.stringify(currentPiExecution.partialResult, null, 2));
+        }
+        if (currentPiExecution.result !== undefined && currentPiExecution.result !== null) {
+            chunks.push(typeof currentPiExecution.result === 'string'
+                ? currentPiExecution.result
+                : JSON.stringify(currentPiExecution.result, null, 2));
+        }
+        const combined = chunks.filter((chunk) => chunk.trim().length > 0).join('\n\n');
+        return combined.length > 0 ? combined : undefined;
+    }, [currentPiExecution]);
+    const executionError = React.useMemo(() => {
+        if (!currentPiExecution || currentPiExecution.isError !== true) {
+            return undefined;
+        }
+        if (typeof currentPiExecution.result === 'string' && currentPiExecution.result.trim().length > 0) {
+            return currentPiExecution.result;
+        }
+        if (typeof currentPiExecution.partialResult === 'string' && currentPiExecution.partialResult.trim().length > 0) {
+            return currentPiExecution.partialResult;
+        }
+        return `${currentPiExecution.toolName} failed`;
+    }, [currentPiExecution]);
+    const derivedToolState = React.useMemo(() => ({
+        ...state,
+        status,
+        input,
+        time,
+        ...(executionOutput ? { output: executionOutput } : {}),
+        ...(executionError ? { error: executionError } : {}),
+    }), [executionError, executionOutput, input, state, status, time]);
 
     const [pinnedTime, setPinnedTime] = React.useState<{ start?: number; end?: number }>({});
     const [localStartAt, setLocalStartAt] = React.useState<number | undefined>(undefined);
@@ -1622,8 +1676,11 @@ const ToolPart: React.FC<ToolPartProps> = ({
     }, [localStartAt, pinnedTime.start, time?.start]);
 
     const taskOutputString = React.useMemo(() => {
+        if (typeof derivedToolState.output === 'string' && derivedToolState.output.trim().length > 0) {
+            return derivedToolState.output;
+        }
         return typeof stateWithData.output === 'string' ? stateWithData.output : undefined;
-    }, [stateWithData.output]);
+    }, [derivedToolState.output, stateWithData.output]);
 
     const parsedTaskMetadata = React.useMemo(() => {
         return parseTaskMetadataBlock(taskOutputString);
@@ -1650,12 +1707,12 @@ const ToolPart: React.FC<ToolPartProps> = ({
         return readTaskSessionIdFromOutput(taskOutputString);
     }, [isTaskTool, metadata, parsedTaskMetadata.sessionId, partMetadata, taskOutputString]);
 
-    const childSessionMessages = useSessionStore(
+    const childPiSession = useSessionStore(
         React.useCallback((store) => {
             if (!taskSessionId) {
-                return EMPTY_SESSION_MESSAGES;
+                return null;
             }
-            return (store.messages.get(taskSessionId) as SessionMessageWithParts[] | undefined) ?? EMPTY_SESSION_MESSAGES;
+            return store.piSessions.get(taskSessionId) ?? null;
         }, [taskSessionId])
     );
 
@@ -1686,41 +1743,22 @@ const ToolPart: React.FC<ToolPartProps> = ({
     }, [isTaskTool, metadata, parsedTaskMetadata.summaryEntries]);
 
     const childSessionTaskSummaryEntries = React.useMemo<TaskToolSummaryEntry[]>(() => {
-        if (!isTaskTool || !taskSessionId) {
+        if (!isTaskTool || !taskSessionId || !childPiSession) {
             return [];
         }
-        if (!Array.isArray(childSessionMessages) || childSessionMessages.length === 0) {
+        if (childPiSession.toolExecutions.length === 0) {
             return [];
         }
-        return buildTaskSummaryEntriesFromSession(childSessionMessages);
-    }, [childSessionMessages, isTaskTool, taskSessionId]);
+        return buildTaskSummaryEntriesFromPiSession(childPiSession);
+    }, [childPiSession, isTaskTool, taskSessionId]);
 
     const childSessionHasInFlightTools = React.useMemo(() => {
-        if (!isTaskTool || !taskSessionId || !Array.isArray(childSessionMessages) || childSessionMessages.length === 0) {
+        if (!isTaskTool || !taskSessionId || !childPiSession) {
             return false;
         }
 
-        for (const message of childSessionMessages) {
-            if (message?.info?.role !== 'assistant') {
-                continue;
-            }
-            const parts = Array.isArray(message.parts) ? message.parts : [];
-            for (const childPart of parts) {
-                if (childPart?.type !== 'tool') {
-                    continue;
-                }
-                const childStatus =
-                    typeof childPart === 'object' && childPart !== null && 'state' in childPart
-                        ? (childPart.state as { status?: string } | undefined)?.status
-                        : undefined;
-                if (childStatus === 'running' || childStatus === 'pending' || childStatus === 'started') {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }, [childSessionMessages, isTaskTool, taskSessionId]);
+        return childPiSession.toolExecutions.some((execution) => execution.status === 'running');
+    }, [childPiSession, isTaskTool, taskSessionId]);
 
     const childSessionActivity = useSessionActivity(taskSessionId);
     const [taskChildSeenActive, setTaskChildSeenActive] = React.useState(false);
@@ -1865,11 +1903,10 @@ const ToolPart: React.FC<ToolPartProps> = ({
         const fetchSessionMessages = async () => {
             try {
                 const session = await piClient.getSession(taskSessionId);
-                const messages = projectPiSessionToRuntimeMessages(session).slice(-500);
-                if (cancelled || !Array.isArray(messages) || messages.length === 0) {
+                useSessionManagementStore.getState().setPiSessionSnapshot(session);
+                if (cancelled) {
                     return;
                 }
-                useSessionStore.getState().syncMessages(taskSessionId, messages, { replace: true });
             } catch {
                 // Ignore transient subagent fetch errors.
             } finally {
@@ -1912,8 +1949,8 @@ const ToolPart: React.FC<ToolPartProps> = ({
     const writeLineCount = normalizedPartTool === 'write' ? parseWriteLineCount(input) : null;
     const isMultiFileApplyPatch = normalizedPartTool === 'apply_patch' && Array.isArray(metadata?.files) && (metadata?.files as []).length > 1;
     const normalizedPart = normalizedPartTool !== part.tool ? ({ ...part, tool: normalizedPartTool } as ToolPartType) : part;
-    const descriptionPath = getToolDescriptionPath(normalizedPart, state, currentDirectory);
-    const description = getToolDescription(normalizedPart, state, currentDirectory);
+    const descriptionPath = getToolDescriptionPath(normalizedPart, derivedToolState as ToolStateUnion, currentDirectory);
+    const description = getToolDescription(normalizedPart, derivedToolState as ToolStateUnion, currentDirectory);
     const displayName = getToolMetadata(normalizedPartTool || part.tool).displayName;
     
     // Tool title/description — shown inline as context
@@ -2146,7 +2183,7 @@ const ToolPart: React.FC<ToolPartProps> = ({
                     />
                     <ToolExpandedContent
                         part={part}
-                        state={state}
+                        state={derivedToolState as ToolStateUnion}
                         syntaxTheme={syntaxTheme}
                         currentDirectory={currentDirectory}
                         onShowPopup={onShowPopup}

@@ -115,7 +115,7 @@ export const VSCodeLayout: React.FC = () => {
   const initializeConfig = useConfigStore((state) => state.initializeApp);
   const loadSessions = useSessionStore((state) => state.loadSessions);
   const loadMessages = useSessionStore((state) => state.loadMessages);
-  const messages = useSessionStore((state) => state.messages);
+  const piSessions = useSessionStore((state) => state.piSessions);
   const [hasInitializedOnce, setHasInitializedOnce] = React.useState<boolean>(() => configInitialized);
   const [isInitializing, setIsInitializing] = React.useState<boolean>(false);
   const lastBootstrapAttemptAt = React.useRef<number>(0);
@@ -321,8 +321,8 @@ export const VSCodeLayout: React.FC = () => {
         return;
       }
 
-      const hasMessagesEntry = messages.has(currentSessionId);
-      if (hasMessagesEntry) {
+      const hasPiSnapshot = piSessions.has(currentSessionId);
+      if (hasPiSnapshot) {
         return;
       }
 
@@ -334,7 +334,7 @@ export const VSCodeLayout: React.FC = () => {
     };
 
     void hydrateMessages();
-  }, [connectionStatus, currentSessionId, currentView, hasInitializedOnce, loadMessages, messages, newSessionDraftOpen]);
+  }, [connectionStatus, currentSessionId, currentView, hasInitializedOnce, loadMessages, newSessionDraftOpen, piSessions]);
 
   // Track container width for responsive settings layout
   React.useEffect(() => {

@@ -8,10 +8,9 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useSessionStore } from '@/stores/useSessionStore';
-import { useMessageStore } from '@/stores/messageStore';
 import { RiLoader4Line, RiSearchLine, RiTimeLine, RiGitBranchLine, RiArrowGoBackLine } from '@remixicon/react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { Part } from '@/lib/runtime/types';
+import type { PiContentBlock, PiMessageViewState } from '@/lib/pi/types';
 
 interface TimelineDialogProps {
     open: boolean;
@@ -20,6 +19,18 @@ interface TimelineDialogProps {
     onScrollByTurnOffset?: (offset: number) => void;
     onResumeToLatest?: () => void;
 }
+
+const extractPiUserMessagePreview = (message: Extract<PiMessageViewState, { role: 'user' }>): string => {
+    if (typeof message.content === 'string') {
+        return message.content.replace(/\n/g, ' ').slice(0, 80);
+    }
+    return message.content
+        .filter((block): block is Extract<PiContentBlock, { type: 'text' }> => block.type === 'text')
+        .map((block) => block.text)
+        .join(' ')
+        .replace(/\n/g, ' ')
+        .slice(0, 80);
+};
 
 // Helper: format relative time (e.g., "2 hours ago")
 function formatRelativeTime(timestamp: number): string {
@@ -45,8 +56,8 @@ export const TimelineDialog: React.FC<TimelineDialogProps> = ({
     onResumeToLatest,
 }) => {
     const currentSessionId = useSessionStore((state) => state.currentSessionId);
-    const messages = useMessageStore((state) =>
-        currentSessionId ? state.messages.get(currentSessionId) || [] : []
+    const currentPiSession = useSessionStore((state) =>
+        currentSessionId ? state.piSessions.get(currentSessionId) ?? null : null
     );
     const revertToMessage = useSessionStore((state) => state.revertToMessage);
     const forkFromMessage = useSessionStore((state) => state.forkFromMessage);
@@ -57,9 +68,11 @@ export const TimelineDialog: React.FC<TimelineDialogProps> = ({
 
     // Filter user messages (reversed for newest first)
     const userMessages = React.useMemo(() => {
-        const filtered = messages.filter(m => m.info.role === 'user');
-        return filtered.reverse();
-    }, [messages]);
+        const filtered = (currentPiSession?.messages ?? []).filter(
+            (message): message is Extract<PiMessageViewState, { role: 'user' }> => message.role === 'user'
+        );
+        return [...filtered].reverse();
+    }, [currentPiSession]);
 
     // Filter by search query
     const filteredMessages = React.useMemo(() => {
@@ -67,7 +80,7 @@ export const TimelineDialog: React.FC<TimelineDialogProps> = ({
 
         const query = searchQuery.toLowerCase();
         return userMessages.filter((message) => {
-            const preview = getMessagePreview(message.parts).toLowerCase();
+            const preview = extractPiUserMessagePreview(message).toLowerCase();
             return preview.includes(query);
         });
     }, [userMessages, searchQuery]);
@@ -117,17 +130,20 @@ export const TimelineDialog: React.FC<TimelineDialogProps> = ({
                         </div>
                     ) : (
                         filteredMessages.map((message) => {
-                            const preview = getMessagePreview(message.parts);
-                            const timestamp = message.info.time.created;
+                            const preview = extractPiUserMessagePreview(message);
+                            const timestamp = message.timestamp;
                             const relativeTime = formatRelativeTime(timestamp);
                             const messageNumber = userMessages.length - userMessages.indexOf(message);
 
                             return (
                                 <div
-                                    key={message.info.id}
+                                    key={message.id ?? `${message.timestamp}-${messageNumber}`}
                                     className="group flex items-center gap-2 py-1.5 hover:bg-interactive-hover/30 rounded transition-colors cursor-pointer"
                                     onClick={async () => {
-                                        const didNavigate = await onScrollToMessage?.(message.info.id);
+                                        if (!message.id) {
+                                            return;
+                                        }
+                                        const didNavigate = await onScrollToMessage?.(message.id);
                                         if (didNavigate === false) {
                                             return;
                                         }
@@ -155,7 +171,10 @@ export const TimelineDialog: React.FC<TimelineDialogProps> = ({
                                                         className="h-5 w-5 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                                                         onClick={async (e) => {
                                                             e.stopPropagation();
-                                                            await revertToMessage(currentSessionId, message.info.id);
+                                                            if (!message.id) {
+                                                                return;
+                                                            }
+                                                            await revertToMessage(currentSessionId, message.id);
                                                             onOpenChange(false);
                                                         }}
                                                     >
@@ -172,11 +191,14 @@ export const TimelineDialog: React.FC<TimelineDialogProps> = ({
                                                         className="h-5 w-5 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            handleFork(message.info.id);
+                                                            if (!message.id) {
+                                                                return;
+                                                            }
+                                                            handleFork(message.id);
                                                         }}
-                                                        disabled={forkingMessageId === message.info.id}
+                                                        disabled={forkingMessageId === message.id}
                                                     >
-                                                        {forkingMessageId === message.info.id ? (
+                                                        {forkingMessageId === message.id ? (
                                                             <RiLoader4Line className="h-4 w-4 animate-spin" />
                                                         ) : (
                                                             <RiGitBranchLine className="h-4 w-4" />
@@ -236,9 +258,3 @@ export const TimelineDialog: React.FC<TimelineDialogProps> = ({
         </Dialog>
     );
 };
-
-function getMessagePreview(parts: Part[]): string {
-    const textPart = parts.find(p => p.type === 'text');
-    if (!textPart || typeof textPart.text !== 'string') return '';
-    return textPart.text.replace(/\n/g, ' ').slice(0, 80);
-}

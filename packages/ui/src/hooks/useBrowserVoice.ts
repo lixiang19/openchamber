@@ -29,6 +29,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { browserVoiceService } from '@/lib/voice/browserVoiceService';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useConfigStore } from '@/stores/useConfigStore';
+import type { PiContentBlock, PiMessageViewState } from '@/lib/pi/types';
 import { useServerTTS } from './useServerTTS';
 import { useSayTTS } from './useSayTTS';
 import { summarizeText, shouldSummarize, sanitizeForTTS } from '@/lib/voice/summarize';
@@ -84,6 +85,42 @@ const sanitizeSpeechLanguage = (lang: string): string => {
   return normalized;
 };
 
+const getPiMessageKey = (message: PiMessageViewState, index: number): string => {
+  const explicitId = typeof message.id === 'string' && message.id.length > 0 ? message.id : null;
+  if (explicitId) {
+    return explicitId;
+  }
+  return `${message.role}:${message.timestamp}:${index}`;
+};
+
+const extractPiVoiceMessageText = (message: PiMessageViewState): string => {
+  if (message.role === 'assistant' || message.role === 'toolResult' || message.role === 'custom') {
+    if (typeof message.content === 'string') {
+      return message.content;
+    }
+    return message.content
+      .filter((block): block is Extract<PiContentBlock, { type: 'text' }> => block.type === 'text')
+      .map((block) => block.text)
+      .join(' ');
+  }
+
+  if (message.role === 'user') {
+    if (typeof message.content === 'string') {
+      return message.content;
+    }
+    return message.content
+      .filter((block): block is Extract<PiContentBlock, { type: 'text' }> => block.type === 'text')
+      .map((block) => block.text)
+      .join(' ');
+  }
+
+  if (message.role === 'bashExecution') {
+    return `${message.command}\n${message.output}`.trim();
+  }
+
+  return '';
+};
+
 /**
  * Hook for managing browser-based voice conversations
  */
@@ -120,7 +157,7 @@ export function useBrowserVoice(): UseBrowserVoiceReturn {
   const isActiveRef = useRef(false);
   const processingMessageRef = useRef(false);
   const lastTranscriptRef = useRef('');
-  const messagesRef = useRef<Map<string, { info: { role: string }; parts: Array<{ type: string; text?: string }> }>>(new Map());
+  const messagesRef = useRef<Map<string, PiMessageViewState>>(new Map());
   const pendingResumeOnVisibleRef = useRef(false);
   const pendingFinalTranscriptRef = useRef('');
   const finalTranscriptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -130,7 +167,7 @@ export function useBrowserVoice(): UseBrowserVoiceReturn {
   const currentSessionId = useSessionStore((s) => s.currentSessionId);
   const sendMessage = useSessionStore((s) => s.sendMessage);
   const setPendingInputText = useSessionStore((s) => s.setPendingInputText);
-  const messages = useSessionStore((s) => s.messages);
+  const piSessions = useSessionStore((s) => s.piSessions);
   const createSession = useSessionStore((s) => s.createSession);
   const { currentProviderId, currentModelId, currentAgentName, voiceProvider, speechRate, speechPitch, speechVolume, sayVoice, browserVoice, openaiVoice, summarizeVoiceConversation, summarizeCharacterThreshold } = useConfigStore();
   
@@ -143,12 +180,15 @@ export function useBrowserVoice(): UseBrowserVoiceReturn {
   // Update messages ref when messages change
   useEffect(() => {
     if (currentSessionId) {
-      const sessionMessages = messages.get(currentSessionId);
+      const session = piSessions.get(currentSessionId);
+      const sessionMessages = session?.messages;
       if (sessionMessages) {
-        messagesRef.current = new Map(sessionMessages.map(m => [m.info.id, m]));
+        messagesRef.current = new Map(sessionMessages.map((message, index) => [getPiMessageKey(message, index), message]));
+        return;
       }
     }
-  }, [messages, currentSessionId]);
+    messagesRef.current = new Map();
+  }, [piSessions, currentSessionId]);
   
   // Stop voice when session changes to prevent microphone from staying active
   // This ensures voice mode doesn't carry over between sessions
@@ -371,19 +411,12 @@ export function useBrowserVoice(): UseBrowserVoiceReturn {
         
         const sessionMessages = messagesRef.current;
         const assistantMessages = Array.from(sessionMessages.values())
-          .filter(m => m.info.role === 'assistant')
-          .sort((a, b) => {
-            const aTime = (a.info as { time?: { created?: number } }).time?.created ?? 0;
-            const bTime = (b.info as { time?: { created?: number } }).time?.created ?? 0;
-            return bTime - aTime;
-          });
+          .filter((message): message is Extract<PiMessageViewState, { role: 'assistant' }> => message.role === 'assistant')
+          .sort((a, b) => b.timestamp - a.timestamp);
         
         if (assistantMessages.length > 0) {
           const latestMessage = assistantMessages[0];
-          const textParts = latestMessage.parts
-            .filter(p => p.type === 'text')
-            .map(p => p.text)
-            .join(' ');
+          const textParts = extractPiVoiceMessageText(latestMessage);
           
           if (textParts.trim()) {
             // Speak the response

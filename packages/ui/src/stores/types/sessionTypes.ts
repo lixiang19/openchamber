@@ -1,6 +1,6 @@
 import type { Session, Message, Part } from "@/lib/runtime/types";
 import type { PermissionRequest, PermissionResponse } from "@/types/permission";
-import type { QuestionRequest } from "@/types/question";
+import type { PiInteractiveRequestViewState, PiSessionViewState } from "@/lib/pi/types";
 
 export interface AttachedFile {
     id: string;
@@ -140,6 +140,7 @@ export interface SessionStore {
     sessions: Session[];
     archivedSessions: Session[];
     sessionsByDirectory: Map<string, Session[]>;
+    piSessions: Map<string, PiSessionViewState>;
     currentSessionId: string | null;
     lastLoadedDirectory: string | null;
     messages: Map<string, { info: Message; parts: Part[] }[]>;
@@ -148,7 +149,7 @@ export interface SessionStore {
     messageStreamStates: Map<string, MessageStreamLifecycle>;
     sessionCompactionUntil: Map<string, number>;
     permissions: Map<string, PermissionRequest[]>;
-    questions: Map<string, QuestionRequest[]>;
+    interactiveRequests: Map<string, PiInteractiveRequestViewState[]>;
     sessionAbortFlags: Map<string, { timestamp: number; acknowledged: boolean }>;
     attachedFiles: AttachedFile[];
     abortPromptSessionId: string | null;
@@ -247,8 +248,6 @@ export interface SessionStore {
     respondToPermission: (sessionId: string, requestId: string, response: PermissionResponse) => Promise<void>;
     dismissPermission: (sessionId: string, requestId: string) => void;
 
-    addQuestion: (question: QuestionRequest) => void;
-    dismissQuestion: (sessionId: string, requestId: string) => void;
     respondToQuestion: (sessionId: string, requestId: string, answers: string[] | string[][]) => Promise<void>;
     rejectQuestion: (sessionId: string, requestId: string) => Promise<void>;
 
@@ -287,11 +286,11 @@ export interface SessionStore {
     analyzeAndSaveExternalSessionChoices: (sessionId: string, agents: Array<{ name: string; [key: string]: unknown }>) => Promise<Map<string, { providerId: string; modelId: string; timestamp: number }>>;
 
 
-    isOpenChamberCreatedSession: (sessionId: string) => boolean;
+    isRidgeCreatedSession: (sessionId: string) => boolean;
 
-    markSessionAsOpenChamberCreated: (sessionId: string) => void;
+    markSessionAsRidgeCreated: (sessionId: string) => void;
 
-    initializeNewOpenChamberSession: (sessionId: string, agents: Array<{ name: string; [key: string]: unknown }>) => void;
+    initializeNewRidgeSession: (sessionId: string, agents: Array<{ name: string; [key: string]: unknown }>) => void;
 
     setWorktreeMetadata: (sessionId: string, metadata: import('@/types/worktree').WorktreeMetadata | null) => void;
     getWorktreeMetadata: (sessionId: string) => import('@/types/worktree').WorktreeMetadata | undefined;

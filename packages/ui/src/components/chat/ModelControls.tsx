@@ -571,7 +571,10 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
 
     const prevAgentNameRef = React.useRef<string | undefined>(undefined);
 
-    const currentSessionMessageCount = currentSessionId ? (messages.get(currentSessionId)?.length ?? -1) : -1;
+    const currentPiSession = useSessionStore((state) =>
+        currentSessionId ? state.piSessions.get(currentSessionId) ?? null : null
+    );
+    const currentSessionMessageCount = currentPiSession ? currentPiSession.messages.length : -1;
 
     const sessionInitializationRef = React.useRef<{
         sessionId: string;

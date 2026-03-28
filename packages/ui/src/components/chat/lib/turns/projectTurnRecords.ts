@@ -1,6 +1,8 @@
+import type { PiContentBlock, PiMessageViewState, PiSessionViewState, PiToolExecutionViewState } from '@/lib/pi/types';
+import type { Message, Part } from '@/lib/runtime/types';
 import { projectTurnActivity } from './projectTurnActivity';
 import { projectTurnIndexes } from './projectTurnIndexes';
-import { projectTurnDiffStats, projectTurnSummary } from './projectTurnSummary';
+import { buildPiAssistantTextById, projectTurnDiffStats, projectTurnSummary } from './projectTurnSummary';
 import type {
     ChatMessageEntry,
     TurnMessageRecord,
@@ -9,8 +11,217 @@ import type {
     TurnStreamState,
 } from './types';
 
-const resolveMessageRole = (message: ChatMessageEntry): string => {
-    const role = (message.info as { clientRole?: string | null; role?: string | null }).clientRole ?? message.info.role;
+/**
+ * 从 Pi-native session 状态直接构建最小化的 ChatMessageEntry
+ * 这是推进 Pi-native 化的过渡步骤：不再依赖 uiMessageProjection 的完整投影，
+ * 而是直接从 Pi 原始数据构建 turn 记录所需的 minimal message 结构
+ */
+const buildMinimalMessageEntryFromPi = (
+    message: PiMessageViewState,
+    sessionId: string,
+    toolExecutionsById: Map<string, PiToolExecutionViewState>,
+): ChatMessageEntry => {
+    const messageId = message.id || `${sessionId}:msg:${Date.now()}`;
+    const timestamp = message.timestamp ?? Date.now();
+
+    // 用户消息
+    if (message.role === 'user') {
+        const contentText = typeof message.content === 'string'
+            ? message.content
+            : message.content.filter((b): b is Extract<PiContentBlock, { type: 'text' }> => b.type === 'text').map(b => b.text).join('');
+        return {
+            info: {
+                id: messageId,
+                sessionID: sessionId,
+                role: 'user',
+                clientRole: 'user',
+                userMessageMarker: true,
+                time: { created: timestamp, completed: timestamp },
+            } as Message,
+            parts: contentText ? [{
+                id: `${messageId}:text:0`,
+                type: 'text',
+                text: contentText,
+                sessionID: sessionId,
+                messageID: messageId,
+                time: { start: timestamp, end: timestamp },
+            } as Part] : [],
+        };
+    }
+
+    // Assistant 消息
+    if (message.role === 'assistant') {
+        const textBlocks = message.content.filter((b): b is Extract<PiContentBlock, { type: 'text' }> => b.type === 'text');
+        const thinkingBlocks = message.content.filter((b): b is Extract<PiContentBlock, { type: 'thinking' }> => b.type === 'thinking');
+        const toolCallBlocks = message.content.filter((b): b is Extract<PiContentBlock, { type: 'toolCall' }> => b.type === 'toolCall');
+
+        const parts: Part[] = [];
+        let partIndex = 0;
+
+        // Text parts
+        for (const block of textBlocks) {
+            parts.push({
+                id: `${messageId}:text:${partIndex++}`,
+                type: 'text',
+                text: block.text,
+                sessionID: sessionId,
+                messageID: messageId,
+                time: { start: timestamp, end: timestamp },
+            } as Part);
+        }
+
+        // Reasoning parts
+        for (const block of thinkingBlocks) {
+            parts.push({
+                id: `${messageId}:reasoning:${partIndex++}`,
+                type: 'reasoning',
+                text: block.thinking,
+                sessionID: sessionId,
+                messageID: messageId,
+                time: { start: timestamp, end: timestamp },
+            } as Part);
+        }
+
+        // Tool call parts - 直接从 toolExecutions 获取状态
+        for (const block of toolCallBlocks) {
+            const toolCallId = block.id || `${messageId}:tool:${partIndex}`;
+            const execution = block.id ? toolExecutionsById.get(block.id) : undefined;
+            const toolName = execution?.toolName || block.name || 'tool';
+            const status = execution?.status === 'running' ? 'running' : execution?.isError ? 'error' : 'completed';
+
+            const outputChunks: string[] = [];
+            if (execution?.partialResult !== undefined && execution.partialResult !== null) {
+                outputChunks.push(typeof execution.partialResult === 'string'
+                    ? execution.partialResult
+                    : JSON.stringify(execution.partialResult, null, 2));
+            }
+            if (execution?.result !== undefined && execution.result !== null) {
+                outputChunks.push(typeof execution.result === 'string'
+                    ? execution.result
+                    : JSON.stringify(execution.result, null, 2));
+            }
+            const output = outputChunks.join('\n\n');
+
+            parts.push({
+                id: toolCallId,
+                type: 'tool',
+                tool: toolName,
+                callID: toolCallId,
+                sessionID: sessionId,
+                messageID: messageId,
+                state: {
+                    status,
+                    input: (execution?.args ?? block.arguments ?? {}) as Record<string, unknown>,
+                    ...(output ? { output } : {}),
+                    ...(status === 'error' ? { error: output || `${toolName} failed` } : {}),
+                    time: {
+                        start: timestamp,
+                        ...(status !== 'running' ? { end: timestamp } : {}),
+                    },
+                    metadata: {
+                        pi: {
+                            toolName,
+                            executionId: execution?.toolCallId,
+                        },
+                    },
+                },
+                time: {
+                    start: timestamp,
+                    ...(status !== 'running' ? { end: timestamp } : {}),
+                },
+            } as Part);
+        }
+
+        // Assistant metadata
+        const finish = message.stopReason === 'stop' || message.stopReason === 'endTurn'
+            ? 'stop'
+            : message.stopReason === 'toolUse' ? 'tool' : undefined;
+
+        return {
+            info: {
+                id: messageId,
+                sessionID: sessionId,
+                role: 'assistant',
+                clientRole: 'assistant',
+                ...(message.provider ? { providerID: message.provider } : {}),
+                ...(message.model ? { modelID: message.model } : {}),
+                ...(finish ? { finish } : {}),
+                status: message.stopReason && message.stopReason !== 'toolUse' ? 'completed' : undefined,
+                time: { created: timestamp, completed: finish ? timestamp : undefined },
+            } as Message,
+            parts,
+        };
+    }
+
+    // Tool result / bash execution / custom - 简化为文本
+    const contentStr = message.role === 'toolResult'
+        ? (typeof message.content === 'string' ? message.content : JSON.stringify(message.content))
+        : message.role === 'bashExecution'
+            ? message.output
+            : JSON.stringify(message);
+
+    return {
+        info: {
+            id: messageId,
+            sessionID: sessionId,
+            role: message.role,
+            clientRole: message.role,
+            time: { created: timestamp, completed: timestamp },
+        } as Message,
+        parts: contentStr ? [{
+            id: `${messageId}:text:0`,
+            type: 'text',
+            text: contentStr,
+            sessionID: sessionId,
+            messageID: messageId,
+            time: { start: timestamp, end: timestamp },
+        } as Part] : [],
+    };
+};
+
+/**
+ * 从 Pi-native session 直接构建 turn 记录
+ * 这是 Pi-native 化的主要入口：跳过 uiMessageProjection 的完整投影，
+ * 直接从 Pi 原始数据构建 turn 记录
+ */
+export const projectPiSessionToTurnRecords = (
+    session: PiSessionViewState,
+    options?: Partial<ProjectTurnRecordsOptions>,
+): TurnProjectionResult => {
+    const toolExecutionsById = new Map((session.toolExecutions ?? []).map(e => [e.toolCallId, e]));
+    const messages = (session.messages ?? []).map(m => buildMinimalMessageEntryFromPi(m, session.id, toolExecutionsById));
+
+    const result = projectTurnRecords(messages, {
+        ...options,
+        piSession: session,
+    });
+
+    // 确保 piMessages 包含完整的 Pi-native 消息引用
+    const piMessageById = new Map(
+        (session.messages ?? [])
+            .filter((message): message is PiMessageViewState & { id: string } => typeof message.id === 'string' && message.id.length > 0)
+            .map((message) => [message.id, message])
+    );
+
+    return {
+        ...result,
+        piMessages: piMessageById,
+    };
+};
+
+const resolveMessageRole = (
+    message: ChatMessageEntry,
+    piMessageById?: Map<string, PiMessageViewState>,
+): string => {
+    const piRole = piMessageById?.get(message.info.id)?.role;
+    if (typeof piRole === 'string' && piRole.length > 0) {
+        return piRole;
+    }
+    const info = message.info as { userMessageMarker?: boolean | null; clientRole?: string | null; role?: string | null };
+    if (info.userMessageMarker === true) {
+        return 'user';
+    }
+    const role = info.clientRole ?? info.role;
     return typeof role === 'string' ? role : '';
 };
 
@@ -32,12 +243,31 @@ const getMessageCompletedAt = (message: ChatMessageEntry): number | undefined =>
     return typeof completed === 'number' ? completed : undefined;
 };
 
-const getMessageFinish = (message: ChatMessageEntry): string | undefined => {
+const isPiThinkingBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'thinking' }> => block.type === 'thinking';
+
+const getMessageFinish = (
+    message: ChatMessageEntry,
+    piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
+): string | undefined => {
+    const piMessage = piAssistantById?.get(message.info.id);
+    if (piMessage?.stopReason === 'stop' || piMessage?.stopReason === 'endTurn') {
+        return 'stop';
+    }
+    if (piMessage?.stopReason === 'toolUse') {
+        return 'tool';
+    }
     const finish = (message.info as { finish?: unknown }).finish;
     return typeof finish === 'string' ? finish : undefined;
 };
 
-const getMessageStatus = (message: ChatMessageEntry): string | undefined => {
+const getMessageStatus = (
+    message: ChatMessageEntry,
+    piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
+): string | undefined => {
+    const piMessage = piAssistantById?.get(message.info.id);
+    if (piMessage) {
+        return piMessage.stopReason && piMessage.stopReason !== 'toolUse' ? 'completed' : 'streaming';
+    }
     const status = (message.info as { status?: unknown }).status;
     return typeof status === 'string' ? status : undefined;
 };
@@ -54,6 +284,8 @@ const getPartText = (part: ChatMessageEntry['parts'][number]): string | undefine
 const arePartsEquivalentForReuse = (
     previousPart: ChatMessageEntry['parts'][number],
     nextPart: ChatMessageEntry['parts'][number],
+    previousPiAssistant?: Extract<PiMessageViewState, { role: 'assistant' }> | null,
+    nextPiAssistant?: Extract<PiMessageViewState, { role: 'assistant' }> | null,
 ): boolean => {
     if (previousPart === nextPart) {
         return true;
@@ -72,6 +304,13 @@ const arePartsEquivalentForReuse = (
     }
 
     if (previousPart.type === 'tool') {
+        if (previousPiAssistant && nextPiAssistant) {
+            const previousToolBlocks = previousPiAssistant.content.filter((block) => block.type === 'toolCall');
+            const nextToolBlocks = nextPiAssistant.content.filter((block) => block.type === 'toolCall');
+            if (previousToolBlocks.length !== nextToolBlocks.length) {
+                return false;
+            }
+        }
         const previousTool = previousPart as {
             tool?: unknown;
             callID?: unknown;
@@ -91,7 +330,14 @@ const arePartsEquivalentForReuse = (
     return true;
 };
 
-const areMessagesEquivalentForReuse = (previousMessage: ChatMessageEntry, nextMessage: ChatMessageEntry): boolean => {
+const areMessagesEquivalentForReuse = (
+    previousMessage: ChatMessageEntry,
+    nextMessage: ChatMessageEntry,
+    previousPiMessageById?: Map<string, PiMessageViewState>,
+    nextPiMessageById?: Map<string, PiMessageViewState>,
+    previousPiAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
+    nextPiAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
+): boolean => {
     if (previousMessage === nextMessage) {
         return true;
     }
@@ -104,20 +350,35 @@ const areMessagesEquivalentForReuse = (previousMessage: ChatMessageEntry, nextMe
         return false;
     }
 
-    if (getMessageFinish(previousMessage) !== getMessageFinish(nextMessage)) {
+    if (resolveMessageRole(previousMessage, previousPiMessageById) !== resolveMessageRole(nextMessage, nextPiMessageById)) {
         return false;
     }
 
-    if (getMessageStatus(previousMessage) !== getMessageStatus(nextMessage)) {
+    if (getMessageFinish(previousMessage, previousPiAssistantById) !== getMessageFinish(nextMessage, nextPiAssistantById)) {
         return false;
     }
 
-    if (previousMessage.parts.length !== nextMessage.parts.length) {
+    if (getMessageStatus(previousMessage, previousPiAssistantById) !== getMessageStatus(nextMessage, nextPiAssistantById)) {
+        return false;
+    }
+
+    const previousPiAssistant = previousPiAssistantById?.get(previousMessage.info.id) ?? null;
+    const nextPiAssistant = nextPiAssistantById?.get(nextMessage.info.id) ?? null;
+    if (previousPiAssistant && nextPiAssistant) {
+        if (previousPiAssistant.content.length !== nextPiAssistant.content.length) {
+            return false;
+        }
+    } else if (previousMessage.parts.length !== nextMessage.parts.length) {
         return false;
     }
 
     for (let index = 0; index < previousMessage.parts.length; index += 1) {
-        if (!arePartsEquivalentForReuse(previousMessage.parts[index], nextMessage.parts[index])) {
+        if (!arePartsEquivalentForReuse(
+            previousMessage.parts[index],
+            nextMessage.parts[index],
+            previousPiAssistant,
+            nextPiAssistant,
+        )) {
             return false;
         }
     }
@@ -135,8 +396,12 @@ const getUserSummaryBody = (message: ChatMessageEntry): string | undefined => {
     return trimmed.length > 0 ? summaryBody : undefined;
 };
 
-const createTurnMessageRecord = (message: ChatMessageEntry, order: number): TurnMessageRecord => {
-    const role = resolveMessageRole(message);
+const createTurnMessageRecord = (
+    message: ChatMessageEntry,
+    order: number,
+    piMessageById?: Map<string, PiMessageViewState>,
+): TurnMessageRecord => {
+    const role = resolveMessageRole(message, piMessageById);
     return {
         messageId: message.info.id,
         role,
@@ -146,13 +411,21 @@ const createTurnMessageRecord = (message: ChatMessageEntry, order: number): Turn
     };
 };
 
-const buildTurnStreamState = (userMessage: ChatMessageEntry, assistantMessages: ChatMessageEntry[]): TurnStreamState => {
+const buildTurnStreamState = (
+    userMessage: ChatMessageEntry,
+    assistantMessages: ChatMessageEntry[],
+    piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
+): TurnStreamState => {
     const startedAt = getMessageCreatedAt(userMessage);
     let completedAt: number | undefined;
     let isStreaming = false;
 
     assistantMessages.forEach((message) => {
-        const completed = getMessageCompletedAt(message);
+        const piMessage = piAssistantById?.get(message.info.id);
+        const piCompleted = piMessage && piMessage.stopReason && piMessage.stopReason !== 'toolUse'
+            ? piMessage.timestamp
+            : undefined;
+        const completed = piCompleted ?? getMessageCompletedAt(message);
         if (typeof completed === 'number') {
             completedAt = Math.max(completedAt ?? 0, completed);
         } else {
@@ -176,6 +449,7 @@ const buildTurnStreamState = (userMessage: ChatMessageEntry, assistantMessages: 
 interface ProjectTurnRecordsOptions {
     previousProjection?: TurnProjectionResult | null;
     showTextJustificationActivity: boolean;
+    piSession?: PiSessionViewState | null;
 }
 
 const DEFAULT_OPTIONS: ProjectTurnRecordsOptions = {
@@ -191,6 +465,23 @@ export const projectTurnRecords = (
         ...DEFAULT_OPTIONS,
         ...options,
     };
+    const piAssistantTextById = buildPiAssistantTextById(effectiveOptions.piSession);
+    const piMessageById = new Map(
+        (effectiveOptions.piSession?.messages ?? [])
+            .filter((message): message is PiMessageViewState & { id: string } => typeof message.id === 'string' && message.id.length > 0)
+            .map((message) => [message.id, message])
+    );
+    const piAssistantById = new Map(
+        (effectiveOptions.piSession?.messages ?? [])
+            .filter((message): message is Extract<PiMessageViewState, { role: 'assistant' }> => message.role === 'assistant' && typeof message.id === 'string' && message.id.length > 0)
+            .map((message) => [message.id as string, message])
+    );
+    const piAssistantMetaById = new Map(
+        Array.from(piAssistantById.entries()).map(([messageId, message]) => [messageId, {
+            hasToolCall: message.content.some((block) => block.type === 'toolCall'),
+            hasReasoning: message.content.some((block) => isPiThinkingBlock(block) && block.thinking.trim().length > 0),
+        }])
+    );
 
     const turns: TurnRecord[] = [];
     const turnByUserId = new Map<string, TurnRecord>();
@@ -199,7 +490,7 @@ export const projectTurnRecords = (
     let currentTurn: TurnRecord | undefined;
 
     messages.forEach((message, index) => {
-        const role = resolveMessageRole(message);
+        const role = resolveMessageRole(message, piMessageById);
         if (role === 'user') {
             const turnId = message.info.id;
             const turn: TurnRecord = {
@@ -207,7 +498,7 @@ export const projectTurnRecords = (
                 userMessageId: message.info.id,
                 userMessage: message,
                 headerMessageId: undefined,
-                messages: [createTurnMessageRecord(message, index)],
+                messages: [createTurnMessageRecord(message, index, piMessageById)],
                 assistantMessageIds: [],
                 assistantMessages: [],
                 activityParts: [],
@@ -242,7 +533,7 @@ export const projectTurnRecords = (
 
         targetTurn.assistantMessages.push(message);
         targetTurn.assistantMessageIds.push(message.info.id);
-        targetTurn.messages.push(createTurnMessageRecord(message, index));
+        targetTurn.messages.push(createTurnMessageRecord(message, index, piMessageById));
         if (!targetTurn.headerMessageId) {
             targetTurn.headerMessageId = message.info.id;
         }
@@ -262,14 +553,28 @@ export const projectTurnRecords = (
             if (previousTurn.stream.isStreaming) {
                 return false;
             }
-            if (!areMessagesEquivalentForReuse(previousTurn.userMessage, turn.userMessage)) {
+            if (!areMessagesEquivalentForReuse(
+                previousTurn.userMessage,
+                turn.userMessage,
+                piMessageById,
+                piMessageById,
+                piAssistantById,
+                piAssistantById,
+            )) {
                 return false;
             }
             if (previousTurn.assistantMessages.length !== turn.assistantMessages.length) {
                 return false;
             }
             for (let index = 0; index < turn.assistantMessages.length; index += 1) {
-                if (!areMessagesEquivalentForReuse(previousTurn.assistantMessages[index], turn.assistantMessages[index])) {
+                if (!areMessagesEquivalentForReuse(
+                    previousTurn.assistantMessages[index],
+                    turn.assistantMessages[index],
+                    piMessageById,
+                    piMessageById,
+                    piAssistantById,
+                    piAssistantById,
+                )) {
                     return false;
                 }
             }
@@ -291,7 +596,10 @@ export const projectTurnRecords = (
             return;
         }
 
-        turn.summary = projectTurnSummary(turn.assistantMessages);
+        turn.summary = projectTurnSummary(turn.assistantMessages, {
+            piAssistantTextById,
+            piAssistantById,
+        });
         turn.summaryText = turn.summary.text ?? getUserSummaryBody(turn.userMessage);
         turn.diffStats = projectTurnDiffStats(turn.userMessage);
 
@@ -300,13 +608,15 @@ export const projectTurnRecords = (
             assistantMessages: turn.assistantMessages,
             summarySourceMessageId: turn.summary.sourceMessageId,
             showTextJustificationActivity: effectiveOptions.showTextJustificationActivity,
+            piAssistantMetaById,
+            piAssistantById,
         });
         turn.activityParts = activity.activityParts;
         turn.activitySegments = activity.activitySegments;
         turn.hasTools = activity.hasTools;
         turn.hasReasoning = activity.hasReasoning;
 
-        turn.stream = buildTurnStreamState(turn.userMessage, turn.assistantMessages);
+        turn.stream = buildTurnStreamState(turn.userMessage, turn.assistantMessages, piAssistantById);
         turn.startedAt = turn.stream.startedAt;
         turn.completedAt = turn.stream.completedAt;
         turn.durationMs = turn.stream.durationMs;
@@ -323,5 +633,6 @@ export const projectTurnRecords = (
     return {
         ...projection,
         ungroupedMessageIds,
+        piMessages: piMessageById.size > 0 ? piMessageById : undefined,
     };
 };

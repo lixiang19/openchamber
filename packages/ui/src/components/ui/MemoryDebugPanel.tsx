@@ -16,6 +16,7 @@ export const MemoryDebugPanel: React.FC<MemoryDebugPanelProps> = ({ onClose }) =
   const {
     sessions,
     messages,
+    piSessions,
     sessionMemoryState,
     currentSessionId,
   } = useSessionStore();
@@ -23,15 +24,15 @@ export const MemoryDebugPanel: React.FC<MemoryDebugPanelProps> = ({ onClose }) =
 
   const totalMessages = React.useMemo(() => {
     let total = 0;
-    messages.forEach((sessionMessages) => {
-      total += sessionMessages.length;
+    piSessions.forEach((session) => {
+      total += session.messages.length;
     });
     return total;
-  }, [messages]);
+  }, [piSessions]);
 
   const sessionStats = React.useMemo(() => {
     return sessions.map(session => {
-      const messageCount = messages.get(session.id)?.length || 0;
+      const messageCount = piSessions.get(session.id)?.messages.length ?? 0;
       const memoryState = sessionMemoryState.get(session.id);
       return {
         id: session.id,
@@ -44,7 +45,7 @@ export const MemoryDebugPanel: React.FC<MemoryDebugPanelProps> = ({ onClose }) =
         isCurrent: session.id === currentSessionId
       };
     }).sort((a, b) => b.lastAccessed - a.lastAccessed);
-  }, [sessions, messages, sessionMemoryState, currentSessionId]);
+  }, [sessions, piSessions, sessionMemoryState, currentSessionId]);
 
   const cachedSessionCount = messages.size;
 

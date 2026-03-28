@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Message, Part } from '@/lib/runtime/types';
+import type { PiContentBlock, PiMessageViewState } from '@/lib/pi/types';
 import { RiCheckLine, RiFileCopyLine } from '@remixicon/react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 
@@ -65,6 +66,10 @@ const toNonNegativeNumber = (value: unknown): number => {
   return value;
 };
 
+const isPiTextBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'text' }> => block.type === 'text';
+const isPiThinkingBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'thinking' }> => block.type === 'thinking';
+const isPiToolCallBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'toolCall' }> => block.type === 'toolCall';
+
 const extractTokenBreakdown = (message: SessionMessage): TokenBreakdown => {
   const tokenCandidate = (message.info as { tokens?: unknown }).tokens;
   const source =
@@ -103,6 +108,37 @@ const extractTokenBreakdown = (message: SessionMessage): TokenBreakdown => {
     cacheRead,
     cacheWrite,
     total: input + output + reasoning + cacheRead + cacheWrite,
+  };
+};
+
+const extractPiAssistantTokenBreakdown = (message: Extract<PiMessageViewState, { role: 'assistant' }> | null | undefined): TokenBreakdown => {
+  const usage = message?.usage as {
+    input?: unknown;
+    output?: unknown;
+    reasoning?: unknown;
+    cacheRead?: unknown;
+    cacheWrite?: unknown;
+    totalTokens?: unknown;
+  } | undefined;
+
+  if (!usage || typeof usage !== 'object') {
+    return EMPTY_BREAKDOWN;
+  }
+
+  const input = toNonNegativeNumber(usage.input);
+  const output = toNonNegativeNumber(usage.output);
+  const reasoning = toNonNegativeNumber(usage.reasoning);
+  const cacheRead = toNonNegativeNumber(usage.cacheRead);
+  const cacheWrite = toNonNegativeNumber(usage.cacheWrite);
+  const total = toNonNegativeNumber(usage.totalTokens) || (input + output + reasoning + cacheRead + cacheWrite);
+
+  return {
+    input,
+    output,
+    reasoning,
+    cacheRead,
+    cacheWrite,
+    total,
   };
 };
 
@@ -279,9 +315,9 @@ export const ContextPanelContent: React.FC = () => {
   const copyResetTimeoutRef = React.useRef<number | null>(null);
   const currentSessionId = useSessionStore((state) => state.currentSessionId);
   const sessions = useSessionStore((state) => state.sessions);
-  const sessionMessages = useSessionStore((state) => {
-    if (!state.currentSessionId) return EMPTY_SESSION_MESSAGES;
-    return state.messages.get(state.currentSessionId) ?? EMPTY_SESSION_MESSAGES;
+  const currentPiSession = useSessionStore((state) => {
+    if (!state.currentSessionId) return null;
+    return state.piSessions.get(state.currentSessionId) ?? null;
   });
   const providers = useConfigStore((state) => state.providers);
 
@@ -319,33 +355,31 @@ export const ContextPanelContent: React.FC = () => {
     }
   }, []);
 
+  const rawPiMessages = React.useMemo(() => [...(currentPiSession?.messages ?? [])].reverse(), [currentPiSession]);
+
   const viewModel = React.useMemo(() => {
     const currentSession = currentSessionId ? sessions.find((session) => session.id === currentSessionId) ?? null : null;
+    const piMessages = currentPiSession?.messages ?? [];
 
-    const assistantMessages = sessionMessages.filter((entry) => deriveMessageRole(entry.info).role === 'assistant');
-    const userMessages = sessionMessages.filter((entry) => deriveMessageRole(entry.info).isUser);
+    const nativeAssistantMessages = piMessages.filter(
+      (message): message is Extract<PiMessageViewState, { role: 'assistant' }> => message.role === 'assistant'
+    );
+    const latestNativeAssistant = nativeAssistantMessages.length > 0
+      ? nativeAssistantMessages[nativeAssistantMessages.length - 1]
+      : null;
 
-    let contextMessage: SessionMessage | null = null;
-    for (let i = assistantMessages.length - 1; i >= 0; i -= 1) {
-      const message = assistantMessages[i];
-      if (extractTokenBreakdown(message).total > 0) {
-        contextMessage = message;
-        break;
-      }
-    }
+    const tokenBreakdown = extractPiAssistantTokenBreakdown(latestNativeAssistant);
 
-    const tokenBreakdown = contextMessage ? extractTokenBreakdown(contextMessage) : EMPTY_BREAKDOWN;
-
-    const totalAssistantCost = assistantMessages.reduce((sum, message) => {
-      const cost = toNonNegativeNumber((message.info as { cost?: unknown }).cost);
+    const totalAssistantCost = nativeAssistantMessages.reduce((sum, message) => {
+      const usage = message.usage as { cost?: { total?: unknown } } | undefined;
+      const cost = toNonNegativeNumber(usage?.cost?.total);
       return sum + cost;
     }, 0);
 
-    const latestAssistantInfo = (contextMessage?.info ?? null) as (Message & { providerID?: string; modelID?: string }) | null;
     const providerModel = resolveProviderAndModel(
       providers as ProviderLike[],
-      latestAssistantInfo?.providerID || '',
-      latestAssistantInfo?.modelID || '',
+      latestNativeAssistant?.provider || currentPiSession?.model?.provider || '',
+      latestNativeAssistant?.model || currentPiSession?.model?.id || '',
     );
 
     const contextLimit = providerModel.contextLimit;
@@ -353,11 +387,59 @@ export const ContextPanelContent: React.FC = () => {
       ? Math.min(999, (tokenBreakdown.total / contextLimit) * 100)
       : 0;
 
-    const systemPrompt = ([...sessionMessages].reverse().find(
-      (entry) => deriveMessageRole(entry.info).isUser && typeof (entry.info as { system?: unknown }).system === 'string',
-    )?.info as { system?: string } | undefined)?.system || '';
+    const computedBreakdown = piMessages.reduce<ContextBuckets>((acc, message) => {
+      if (message.role === 'user') {
+        const userText = typeof message.content === 'string'
+          ? message.content.length
+          : message.content.reduce((sum, block) => sum + (isPiTextBlock(block) ? block.text.length : 0), 0);
+        return addBuckets(acc, { user: Math.ceil(userText / 4), assistant: 0, tool: 0, other: 0 });
+      }
 
-    const computedBreakdown = computeContextBreakdown(sessionMessages, systemPrompt);
+      if (message.role === 'assistant') {
+        const assistantText = message.content.reduce((sum, block) => {
+          if (isPiTextBlock(block)) return sum + block.text.length;
+          if (isPiThinkingBlock(block)) return sum + block.thinking.length;
+          if (isPiToolCallBlock(block)) return sum + estimateTextLength(block.arguments);
+          return sum + estimateTextLength('raw' in block ? block.raw : block);
+        }, 0);
+        const toolCallChars = message.content.reduce((sum, block) => (
+          isPiToolCallBlock(block) ? sum + estimateTextLength(block.arguments) : sum
+        ), 0);
+        return addBuckets(acc, {
+          user: 0,
+          assistant: Math.ceil(assistantText / 4),
+          tool: Math.ceil(toolCallChars / 4),
+          other: 0,
+        });
+      }
+
+      if (message.role === 'toolResult') {
+        const toolText = message.content.reduce((sum, block) => {
+          if (isPiTextBlock(block)) return sum + block.text.length;
+          if (isPiThinkingBlock(block)) return sum + block.thinking.length;
+          return sum + estimateTextLength('raw' in block ? block.raw : block);
+        }, 0) + estimateTextLength(message.details);
+        return addBuckets(acc, { user: 0, assistant: 0, tool: Math.ceil(toolText / 4), other: 0 });
+      }
+
+      if (message.role === 'bashExecution') {
+        const bashText = estimateTextLength(message.command) + estimateTextLength(message.output);
+        return addBuckets(acc, { user: 0, assistant: 0, tool: Math.ceil(bashText / 4), other: 0 });
+      }
+
+      if (message.role === 'custom') {
+        const customText = typeof message.content === 'string'
+          ? message.content.length
+          : message.content.reduce((sum, block) => {
+            if (isPiTextBlock(block)) return sum + block.text.length;
+            if (isPiThinkingBlock(block)) return sum + block.thinking.length;
+            return sum + estimateTextLength('raw' in block ? block.raw : block);
+          }, 0);
+        return addBuckets(acc, { user: 0, assistant: 0, tool: 0, other: Math.ceil(customText / 4) });
+      }
+
+      return acc;
+    }, { ...EMPTY_BUCKETS });
 
     const userTokens = computedBreakdown.user;
     const assistantTokens = computedBreakdown.assistant;
@@ -365,16 +447,16 @@ export const ContextPanelContent: React.FC = () => {
     const otherTokens = Math.max(0, tokenBreakdown.input - userTokens - assistantTokens - toolTokens);
     const breakdownTotal = userTokens + assistantTokens + toolTokens + otherTokens;
 
-    const firstMessageTs = sessionMessages[0]?.info?.time?.created;
-    const lastMessageTs = sessionMessages.length > 0
-      ? sessionMessages[sessionMessages.length - 1]?.info?.time?.created
+    const firstMessageTs = currentPiSession?.messages[0]?.timestamp ?? null;
+    const lastMessageTs = currentPiSession && currentPiSession.messages.length > 0
+      ? currentPiSession.messages[currentPiSession.messages.length - 1]?.timestamp
       : null;
 
     return {
       sessionTitle: currentSession?.title || 'Untitled Session',
-      messagesCount: sessionMessages.length,
-      userMessagesCount: userMessages.length,
-      assistantMessagesCount: assistantMessages.length,
+      messagesCount: piMessages.length,
+      userMessagesCount: piMessages.filter((message) => message.role === 'user').length,
+      assistantMessagesCount: piMessages.filter((message) => message.role === 'assistant').length,
       createdAt: (currentSession?.time?.created ?? firstMessageTs ?? null) as number | null,
       lastActivityAt: (lastMessageTs ?? currentSession?.time?.created ?? null) as number | null,
       providerModel,
@@ -390,7 +472,7 @@ export const ContextPanelContent: React.FC = () => {
       },
       breakdownTotal,
     };
-  }, [currentSessionId, providers, sessionMessages, sessions]);
+  }, [currentPiSession, currentSessionId, providers, sessions]);
 
   if (!currentSessionId) {
     return (
@@ -519,19 +601,22 @@ export const ContextPanelContent: React.FC = () => {
         <div>
           <div className="typography-micro text-muted-foreground">Raw Messages</div>
           <div className="mt-2.5 space-y-1">
-            {[...sessionMessages].reverse().map((message) => {
-              const role = deriveMessageRole(message.info).role;
-              const isExpanded = expandedRawMessages[message.info.id] === true;
-              const isCopied = copiedRawMessageId === message.info.id;
-              const messageCreatedAt = (message.info.time?.created ?? null) as number | null;
+            {rawPiMessages.map((message, index) => {
+              const messageId = (typeof message.id === 'string' && message.id.length > 0)
+                ? message.id
+                : `${message.role}:${message.timestamp}:${index}`;
+              const role = message.role;
+              const isExpanded = expandedRawMessages[messageId] === true;
+              const isCopied = copiedRawMessageId === messageId;
+              const messageCreatedAt = message.timestamp ?? null;
 
               const jsonValue = isExpanded
-                ? JSON.stringify({ info: message.info, parts: message.parts }, null, 2)
+                ? JSON.stringify(message, null, 2)
                 : '';
 
               return (
                 <div
-                  key={message.info.id}
+                  key={messageId}
                   className="overflow-hidden rounded-lg bg-[var(--surface-elevated)]/70"
                 >
                   <button
@@ -541,14 +626,14 @@ export const ContextPanelContent: React.FC = () => {
                     onClick={() => {
                       setExpandedRawMessages((prev) => ({
                         ...prev,
-                        [message.info.id]: !(prev[message.info.id] === true),
+                        [messageId]: !(prev[messageId] === true),
                       }));
                     }}
                   >
                     <div className="flex items-center justify-between gap-2 whitespace-nowrap overflow-hidden">
                       <span className="min-w-0 inline-flex items-center gap-1.5">
                         <span className="typography-ui-label text-foreground shrink-0">{capitalizeRole(role)}</span>
-                        <span className="min-w-0 truncate typography-micro text-muted-foreground">{message.info.id}</span>
+                        <span className="min-w-0 truncate typography-micro text-muted-foreground">{messageId}</span>
                       </span>
                       <span className="typography-micro text-muted-foreground shrink-0">{formatMessageDateMeta(messageCreatedAt)}</span>
                     </div>
@@ -563,7 +648,7 @@ export const ContextPanelContent: React.FC = () => {
                             className="rounded p-1 text-muted-foreground transition-colors hover:bg-interactive-hover/60 hover:text-foreground"
                             onClick={(event) => {
                               event.stopPropagation();
-                              void handleCopyRawMessage(message.info.id, jsonValue);
+                              void handleCopyRawMessage(messageId, jsonValue);
                             }}
                             aria-label={isCopied ? 'Copied' : 'Copy JSON'}
                             title={isCopied ? 'Copied' : 'Copy'}

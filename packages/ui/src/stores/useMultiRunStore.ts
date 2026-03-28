@@ -181,10 +181,10 @@ export const useMultiRunStore = create<MultiRunStore>()(
                 ? `${groupSlug}/${model.providerID}/${model.modelID}/${index}`
                 : `${groupSlug}/${model.providerID}/${model.modelID}`;
 
-              const session = await runtimeClient.withDirectory(
-                worktreeMetadata.path,
-                () => runtimeClient.createSession({ title: sessionTitle })
-              );
+              const session = await useSessionStore.getState().createSession(sessionTitle, worktreeMetadata.path);
+              if (!session) {
+                throw new Error('Failed to create session');
+              }
 
               useSessionStore.getState().setWorktreeMetadata(session.id, enrichedMetadata);
 

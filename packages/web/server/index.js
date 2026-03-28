@@ -69,6 +69,27 @@ const CLIENT_RELOAD_DELAY_MS = 800;
 const OPEN_CODE_READY_GRACE_MS = 12000;
 const LONG_REQUEST_TIMEOUT_MS = 4 * 60 * 1000;
 const PI_SDK_HOST = createPiSdkHost();
+
+// Subscribe to Pi-native events for notification triggering
+// This replaces the old question.asked event-based notification
+let piNotificationUnsubscribe = null;
+const startPiNativeNotificationWatcher = () => {
+  if (piNotificationUnsubscribe) {
+    piNotificationUnsubscribe();
+    piNotificationUnsubscribe = null;
+  }
+  piNotificationUnsubscribe = PI_SDK_HOST.subscribe((payload) => {
+    // Handle interactive_request notifications (questions)
+    void handlePiNativeNotification(payload);
+  });
+  return () => {
+    if (piNotificationUnsubscribe) {
+      piNotificationUnsubscribe();
+      piNotificationUnsubscribe = null;
+    }
+  };
+};
+
 const PI_PROVIDERS_SERVICE = createPiProvidersService();
 const WECHAT_BRIDGE = createWechatBridgeService({ piHost: PI_SDK_HOST });
 const TUNNEL_BOOTSTRAP_TTL_DEFAULT_MS = 30 * 60 * 1000;
@@ -5015,6 +5036,7 @@ const extractSessionIdFromPayload = (payload) => {
     props?.sessionID ??
     props?.sessionId ??
     props?.session ??
+    payload?.sessionId ??
     null;
   return typeof sessionId === 'string' && sessionId.length > 0 ? sessionId : null;
 };
@@ -5218,95 +5240,11 @@ const maybeSendPushForTrigger = async (payload) => {
     return;
   }
 
+  // NOTE: question notification has been migrated to handlePiNativeNotification()
+  // which listens to PI_SDK_HOST events directly (pi_ui_event with kind: interactive_request)
 
-  if (payload.type === 'question.asked' && sessionId) {
-    const existingTimer = pushQuestionDebounceTimers.get(sessionId);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-    }
-
-    const timer = setTimeout(async () => {
-      pushQuestionDebounceTimers.delete(sessionId);
-
-      const settings = await readSettingsFromDisk();
-
-      // Check if question notifications are enabled
-      if (settings.notifyOnQuestion === false) {
-        return;
-      }
-
-      if (!settings.nativeNotificationsEnabled) {
-        // Still send push even if native notifications are disabled
-      }
-
-      const firstQuestion = payload.properties?.questions?.[0];
-      const header = typeof firstQuestion?.header === 'string' ? firstQuestion.header.trim() : '';
-      const questionText = typeof firstQuestion?.question === 'string' ? firstQuestion.question.trim() : '';
-
-      // Legacy fallback title
-      let title = /plan\s*mode/i.test(header)
-        ? 'Switch to plan mode'
-        : /build\s*agent/i.test(header)
-          ? 'Switch to build mode'
-          : header || 'Input needed';
-      let body = questionText || 'Agent is waiting for your response';
-
-      try {
-        // Build template variables
-        const variables = await buildTemplateVariables(payload, sessionId);
-        variables.last_message = questionText || header || '';
-
-        // Get question template
-        const templates = settings.notificationTemplates || {};
-        const questionTemplate = templates.question || { title: 'Input needed', message: '{last_message}' };
-
-        // Resolve templates with fallback to legacy behavior
-        const resolvedTitle = resolveNotificationTemplate(questionTemplate.title, variables);
-        const resolvedBody = resolveNotificationTemplate(questionTemplate.message, variables);
-        if (resolvedTitle) title = resolvedTitle;
-        if (shouldApplyResolvedTemplateMessage(questionTemplate.message, resolvedBody, variables)) body = resolvedBody;
-      } catch (err) {
-        console.warn('[Notification] Question template resolution failed, using defaults:', err?.message || err);
-      }
-
-      if (settings.nativeNotificationsEnabled) {
-        emitDesktopNotification({
-          kind: 'question',
-          title,
-          body,
-          tag: `question-${sessionId}`,
-          sessionId,
-          requireHidden: settings.notificationMode !== 'always',
-        });
-
-        broadcastUiNotification({
-          kind: 'question',
-          title,
-          body,
-          tag: `question-${sessionId}`,
-          sessionId,
-          requireHidden: settings.notificationMode !== 'always',
-        });
-      }
-
-      void sendPushToAllUiSessions(
-        {
-          title,
-          body,
-          tag: `question-${sessionId}`,
-          data: {
-            url: buildSessionDeepLinkUrl(sessionId),
-            sessionId,
-            type: 'question',
-          }
-        },
-      );
-    }, PUSH_QUESTION_DEBOUNCE_MS);
-
-    pushQuestionDebounceTimers.set(sessionId, timer);
-    return;
-  }
-
+  // NOTE: permission notification is intentionally frozen and kept as-is
+  // per the requirement to not modify permission flow during this migration
   if (payload.type === 'permission.asked' && sessionId) {
     const requestId = payload.properties?.id;
     const permission = payload.properties?.permission;
@@ -5399,6 +5337,110 @@ const maybeSendPushForTrigger = async (payload) => {
     }, PUSH_PERMISSION_DEBOUNCE_MS);
 
     pushPermissionDebounceTimers.set(sessionId, timer);
+  }
+};
+
+/**
+ * 处理 Pi-native 事件并触发通知
+ * 从 PI_SDK_HOST 订阅，监听 interactive_request 等事件
+ */
+const handlePiNativeNotification = async (payload) => {
+  if (!payload || typeof payload !== 'object') {
+    return;
+  }
+
+  const sessionId = payload.sessionId;
+  if (typeof sessionId !== 'string' || sessionId.length === 0) {
+    return;
+  }
+
+  // Handle interactive_request (question) notifications
+  if (payload.type === 'pi_ui_event' && payload.properties?.kind === 'interactive_request') {
+    const request = payload.properties.request;
+    if (!request) {
+      return;
+    }
+
+    const existingTimer = pushQuestionDebounceTimers.get(sessionId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const timer = setTimeout(async () => {
+      pushQuestionDebounceTimers.delete(sessionId);
+
+      const settings = await readSettingsFromDisk();
+
+      // Check if question notifications are enabled
+      if (settings.notifyOnQuestion === false) {
+        return;
+      }
+
+      const firstQuestion = request.questions?.[0];
+      const header = typeof firstQuestion?.header === 'string' ? firstQuestion.header.trim() : '';
+      const questionText = typeof firstQuestion?.question === 'string' ? firstQuestion.question.trim() : '';
+
+      // Resolve templates with fallback to legacy behavior
+      let title = /plan\s*mode/i.test(header)
+        ? 'Switch to plan mode'
+        : /build\s*agent/i.test(header)
+          ? 'Switch to build mode'
+          : header || 'Input needed';
+      let body = questionText || 'Agent is waiting for your response';
+
+      try {
+        // Build template variables
+        const variables = await buildTemplateVariables(payload, sessionId);
+        variables.last_message = questionText || header || '';
+
+        // Get question template
+        const templates = settings.notificationTemplates || {};
+        const questionTemplate = templates.question || { title: 'Input needed', message: '{last_message}' };
+
+        // Resolve templates with fallback to legacy behavior
+        const resolvedTitle = resolveNotificationTemplate(questionTemplate.title, variables);
+        const resolvedBody = resolveNotificationTemplate(questionTemplate.message, variables);
+        if (resolvedTitle) title = resolvedTitle;
+        if (shouldApplyResolvedTemplateMessage(questionTemplate.message, resolvedBody, variables)) body = resolvedBody;
+      } catch (err) {
+        console.warn('[Notification] Question template resolution failed, using defaults:', err?.message || err);
+      }
+
+      if (settings.nativeNotificationsEnabled) {
+        emitDesktopNotification({
+          kind: 'question',
+          title,
+          body,
+          tag: `question-${sessionId}`,
+          sessionId,
+          requireHidden: settings.notificationMode !== 'always',
+        });
+
+        broadcastUiNotification({
+          kind: 'question',
+          title,
+          body,
+          tag: `question-${sessionId}`,
+          sessionId,
+          requireHidden: settings.notificationMode !== 'always',
+        });
+      }
+
+      void sendPushToAllUiSessions(
+        {
+          title,
+          body,
+          tag: `question-${sessionId}`,
+          data: {
+            url: buildSessionDeepLinkUrl(sessionId),
+            sessionId,
+            type: 'question',
+          }
+        },
+      );
+    }, PUSH_QUESTION_DEBOUNCE_MS);
+
+    pushQuestionDebounceTimers.set(sessionId, timer);
   }
 };
 
@@ -5919,6 +5961,12 @@ async function gracefulShutdown(options = {}) {
   const exitProcess = typeof options.exitProcess === 'boolean' ? options.exitProcess : exitOnShutdown;
 
   stopGlobalEventWatcher();
+
+  // Stop Pi-native notification watcher
+  if (piNotificationUnsubscribe) {
+    piNotificationUnsubscribe();
+    piNotificationUnsubscribe = null;
+  }
 
   if (healthCheckInterval) {
     clearInterval(healthCheckInterval);
@@ -10196,6 +10244,9 @@ async function main(options = {}) {
       console.log(`OpenAurora server running on port ${activePort}`);
       console.log(`Health check: http://localhost:${activePort}/health`);
       console.log(`Web interface: http://localhost:${activePort}`);
+
+      // Start Pi-native notification watcher for interactive requests (questions)
+      startPiNativeNotificationWatcher();
 
       if (startupTunnelRequest) {
         const startupModeLabel = startupTunnelRequest.mode === TUNNEL_MODE_QUICK

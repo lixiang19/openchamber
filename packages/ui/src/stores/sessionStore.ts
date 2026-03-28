@@ -3,6 +3,7 @@ import { devtools, persist, createJSONStorage } from "zustand/middleware";
 import type { Session } from "@/lib/runtime/types";
 import { runtimeClient } from "@/lib/runtime/client";
 import { piClient } from "@/lib/pi/client";
+import type { PiSessionViewState } from '@/lib/pi/types';
 import { projectPiSessionToRuntimeSession } from "@/lib/runtime/projections";
 import { getSafeStorage } from "./utils/safeStorage";
 import type { WorktreeMetadata } from "@/types/worktree";
@@ -17,6 +18,7 @@ interface SessionState {
     sessions: Session[];
     archivedSessions: Session[];
     sessionsByDirectory: Map<string, Session[]>;
+    piSessions: Map<string, PiSessionViewState>;
     currentSessionId: string | null;
     lastLoadedDirectory: string | null;
     isLoading: boolean;
@@ -50,6 +52,7 @@ interface SessionActions {
     setSessionDirectory: (sessionId: string, directory: string | null) => void;
     updateSession: (session: Session) => void;
     removeSessionFromStore: (sessionId: string) => void;
+    setPiSessionSnapshot: (session: PiSessionViewState) => void;
 }
 
 type SessionStore = SessionState & SessionActions;
@@ -283,6 +286,7 @@ export const useSessionStore = create<SessionStore>()(
                 sessions: [],
                 archivedSessions: [],
                 sessionsByDirectory: new Map(),
+                piSessions: new Map<string, PiSessionViewState>(),
                 currentSessionId: null,
                 lastLoadedDirectory: null,
                 isLoading: false,
@@ -318,6 +322,7 @@ export const useSessionStore = create<SessionStore>()(
 
                             const sessions = dedupeSessionsById(snapshots.map((session) => projectPiSessionToRuntimeSession(session)));
                             const sessionsByDirectory = buildSessionsByDirectory(sessions);
+                            const piSessions = new Map(snapshots.map((session) => [session.id, session]));
                             const validSessionIds = new Set(sessions.map((session) => session.id));
                             const stateSnapshot = get();
 
@@ -343,6 +348,7 @@ export const useSessionStore = create<SessionStore>()(
                                 sessions,
                                 archivedSessions: [],
                                 sessionsByDirectory,
+                                piSessions,
                                 currentSessionId: nextCurrentId,
                                 lastLoadedDirectory: activeDirectory ?? null,
                                 isLoading: false,
@@ -462,10 +468,12 @@ export const useSessionStore = create<SessionStore>()(
                     };
 
                     try {
-                        const createRequest = () => runtimeClient.createSession({ title, parentID: parentID ?? undefined });
-                        const session = targetDirectory
-                            ? await runtimeClient.withDirectory(targetDirectory, createRequest)
-                            : await createRequest();
+                        const snapshot = await piClient.createSession({
+                            cwd: targetDirectory ?? undefined,
+                            title,
+                        });
+                        const session = projectPiSessionToRuntimeSession(snapshot);
+                        get().setPiSessionSnapshot(snapshot);
 
                         replaceOptimistic(session);
                         return session;
@@ -797,13 +805,9 @@ export const useSessionStore = create<SessionStore>()(
 
                 updateSessionTitle: async (id: string, title: string) => {
                     try {
-                        const sessionDirectory = getSessionDirectory(get().sessions, id);
-                        const metadata = get().worktreeMetadata.get(id);
-                        const updateRequest = () => runtimeClient.updateSession(id, title);
-                        const overrideDirectory = metadata?.path ?? sessionDirectory;
-                        const updatedSession = overrideDirectory
-                            ? await runtimeClient.withDirectory(overrideDirectory, updateRequest)
-                            : await updateRequest();
+                        const snapshot = await piClient.updateSession(id, { title });
+                        const updatedSession = projectPiSessionToRuntimeSession(snapshot);
+                        get().setPiSessionSnapshot(snapshot);
                         set((state) => {
                             const sessions = state.sessions.map((s) => (s.id === id ? updatedSession : s));
                             return { sessions, sessionsByDirectory: buildSessionsByDirectory(sessions) };
@@ -1072,13 +1076,28 @@ export const useSessionStore = create<SessionStore>()(
                             storeSessionForDirectory(directory, null);
                         }
 
+                        const nextPiSessions = new Map(state.piSessions);
+                        nextPiSessions.delete(sessionId);
+
                         return {
                             sessions: filteredSessions,
                             archivedSessions: filteredArchivedSessions,
                             sessionsByDirectory: buildSessionsByDirectory(filteredSessions),
+                            piSessions: nextPiSessions,
                             currentSessionId: nextCurrentId,
                             worktreeMetadata: nextMetadata,
                         };
+                    });
+                },
+
+                setPiSessionSnapshot: (session: PiSessionViewState) => {
+                    if (!session?.id) {
+                        return;
+                    }
+                    set((state) => {
+                        const nextPiSessions = new Map(state.piSessions);
+                        nextPiSessions.set(session.id, session);
+                        return { piSessions: nextPiSessions };
                     });
                 },
             }),

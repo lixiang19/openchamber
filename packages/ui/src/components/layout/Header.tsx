@@ -246,11 +246,11 @@ export const Header: React.FC<HeaderProps> = ({
   const openNewSessionDraft = useSessionStore((state) => state.openNewSessionDraft);
   const isNewSessionDraftOpen = useSessionStore((state) => Boolean(state.newSessionDraft?.open));
   const currentSessionId = useSessionStore((state) => state.currentSessionId);
-  const currentSessionMessages = useSessionStore((state) => {
+  const currentPiSession = useSessionStore((state) => {
     if (!currentSessionId) {
       return undefined;
     }
-    return state.messages.get(currentSessionId);
+    return state.piSessions.get(currentSessionId);
   });
   const sessions = useSessionStore((state) => state.sessions);
   const activeProject = useProjectsStore((state) => {
@@ -344,7 +344,7 @@ export const Header: React.FC<HeaderProps> = ({
   const outputLimit = (limit && typeof limit.output === 'number' ? limit.output : 0);
   const contextUsage = getContextUsage(contextLimit, outputLimit);
   const [stableDesktopContextUsage, setStableDesktopContextUsage] = React.useState<SessionContextUsage | null>(null);
-  const isContextUsageResolvedForSession = !currentSessionId || currentSessionMessages !== undefined;
+  const isContextUsageResolvedForSession = !currentSessionId || currentPiSession !== undefined;
 
   useEffect(() => {
     if (!currentSessionId) {
@@ -405,7 +405,7 @@ export const Header: React.FC<HeaderProps> = ({
     try {
       const cfg = await desktopHostsGet();
       const currentHref = window.location.href;
-      const localOrigin = window.__OPENCHAMBER_LOCAL_ORIGIN__ || window.location.origin;
+      const localOrigin = window.__RIDGE_LOCAL_ORIGIN__ || window.location.origin;
 
       if (locationMatchesHost(currentHref, localOrigin)) {
         setCurrentInstanceLabel('Local');
