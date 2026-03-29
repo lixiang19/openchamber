@@ -57,6 +57,8 @@ const normalizeThinkingLevel = (value?: string | null): string | undefined => {
     return THINKING_LEVEL_VALUES.has(normalized) ? normalized : undefined;
 };
 
+const DEFAULT_THINKING_LEVEL = 'high';
+
 const resolveDraftThinkingLevel = (draftThinkingLevel?: string | null): string => {
     const explicitThinkingLevel = normalizeThinkingLevel(draftThinkingLevel);
     if (explicitThinkingLevel) {
@@ -66,7 +68,7 @@ const resolveDraftThinkingLevel = (draftThinkingLevel?: string | null): string =
     const configState = useConfigStore.getState();
     return normalizeThinkingLevel(configState.getCurrentAgent()?.thinking)
         ?? normalizeThinkingLevel(configState.settingsDefaultThinkingLevel)
-        ?? 'off';
+        ?? DEFAULT_THINKING_LEVEL;
 };
 
 const sessionChoiceAnalysisSignature = new Map<string, string>();

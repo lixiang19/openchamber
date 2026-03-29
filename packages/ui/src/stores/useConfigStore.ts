@@ -16,8 +16,8 @@ import { streamDebugEnabled } from "@/stores/utils/streamDebug";
 const MODELS_DEV_API_URL = "https://models.dev/api.json";
 const MODELS_DEV_PROXY_URL = "/api/openchamber/models-metadata";
 
-const FALLBACK_PROVIDER_ID = "opencode";
-const FALLBACK_MODEL_ID = "big-pickle";
+const DEFAULT_PRIMARY_AGENT_NAME = "assistant";
+const DEFAULT_THINKING_LEVEL = "high";
 const GIT_UTILITY_PROVIDER_ID = "zen";
 const GIT_UTILITY_PREFERRED_MODEL_ID = "big-pickle";
 
@@ -68,7 +68,10 @@ const fetchOpenChamberDefaults = async (): Promise<OpenChamberDefaults> => {
             headers: { Accept: 'application/json' },
         });
         if (!response.ok) {
-            return {};
+            return {
+                defaultAgent: DEFAULT_PRIMARY_AGENT_NAME,
+                defaultThinkingLevel: DEFAULT_THINKING_LEVEL,
+            };
         }
         const data = await response.json();
         const defaultModel = typeof data?.defaultModel === 'string' ? data.defaultModel.trim() : '';
@@ -81,14 +84,17 @@ const fetchOpenChamberDefaults = async (): Promise<OpenChamberDefaults> => {
         return {
             defaultModel: defaultModel.length > 0 ? defaultModel : undefined,
             defaultVariant: defaultVariant.length > 0 ? defaultVariant : undefined,
-            defaultAgent: defaultAgent.length > 0 ? defaultAgent : undefined,
-            defaultThinkingLevel: defaultThinkingLevel.length > 0 ? defaultThinkingLevel : undefined,
+            defaultAgent: defaultAgent.length > 0 ? defaultAgent : DEFAULT_PRIMARY_AGENT_NAME,
+            defaultThinkingLevel: defaultThinkingLevel.length > 0 ? defaultThinkingLevel : DEFAULT_THINKING_LEVEL,
             autoCreateWorktree: typeof data?.autoCreateWorktree === 'boolean' ? data.autoCreateWorktree : undefined,
             gitmojiEnabled,
             zenModel: zenModel.length > 0 ? zenModel : undefined,
         };
     } catch {
-        return {};
+        return {
+            defaultAgent: DEFAULT_PRIMARY_AGENT_NAME,
+            defaultThinkingLevel: DEFAULT_THINKING_LEVEL,
+        };
     }
 };
 
@@ -1193,10 +1199,10 @@ export const useConfigStore = create<ConfigStore>()(
                             };
 
                             // --- Agent Selection ---
-                            // Priority: settings.defaultAgent → build → first primary → first agent
+                            // Priority: settings.defaultAgent → assistant → first primary → first agent
                             const primaryAgents = safeAgents.filter((agent) => isPrimaryMode(agent.mode));
-                            const buildAgent = primaryAgents.find((agent) => agent.name === "build");
-                            const fallbackAgent = buildAgent || primaryAgents[0] || safeAgents[0];
+                            const defaultPrimaryAgent = primaryAgents.find((agent) => agent.name === DEFAULT_PRIMARY_AGENT_NAME);
+                            const fallbackAgent = defaultPrimaryAgent || primaryAgents[0] || safeAgents[0];
 
                             let resolvedAgent: Agent = fallbackAgent;
 
@@ -1215,7 +1221,7 @@ export const useConfigStore = create<ConfigStore>()(
                             }
 
                              // --- Model Selection ---
-                             // Priority: settings.defaultModel → agent's preferred model → opencode/big-pickle
+                             // Priority: settings.defaultModel → agent's preferred model → first available
                              let resolvedProviderId: string | undefined;
                              let resolvedModelId: string | undefined;
                              let resolvedVariant: string | undefined;
@@ -1252,19 +1258,13 @@ export const useConfigStore = create<ConfigStore>()(
                                 }
                             }
 
-                            // 3. Fall back to opencode/big-pickle
+                            // 3. Fall back to first available model
                             if (!resolvedProviderId) {
-                                if (validateModel(FALLBACK_PROVIDER_ID, FALLBACK_MODEL_ID)) {
-                                    resolvedProviderId = FALLBACK_PROVIDER_ID;
-                                    resolvedModelId = FALLBACK_MODEL_ID;
-                                } else {
-                                    // Last resort: first provider's first model
-                                    const firstProvider = providers[0];
-                                    const firstModel = firstProvider?.models[0];
-                                    if (firstProvider && firstModel) {
-                                        resolvedProviderId = firstProvider.id;
-                                        resolvedModelId = firstModel.id;
-                                    }
+                                const firstProvider = providers[0];
+                                const firstModel = firstProvider?.models[0];
+                                if (firstProvider && firstModel) {
+                                    resolvedProviderId = firstProvider.id;
+                                    resolvedModelId = firstModel.id;
                                 }
                             }
 

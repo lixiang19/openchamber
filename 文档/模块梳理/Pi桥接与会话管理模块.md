@@ -285,6 +285,7 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
 ```
 
 - 新建会话允许在会话创建阶段显式写入 thinkingLevel，前端草稿状态不会再丢失到 SDK 默认值。
+- 新用户默认 thinkingLevel 为 `high`，默认 agent 为 `assistant`（可通过设置覆盖）。
 - 新建会话明确落盘，不再依赖默认行为。
 - 未显式命名的新会话只会先占位创建；真正的人类可读标题在首条用户消息进入时由 Pi host 生成。
 - 会话建立后立即可出现在列表中，并能在后续重启后继续被列出。
@@ -369,7 +370,7 @@ packages/ui/src/stores/messageStore.ts
 | `~/.pi/agent/` | 用户目录 | Pi 全局配置目录；运行时从其中读取 `settings.json`、`auth.json`、`models.json`、`sessions/` 与资源目录，Ridge 设置页可整体覆盖该目录 |
 | `.pi/settings.json` | 项目目录 | 项目级 Pi 设置，覆盖全局设置 |
 | `.ridge/pi-settings.json` | 项目目录 | Ridge 项目级指令注入配置；由模板生成，`instructions.js` 在建会话时读取 |
-| `~/.pi/agent/agents/*.md` | 用户目录 | 用户级 agent 定义，由 `discoverAgents()` 读取 |
+| `~/.pi/agent/agents/*.md` | 用户目录 | 用户级 agent 定义，由 `discoverAgents()` 读取；其中 `assistant` 为 Ridge 默认主 agent |
 | `.pi/agents/*.md` | 项目目录 | 项目级 agent 定义，覆盖同名用户 agent |
 | `~/.pi/agent/sessions/**` | 用户目录 | Pi JSONL 会话持久化目录，由 `SessionManager.create/open/listAll` 管理 |
 

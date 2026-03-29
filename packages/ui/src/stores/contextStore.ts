@@ -340,10 +340,11 @@ export const useContextStore = create<ContextStore>()(
                             }
                         }
 
+                        const DEFAULT_PRIMARY_AGENT_NAME = "assistant";
                         if (messageInfo.providerID && messageInfo.modelID) {
-                            const buildAgent = agents.find((a) => a.name === "build");
-                            if (buildAgent) {
-                                return "build";
+                            const defaultPrimaryAgent = agents.find((a) => a.name === DEFAULT_PRIMARY_AGENT_NAME);
+                            if (defaultPrimaryAgent) {
+                                return DEFAULT_PRIMARY_AGENT_NAME;
                             }
                         }
 

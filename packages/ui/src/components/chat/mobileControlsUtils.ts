@@ -6,6 +6,8 @@ export const isPrimaryMode = (mode?: string) => mode === 'primary' || mode === '
 
 export const capitalizeLabel = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
+const DEFAULT_PRIMARY_AGENT_NAME = 'assistant';
+
 export const getAgentDisplayName = (agents: Agent[], agentName?: string) => {
     if (agentName) {
         const agent = agents.find((entry) => entry.name === agentName);
@@ -13,8 +15,8 @@ export const getAgentDisplayName = (agents: Agent[], agentName?: string) => {
     }
 
     const primaryAgents = agents.filter((agent) => isPrimaryMode(agent.mode));
-    const buildAgent = primaryAgents.find((agent) => agent.name === 'build');
-    const fallbackAgent = buildAgent || primaryAgents[0] || agents[0];
+    const defaultPrimaryAgent = primaryAgents.find((agent) => agent.name === DEFAULT_PRIMARY_AGENT_NAME);
+    const fallbackAgent = defaultPrimaryAgent || primaryAgents[0] || agents[0];
     return fallbackAgent ? capitalizeLabel(fallbackAgent.name) : 'Select agent';
 };
 

@@ -508,13 +508,15 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
         );
     }, [selectableDesktopAgents, agentSearchQuery]);
 
+    const DEFAULT_PRIMARY_AGENT_NAME = 'assistant';
+
     const defaultAgentName = React.useMemo(() => {
         if (settingsDefaultAgent) {
             const found = selectableDesktopAgents.find(a => a.name === settingsDefaultAgent);
             if (found) return found.name;
         }
-        const buildAgent = selectableDesktopAgents.find(a => a.name === 'build');
-        if (buildAgent) return buildAgent.name;
+        const defaultPrimaryAgent = selectableDesktopAgents.find(a => a.name === DEFAULT_PRIMARY_AGENT_NAME);
+        if (defaultPrimaryAgent) return defaultPrimaryAgent.name;
         return selectableDesktopAgents[0]?.name;
     }, [settingsDefaultAgent, selectableDesktopAgents]);
 
@@ -751,7 +753,8 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                 return;
             }
 
-            const fallbackAgent = agents.find(agent => agent.name === 'build') || primaryAgents[0] || agents[0];
+            const DEFAULT_PRIMARY_AGENT_NAME = 'assistant';
+        const fallbackAgent = agents.find(agent => agent.name === DEFAULT_PRIMARY_AGENT_NAME) || primaryAgents[0] || agents[0];
             if (!fallbackAgent) {
                 return;
             }
@@ -1175,9 +1178,10 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
     const isModelLabelTruncated = useIsTextTruncated(modelLabelRef, [currentModelDisplayName, isCompact]);
 
     const getAgentDisplayName = () => {
+        const DEFAULT_PRIMARY_AGENT_NAME = 'assistant';
         if (!uiAgentName) {
-            const buildAgent = primaryAgents.find(agent => agent.name === 'build');
-            const defaultAgent = buildAgent || primaryAgents[0];
+            const defaultPrimaryAgent = primaryAgents.find(agent => agent.name === DEFAULT_PRIMARY_AGENT_NAME);
+            const defaultAgent = defaultPrimaryAgent || primaryAgents[0];
             return defaultAgent ? capitalizeAgentName(defaultAgent.name) : 'Select Agent';
         }
         const agent = agents.find(a => a.name === uiAgentName);

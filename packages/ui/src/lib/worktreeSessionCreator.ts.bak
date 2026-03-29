@@ -140,7 +140,7 @@ export async function createWorktreeSession(): Promise<{ id: string } | null> {
       const visibleAgents = configState.getVisibleAgents();
       let agentName: string | undefined;
 
-      // Priority: settingsDefaultAgent → assistant → first visible
+      // Priority: settingsDefaultAgent → build → first visible
       if (configState.settingsDefaultAgent) {
         const settingsAgent = visibleAgents.find((a) => a.name === configState.settingsDefaultAgent);
         if (settingsAgent) {
@@ -149,7 +149,7 @@ export async function createWorktreeSession(): Promise<{ id: string } | null> {
       }
       if (!agentName) {
         agentName =
-          visibleAgents.find((agent) => agent.name === 'assistant')?.name ||
+          visibleAgents.find((agent) => agent.name === 'sidekick')?.name ||
           visibleAgents[0]?.name;
       }
 
@@ -401,7 +401,7 @@ export async function createWorktreeSessionForBranch(
       const visibleAgents = configState.getVisibleAgents();
       let agentName: string | undefined;
 
-      // Priority: settingsDefaultAgent → assistant → first visible
+      // Priority: settingsDefaultAgent → build → first visible
       if (configState.settingsDefaultAgent) {
         const settingsAgent = visibleAgents.find((a) => a.name === configState.settingsDefaultAgent);
         if (settingsAgent) {
@@ -410,7 +410,7 @@ export async function createWorktreeSessionForBranch(
       }
       if (!agentName) {
         agentName =
-          visibleAgents.find((agent) => agent.name === 'assistant')?.name ||
+          visibleAgents.find((agent) => agent.name === 'sidekick')?.name ||
           visibleAgents[0]?.name;
       }
 
@@ -589,7 +589,7 @@ export async function createWorktreeSessionForNewBranch(
           }
           if (!agentName) {
             agentName =
-              visibleAgents.find((agent) => agent.name === 'assistant')?.name ||
+              visibleAgents.find((agent) => agent.name === 'sidekick')?.name ||
               visibleAgents[0]?.name;
           }
 
