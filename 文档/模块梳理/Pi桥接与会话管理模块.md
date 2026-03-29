@@ -7,6 +7,7 @@
 - 负责主会话与 task 子会话的创建、父子关系持久化、列表恢复、按需加载、重命名、发消息、中断等生命周期操作。
 - 负责把当前可用 task agents 以 XML 片段注入系统提示词，确保主会话在调用 `task` 工具前已知晓可委派对象与约束。
 - 负责发现 Pi agents、编译权限策略，并把权限门控注入到实际运行的 session。
+- 负责读取项目内 `.ridge/pi-settings.json`，把用户指定的说明文件安全注入到 Pi system prompt。
 - 负责把 Pi 原生消息/事件规整为前端稳定语义，但不继续维护 OpenCode RPC 兼容协议。
 - 服务对象包括：浏览器端会话侧边栏、聊天消息区、状态栏、命令自动补全、服务端通知/快捷入口。
 - 不负责前端 UI 渲染细节；不负责 CLI/RPC 模式；不负责旧 OpenCode 会话协议的长期兼容。
@@ -136,6 +137,25 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
 - 由 agent 选择流程创建，被 `sdk-host` 与 `task` 工具共享使用。
 - 依据：`packages/web/server/lib/pi/permissions.js`、`packages/web/server/lib/pi/sdk-host.js`
 
+#### 6. 项目级指令注入配置
+
+```js
+{
+  instructions: {
+    enabled: true,
+    files: ['SOUL.md', 'IDENTITY.md', 'USER.md'],
+    maxFileBytes: 8192,
+    maxTotalBytes: 32768,
+    onMissingFile: 'warn',
+  },
+}
+```
+
+- 代表项目目录 `.ridge/pi-settings.json` 中声明的系统提示词注入规则。
+- 持有启用开关、文件顺序、单文件与总字节上限、缺失文件策略等配置。
+- 由模板创建流程写入默认文件，运行时由 `instructions.js` 做沙箱校验和内容拼接，再由 `sdk-host.js` 通过 `appendSystemPromptOverride` 注入。
+- 关联文件与依据：`packages/web/server/lib/projects/template.js`、`packages/web/server/lib/projects/templates/general-assistant/.ridge/pi-settings.json`、`packages/web/server/lib/pi/instructions.js`
+
 ### Design Patterns
 
 - **惰性加载（Lazy load persisted sessions）**
@@ -153,6 +173,10 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
 - **动态 task agents XML 提示注入（Dynamic task-agent XML injection）**
   - 实现：`sdk-host.js` 在 `appendSystemPromptOverride` 中把当前可调用 task agents 列表渲染成 `<available_task_agents>...</available_task_agents>`，并在 agent 列表变化时触发 session reload。
   - 原因：task 工具是否能被正确使用，依赖模型事先知道有哪些 task agents 可调用、它们的 mode/description/model/steps 等约束。
+
+- **项目级指令安全注入（Project-scoped instructions injection）**
+  - 实现：`instructions.js` 读取 `.ridge/pi-settings.json`，按白名单扩展名、realpath 沙箱、字节上限和 UTF-8 校验读取文件；`sdk-host.js` 把拼接结果追加进 `DefaultResourceLoader.appendSystemPromptOverride`。
+  - 原因：人格/工作流说明属于项目事实，必须跟项目走，同时不能绕开 Pi 默认 prompt 和工具说明。
 
 - **扩展 UI 归一化（Extension UI normalization）**
   - 实现：`createExtensionUiContext()` 把 `notify/setStatus/setWidget/setTitle/setEditorText` 映射为统一 `pi_ui_event`；阻塞交互统一走自定义 `question` 工具。
@@ -218,6 +242,7 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
         |
         +--> persistedSessionIndex miss? refresh listAll()
         +--> SessionManager.open(info.path)
+        +--> buildProjectInstructionsContext(cwd)
         +--> createAgentSession({ sessionManager })
         +--> attachSession(record)
         |
@@ -243,8 +268,10 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
 [2] PI_SDK_HOST.createSession({ cwd, title, thinkingLevel })
     sdk-host.js
         |
+    +--> buildProjectInstructionsContext(cwd)
         +--> SessionManager.create(cwd)
-        +--> createAgentSession(..., sessionManager)
+    +--> DefaultResourceLoader.appendSystemPromptOverride(base + project instructions + agent append)
+    +--> createAgentSession(..., sessionManager)
         +--> bind question/task/permission extension
   +--> 若调用方显式提供 title，则 session.setSessionName(title)
   +--> 若调用方显式提供 thinkingLevel，则 session.setThinkingLevel(...)
@@ -299,6 +326,7 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
 | Module/File | Dependency | Purpose |
 |---|---|---|
 | `packages/web/server/lib/pi/sdk-host.js` | `@mariozechner/pi-coding-agent` | 创建 AgentSession、访问 SessionManager、SettingsManager、DefaultResourceLoader |
+| `packages/web/server/lib/pi/instructions.js` | Node `fs/promises`, `path`, `crypto` | 读取 `.ridge/pi-settings.json`，安全拼接项目说明文件并计算哈希 |
 | `packages/web/server/lib/pi/providers.js` | `@mariozechner/pi-coding-agent` | 读取认证与模型注册表，生成 provider/model 列表 |
 | `packages/web/server/lib/pi/agents.js` | Node `fs/promises`, `path` | 扫描用户/项目 agents 目录并解析 markdown frontmatter |
 | `packages/web/server/index.js` | Express / SSE | 暴露 `/api/pi/*` 路由与事件流 |
@@ -312,6 +340,7 @@ packages/web/server/index.js
   -> packages/web/server/lib/pi/sdk-host.js
      -> bridge-schema.js
      -> agents.js
+  -> instructions.js
      -> permissions.js
      -> extensions/question.js
      -> extensions/task.js
@@ -338,6 +367,7 @@ packages/ui/src/stores/messageStore.ts
 |---|---|---|
 | `~/.pi/agent/settings.json` | 用户目录 | Pi 全局设置；由 `SettingsManager.create()` 读取 |
 | `.pi/settings.json` | 项目目录 | 项目级 Pi 设置，覆盖全局设置 |
+| `.ridge/pi-settings.json` | 项目目录 | Ridge 项目级指令注入配置；由模板生成，`instructions.js` 在建会话时读取 |
 | `~/.pi/agent/agents/*.md` | 用户目录 | 用户级 agent 定义，由 `discoverAgents()` 读取 |
 | `.pi/agents/*.md` | 项目目录 | 项目级 agent 定义，覆盖同名用户 agent |
 | `~/.pi/agent/sessions/**` | 用户目录 | Pi JSONL 会话持久化目录，由 `SessionManager.create/open/listAll` 管理 |
@@ -368,6 +398,7 @@ Disk JSONL Sessions
 | File | Lines | Purpose |
 |---|---:|---|
 | `packages/web/server/lib/pi/sdk-host.js` | 1181 | Pi 会话宿主，管理主会话与 task 子会话、父子关系注入、持久化列表、惰性加载、消息发送与事件桥接 |
+| `packages/web/server/lib/pi/instructions.js` | 322 | Ridge 项目级指令配置读取与安全文件装载 |
 | `packages/web/server/index.js` | 10365 | `/api/pi/*` 路由与 `/api/pi/events` SSE 入口 |
 | `packages/web/server/lib/pi/bridge-schema.js` | 638 | Pi 事件与消息的归一化桥接层 |
 | `packages/web/server/lib/pi/extensions/task.js` | 707 | SDK 化 task 工具实现，创建持久化子会话并回传 task metadata |

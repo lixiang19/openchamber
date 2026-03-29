@@ -146,6 +146,7 @@ const buildMinimalMessageEntryFromPi = (
     if (message.role === 'assistant') {
         const parts: Part[] = [];
         let partIndex = 0;
+        const claimedExecutionIds = new Set<string>();
 
         // 保持原始 blocks 顺序，按顺序处理每个 block
         for (const block of message.content) {
@@ -169,7 +170,24 @@ const buildMinimalMessageEntryFromPi = (
                 } as Part);
             } else if (isPiToolCallBlock(block)) {
                 const toolCallId = block.id || `${messageId}:tool:${partIndex}`;
-                const execution = block.id ? toolExecutionsById.get(block.id) : undefined;
+                let execution: PiToolExecutionViewState | undefined;
+                if (block.id) {
+                    execution = toolExecutionsById.get(block.id);
+                    if (execution) {
+                        claimedExecutionIds.add(block.id);
+                    }
+                }
+                if (!execution) {
+                    // Fallback: match by tool name when block.id is null
+                    const blockName = (block.name || '').trim().toLowerCase();
+                    for (const [execId, exec] of toolExecutionsById) {
+                        if (!claimedExecutionIds.has(execId) && exec.toolName.trim().toLowerCase() === blockName) {
+                            execution = exec;
+                            claimedExecutionIds.add(execId);
+                            break;
+                        }
+                    }
+                }
                 const toolName = execution?.toolName || block.name || 'tool';
                 const normalizedToolName = typeof toolName === 'string' ? toolName.trim().toLowerCase() : 'tool';
                 const status = execution?.status === 'running' ? 'running' : execution?.isError ? 'error' : 'completed';

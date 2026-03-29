@@ -5,6 +5,7 @@ import { DefaultResourceLoader, SessionManager, SettingsManager, createAgentSess
 import { discoverAgents } from './agents.js';
 import { normalizePiRpcEnvelope } from './bridge-schema.js';
 import { createTaskToolDefinition } from './extensions/task.js';
+import { buildProjectInstructionsContext } from './instructions.js';
 import { createQuestionToolDefinition } from './extensions/question.js';
 import { compileAgentPermission, createPermissionGateExtension, normalizeAgentPermission } from './permissions.js';
 import { listTaskRelations, setTaskRelation } from './task-relations.js';
@@ -918,6 +919,7 @@ export const createPiSdkHost = () => {
   const createManagedSessionRecord = async ({ cwd, title, titleSource, sessionManager, createdAt, updatedAt, persistTitle = false, parentID = null }) => {
     const normalizedCwd = normalizeString(cwd) || process.cwd();
     const preloadedAgents = await discoverAgents(normalizedCwd);
+    const instructionsContext = await buildProjectInstructionsContext(normalizedCwd);
 
     const recordRef = { current: null };
     const taskTool = createTaskToolDefinition(
@@ -949,7 +951,11 @@ export const createPiSdkHost = () => {
       appendSystemPromptOverride: (base) => {
         const agent = recordRef.current?.selectedAgentConfig;
         const availableAgents = recordRef.current?.availableAgents ?? preloadedAgents;
-        const promptSections = buildAgentPromptAppend(agent, availableAgents);
+        const promptSections = [];
+        if (instructionsContext.content) {
+          promptSections.push(instructionsContext.content);
+        }
+        promptSections.push(...buildAgentPromptAppend(agent, availableAgents));
         if (promptSections.length === 0) {
           return base;
         }

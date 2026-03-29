@@ -52,6 +52,7 @@ import {
 } from './lib/terminal/index.js';
 import webPush from 'web-push';
 import { createPiProvidersService } from './lib/pi/providers.js';
+import { buildProjectInstructionsContext } from './lib/pi/instructions.js';
 import { createPiSdkHost } from './lib/pi/sdk-host.js';
 import { discoverPrompts, savePrompt, deletePrompt } from './lib/pi/prompts.js';
 import { createWechatBridgeService } from './lib/wechat-bridge/index.js';
@@ -150,7 +151,7 @@ const normalizeDirectoryPath = (value) => {
   return trimmed;
 };
 
-const OPENAURORA_USER_CONFIG_ROOT = path.join(os.homedir(), '.config', 'openaurora');
+const OPENAURORA_USER_CONFIG_ROOT = path.join(os.homedir(), '.config', 'ridge');
 const OPENAURORA_USER_THEMES_DIR = path.join(OPENAURORA_USER_CONFIG_ROOT, 'themes');
 
 const MAX_THEME_JSON_BYTES = 512 * 1024;
@@ -420,8 +421,7 @@ const resolveWorkspacePath = (targetPath, baseDirectory) => {
     return { ok: true, base: resolvedBase, resolved };
   }
 
-  // Allow writing OpenAurora per-project config under ~/.config/openaurora.
-  // LEGACY_PROJECT_CONFIG: migration target root; allowed outside workspace.
+  // Allow Ridge per-project config under ~/.config/ridge.
   if (isPathWithinRoot(resolved, OPENAURORA_USER_CONFIG_ROOT)) {
     return { ok: true, base: path.resolve(OPENAURORA_USER_CONFIG_ROOT), resolved };
   }
@@ -2388,6 +2388,69 @@ const formatSettingsResponse = (settings) => {
   };
 };
 
+const serializeProjectInstructionsForResponse = (instructions) => {
+  const payload = {
+    enabled: instructions.enabled,
+    files: instructions.files,
+    loadedFiles: instructions.loadedFiles,
+    skippedFiles: instructions.skippedFiles,
+    totalBytes: instructions.totalBytes,
+    contentHash: instructions.contentHash,
+  };
+
+  if (typeof instructions.contentPreview === 'string' && instructions.contentPreview.length > 0) {
+    payload.contentPreview = instructions.contentPreview;
+  }
+
+  return payload;
+};
+
+const resolveProjectInstructionsDirectory = (settings, explicitDirectory) => {
+  if (typeof explicitDirectory === 'string' && explicitDirectory.trim().length > 0) {
+    return path.resolve(explicitDirectory.trim());
+  }
+
+  const projects = sanitizeProjects(settings?.projects) || [];
+  if (projects.length === 0) {
+    return null;
+  }
+
+  const activeProjectId = typeof settings?.activeProjectId === 'string' ? settings.activeProjectId.trim() : '';
+  const activeProject = activeProjectId
+    ? projects.find((project) => project.id === activeProjectId)
+    : null;
+
+  return activeProject?.path || projects[0]?.path || null;
+};
+
+const buildSettingsResponse = async (settings, options = {}) => {
+  const response = formatSettingsResponse(settings);
+  const projectDirectory = resolveProjectInstructionsDirectory(settings, options.directory);
+  if (!projectDirectory) {
+    return response;
+  }
+
+  try {
+    const instructions = await buildProjectInstructionsContext(projectDirectory, {
+      includeContentPreview: options.includeContentPreview === true,
+    });
+    response.pi = {
+      instructions: serializeProjectInstructionsForResponse(instructions),
+    };
+  } catch (error) {
+    response.pi = {
+      instructions: {
+        error: {
+          code: error && typeof error === 'object' && typeof error.code === 'string' ? error.code : 'UNKNOWN',
+          message: error instanceof Error ? error.message : 'Failed to load project instructions',
+        },
+      },
+    };
+  }
+
+  return response;
+};
+
 const createProjectRegistryEntry = (projectPath, label, options = {}) => {
   const now = Date.now();
   const source = options.source === 'default' || options.source === 'managed' || options.source === 'external'
@@ -2431,7 +2494,7 @@ const persistDefaultProjectBootstrapState = async (state, currentSettings) => {
   return next;
 };
 
-const createManagedProject = async ({ projectName, templateId, source = 'managed', allowReuseNonEmpty = false }) => {
+const createManagedProject = async ({ projectName, templateId, source = 'managed', allowReuseNonEmpty = false, variables }) => {
   const normalizedSource = source === 'default' ? 'default' : 'managed';
   const normalizedProjectName = normalizeProjectTemplateName(
     projectName ?? (normalizedSource === 'default' ? DEFAULT_MANAGED_PROJECT_NAME : undefined)
@@ -2448,6 +2511,7 @@ const createManagedProject = async ({ projectName, templateId, source = 'managed
     created = await createManagedProjectFromTemplate(targetDirectory, {
       projectName: normalizedProjectName,
       templateId: normalizedTemplateId,
+      variables,
     });
   } catch (error) {
     if (!allowReuseNonEmpty || !(error instanceof Error) || error.message !== 'Target directory already exists and is not empty') {
@@ -7572,10 +7636,12 @@ async function main(options = {}) {
 
   // ── End Tunnel API ────────────────────────────────────────────────
 
-  app.get('/api/config/settings', async (_req, res) => {
+  app.get('/api/config/settings', async (req, res) => {
     try {
       const settings = await ensureDefaultProjectInitialized();
-      res.json(formatSettingsResponse(settings));
+      const directory = typeof req.query?.directory === 'string' ? req.query.directory : '';
+      const includeContentPreview = req.query?.debug === '1';
+      res.json(await buildSettingsResponse(settings, { directory, includeContentPreview }));
     } catch (error) {
       console.error('Failed to load settings:', error);
       res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to load settings' });
@@ -7725,6 +7791,7 @@ async function main(options = {}) {
         projectName,
         templateId,
         source: 'managed',
+        variables: req.body?.variables,
       });
       const updatedSettings = await persistSettings({
         projects: [...projects, projectEntry],

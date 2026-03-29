@@ -15,6 +15,7 @@ const DIRECTORY_NAME_MAX_LENGTH = 64;
 const DIRECTORY_NAME_FALLBACK = 'project';
 const TEMPLATE_MANIFEST_FILENAME = 'template.json';
 const TEMPLATE_TOKEN_PATTERN = /\{\{\s*([A-Z0-9_]+)\s*\}\}/g;
+const TEMPLATE_VARIABLE_KEY_PATTERN = /^[A-Z0-9_]+$/;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const TEMPLATES_ROOT_DIRECTORY = path.join(__dirname, 'templates');
@@ -116,6 +117,30 @@ const sanitizeRenderFiles = (value) => {
   return result;
 };
 
+const sanitizeTemplateVariables = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const result = {};
+  for (const [rawKey, rawDefinition] of Object.entries(value)) {
+    const key = typeof rawKey === 'string' ? rawKey.trim().toUpperCase() : '';
+    if (!key || !TEMPLATE_VARIABLE_KEY_PATTERN.test(key)) {
+      continue;
+    }
+
+    const definition = rawDefinition && typeof rawDefinition === 'object' && !Array.isArray(rawDefinition)
+      ? rawDefinition
+      : {};
+    const defaultValue = typeof definition.default === 'string' ? definition.default : '';
+    result[key] = {
+      defaultValue,
+    };
+  }
+
+  return result;
+};
+
 const ensureTemplateDirectory = async () => {
   const stat = await fs.stat(TEMPLATES_ROOT_DIRECTORY).catch(() => null);
   if (!stat?.isDirectory()) {
@@ -155,6 +180,7 @@ const readTemplateManifest = async (templateDirectory) => {
     label,
     description,
     renderFiles: sanitizeRenderFiles(parsed.renderFiles),
+    variables: sanitizeTemplateVariables(parsed.variables),
     directory: templateDirectory,
     manifestPath,
   };
@@ -192,10 +218,53 @@ const renderTemplateContent = (content, variables) => {
   return content.replace(TEMPLATE_TOKEN_PATTERN, (_match, key) => variables[key] ?? '');
 };
 
-const renderVariablesForProject = (projectName) => ({
-  PROJECT_NAME: projectName,
-  PACKAGE_NAME: toPackageName(projectName),
-});
+const sanitizeVariableOverrides = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const result = {};
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const key = typeof rawKey === 'string' ? rawKey.trim().toUpperCase() : '';
+    const normalizedValue = typeof rawValue === 'string' ? rawValue.trim() : '';
+    if (!key || !normalizedValue || !TEMPLATE_VARIABLE_KEY_PATTERN.test(key)) {
+      continue;
+    }
+    result[key] = normalizedValue;
+  }
+
+  return result;
+};
+
+const renderVariablesForProject = (projectName, templateVariables = {}, overrides = {}) => {
+  const currentDate = new Date().toISOString().slice(0, 10);
+  const resolved = {
+    PROJECT_NAME: projectName,
+    PACKAGE_NAME: toPackageName(projectName),
+    DATE: currentDate,
+  };
+
+  const normalizedOverrides = sanitizeVariableOverrides(overrides);
+  for (const [key, definition] of Object.entries(templateVariables)) {
+    if (Object.prototype.hasOwnProperty.call(resolved, key)) {
+      continue;
+    }
+
+    if (key in normalizedOverrides) {
+      resolved[key] = normalizedOverrides[key];
+      continue;
+    }
+
+    const defaultValue = typeof definition?.defaultValue === 'string'
+      ? renderTemplateContent(definition.defaultValue, resolved).trim()
+      : '';
+    if (defaultValue) {
+      resolved[key] = defaultValue;
+    }
+  }
+
+  return resolved;
+};
 
 const copyTemplateDirectory = async ({ template, targetDirectory, variables }) => {
   const renderFileSet = new Set(template.renderFiles);
@@ -295,13 +364,14 @@ export const createManagedProjectFromTemplate = async (targetDirectory, options 
   const stats = await copyTemplateDirectory({
     template,
     targetDirectory: resolvedDirectory,
-    variables: renderVariablesForProject(projectName),
+    variables: renderVariablesForProject(projectName, template.variables, options.variables),
   });
 
   return {
     targetDirectory: resolvedDirectory,
     projectName,
     templateId: template.id,
+    variables: renderVariablesForProject(projectName, template.variables, options.variables),
     stats: {
       ...stats,
       templateVersion: MANAGED_PROJECT_TEMPLATE_VERSION,

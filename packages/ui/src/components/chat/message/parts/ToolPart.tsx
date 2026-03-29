@@ -1778,6 +1778,38 @@ const ToolPart: React.FC<ToolPartProps> = ({
         return parseTaskMetadataBlock(taskOutputString);
     }, [taskOutputString]);
 
+    // Fallback: find child session by parentID relationship (mirrors sidebar logic)
+    const agentNameFromInput = typeof input?.agent === 'string' ? input.agent.trim().toLowerCase() : null;
+    const childSessionByParentId = useSessionStore(
+        React.useCallback((store) => {
+            if (!isTaskTool || !sessionId) {
+                return undefined;
+            }
+            const candidates: { id: string; title: string; createdAt: number }[] = [];
+            for (const piSession of store.piSessions.values()) {
+                if (piSession.parentID === sessionId) {
+                    candidates.push({ id: piSession.id, title: piSession.title, createdAt: piSession.createdAt });
+                }
+            }
+            if (candidates.length === 0) {
+                return undefined;
+            }
+            if (candidates.length === 1) {
+                return candidates[0].id;
+            }
+            // Multiple children: disambiguate by agent name from input
+            if (agentNameFromInput) {
+                const match = candidates.find((c) => c.title.toLowerCase().startsWith(agentNameFromInput));
+                if (match) {
+                    return match.id;
+                }
+            }
+            // Fall back to earliest created child
+            candidates.sort((a, b) => a.createdAt - b.createdAt);
+            return candidates[0]?.id;
+        }, [isTaskTool, sessionId, agentNameFromInput])
+    );
+
     const taskSessionId = React.useMemo<string | undefined>(() => {
         if (!isTaskTool) {
             return undefined;
@@ -1802,8 +1834,14 @@ const ToolPart: React.FC<ToolPartProps> = ({
         if (parsedTaskMetadata.sessionId) {
             return parsedTaskMetadata.sessionId;
         }
-        return readTaskSessionIdFromOutput(taskOutputString);
-    }, [currentPiExecution?.partialResult, currentPiExecution?.result, isTaskTool, metadata, parsedTaskMetadata.sessionId, partMetadata, taskOutputString]);
+        const outputSessionId = readTaskSessionIdFromOutput(taskOutputString);
+        if (outputSessionId) {
+            return outputSessionId;
+        }
+
+        // Final fallback: use parentID relationship from session store
+        return childSessionByParentId;
+    }, [currentPiExecution?.partialResult, currentPiExecution?.result, isTaskTool, metadata, parsedTaskMetadata.sessionId, partMetadata, taskOutputString, childSessionByParentId]);
 
     const childPiSession = useSessionStore(
         React.useCallback((store) => {

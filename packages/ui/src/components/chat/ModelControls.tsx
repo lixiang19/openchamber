@@ -57,7 +57,7 @@ import { getEditModeColors } from '@/lib/permissions/editModeColors';
 import { piClient } from '@/lib/pi/client';
 import { cn, fuzzyMatch } from '@/lib/utils';
 import { useContextStore } from '@/stores/contextStore';
-import { useSessionManagementStore } from '@/stores/sessionStore';
+import { useSessionStore as useSessionManagementStore } from '@/stores/sessionStore';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useUIStore } from '@/stores/useUIStore';

@@ -1,7 +1,6 @@
 /**
  * Ridge project-level configuration service.
- * Stores per-project settings in ~/.config/ridge/<projectId>.json.
- * Migrates from legacy <project>/.work/ridge.json.
+ * Stores per-project settings in ~/.config/ridge/projects/<projectId>.json.
  */
 
 import type { FilesAPI, RuntimeAPIs } from './api/types';
@@ -10,9 +9,6 @@ import { isVSCodeRuntime } from './desktop';
 
 type ProjectRef = { id: string; path: string };
 
-const CONFIG_FILENAME = 'ridge.json';
-// LEGACY_PROJECT_CONFIG: legacy per-project config root inside repo.
-const LEGACY_CONFIG_DIR = '.work';
 const USER_CONFIG_DIR_SEGMENTS = ['.config', 'ridge'];
 const USER_PROJECTS_DIR_SEGMENTS = ['.config', 'ridge', 'projects'];
 const SETTINGS_FILENAME = 'settings.json';
@@ -115,10 +111,6 @@ const joinPath = (base: string, segment: string): string => {
     return `/${cleanSegment}`;
   }
   return `${normalizedBase}/${cleanSegment}`;
-};
-
-const getLegacyConfigPath = (projectDirectory: string): string => {
-  return joinPath(joinPath(projectDirectory, LEGACY_CONFIG_DIR), CONFIG_FILENAME);
 };
 
 const getBaseUrl = (): string => {
@@ -519,7 +511,6 @@ export async function readOpenChamberConfig(project: ProjectRef): Promise<OpenCh
     }
   };
 
-  // 1) Prefer new per-user config.
   if (configPath) {
     const existing = parseConfig(await readText(configPath));
     if (existing) {
@@ -527,25 +518,7 @@ export async function readOpenChamberConfig(project: ProjectRef): Promise<OpenCh
     }
   }
 
-  // 2) Migrate legacy <project>/.work/ridge.json.
-  // LEGACY_PROJECT_CONFIG: migrate project-local ridge.json -> ~/.config/ridge/projects/<projectId>.json
-  const legacyPath = getLegacyConfigPath(projectDirectory);
-  const legacyConfig = parseConfig(await readText(legacyPath));
-  if (!legacyConfig) {
-    return null;
-  }
-
-  // Best-effort write + delete legacy.
-  try {
-    const wrote = await writeOpenChamberConfig(project, legacyConfig);
-    if (wrote) {
-      await deleteLegacyOpenChamberConfig(projectDirectory);
-    }
-  } catch {
-    // Ignore migration failures; still return legacy content.
-  }
-
-  return legacyConfig;
+  return null;
 }
 
 /**
@@ -669,26 +642,6 @@ export function substituteCommandVariables(
     // Legacy
     .replace(/\$ROOT_WORKTREE_PATH/g, variables.rootWorktreePath)
     .replace(/\$\{ROOT_WORKTREE_PATH\}/g, variables.rootWorktreePath);
-}
-
-async function deleteLegacyOpenChamberConfig(projectDirectory: string): Promise<void> {
-  const legacyPath = getLegacyConfigPath(projectDirectory);
-  const runtimeFiles = getRuntimeFilesAPI();
-
-  if (runtimeFiles?.delete) {
-    try {
-      await runtimeFiles.delete(legacyPath);
-      return;
-    } catch {
-      // fall through
-    }
-  }
-
-  try {
-    await postJson(`${getBaseUrl()}/fs/delete`, { path: legacyPath });
-  } catch {
-    // ignored
-  }
 }
 
 export type { ProjectRef };

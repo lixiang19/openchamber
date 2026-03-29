@@ -5,6 +5,7 @@ import type { Message, Part } from "@/lib/runtime/types";
 import { runtimeClient } from "@/lib/runtime/client";
 import { piClient } from '@/lib/pi/client';
 import type { PiSessionViewState } from '@/lib/pi/types';
+import { projectPiSessionToTurnRecords } from '@/components/chat/lib/turns/projectTurnRecords';
 import type { TurnRecord } from '@/components/chat/lib/turns/types';
 import { isExecutionForkMetaText } from "@/lib/messages/executionMeta";
 import { isLikelyProviderAuthFailure, PROVIDER_AUTH_FAILURE_MESSAGE } from "@/lib/messages/providerAuthError";
@@ -850,7 +851,6 @@ const getPiNativeSessionMessages = (sessionId: string): Array<{ info: Message; p
     if (!snapshot) {
         return null;
     }
-    const { projectPiSessionToTurnRecords } = require('@/components/chat/lib/turns/projectTurnRecords');
     const turnResult = projectPiSessionToTurnRecords(snapshot, { showTextJustificationActivity: false });
     if (turnResult?.turns) {
         return turnResult.turns.flatMap((turn: TurnRecord) => [turn.userMessage, ...turn.assistantMessages]);
@@ -937,7 +937,6 @@ export const useMessageStore = create<MessageStore>()(
 
                             const revertMessageId = getSessionRevertMessageId(sessionId);
                             // Pi-native: 使用 turn 记录构建消息
-                            const { projectPiSessionToTurnRecords } = require('@/components/chat/lib/turns/projectTurnRecords');
                             const turnResult = projectPiSessionToTurnRecords(session, { showTextJustificationActivity: false });
                             const sessionMessages: { info: Message; parts: Part[] }[] = turnResult?.turns
                                 ? turnResult.turns.flatMap((turn: TurnRecord) => [turn.userMessage, ...turn.assistantMessages])
