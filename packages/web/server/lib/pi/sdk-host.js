@@ -1016,6 +1016,7 @@ export const createPiSdkHost = () => {
         createdAt: toTimestamp(info.created),
         updatedAt: toTimestamp(info.modified),
         persistTitle: false,
+        parentID: normalizeString(info.parentID) || null,
       });
     })();
 
