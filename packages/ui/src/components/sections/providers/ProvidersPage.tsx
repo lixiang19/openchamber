@@ -192,7 +192,7 @@ export const ProvidersPage: React.FC = () => {
       } catch (error) {
         if (!isMounted) return;
         console.error('Failed to load provider auth methods:', error);
-        toast.error('Failed to load provider authentication methods');
+        toast.error('加载提供商认证方法失败');
       } finally {
         if (isMounted) {
           setAuthLoading(false);
@@ -413,7 +413,7 @@ export const ProvidersPage: React.FC = () => {
       toast.message('Complete the OAuth flow in your browser');
     } catch (error) {
       console.error('Failed to start OAuth flow:', error);
-      toast.error('Failed to start OAuth flow');
+      toast.error('启动 OAuth 流程失败');
     } finally {
       setAuthBusyKey(null);
     }
@@ -451,7 +451,7 @@ export const ProvidersPage: React.FC = () => {
       setSelectedProvider(providerId);
     } catch (error) {
       console.error('Failed to complete OAuth flow:', error);
-      toast.error('Failed to complete OAuth flow');
+      toast.error('完成 OAuth 流程失败');
     } finally {
       setAuthBusyKey(null);
     }
@@ -460,11 +460,11 @@ export const ProvidersPage: React.FC = () => {
   const handleCopyOAuthLink = async (url: string) => {
     const result = await copyTextToClipboard(url);
     if (result.ok) {
-      toast.success('OAuth link copied');
+      toast.success('OAuth 链接已复制');
       return;
     }
     console.error('Failed to copy OAuth link:', result.error);
-    toast.error('Failed to copy OAuth link');
+    toast.error('复制 OAuth 链接失败');
   };
 
   const handleCopyOAuthCode = async (code: string) => {
@@ -474,7 +474,7 @@ export const ProvidersPage: React.FC = () => {
       return;
     }
     console.error('Failed to copy device code:', result.error);
-    toast.error('Failed to copy device code');
+    toast.error('复制设备代码失败');
   };
 
   const handleDisconnectProvider = async (providerId: string) => {
@@ -489,15 +489,15 @@ export const ProvidersPage: React.FC = () => {
 
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        const message = payload?.error || 'Failed to disconnect provider';
+        const message = payload?.error || '断开提供商连接失败';
         throw new Error(message);
       }
 
-      toast.success('Provider disconnected');
+      toast.success('提供商已断开连接');
       await reloadRuntimeConfiguration({ scopes: ["providers"], mode: "active" });
     } catch (error) {
       console.error('Failed to disconnect provider:', error);
-      toast.error('Failed to disconnect provider');
+      toast.error('断开提供商连接失败');
     } finally {
       setAuthBusyKey(null);
     }
@@ -510,7 +510,7 @@ export const ProvidersPage: React.FC = () => {
       <div className="flex h-full items-center justify-center">
         <div className="text-center text-muted-foreground">
           <RiStackLine className="mx-auto mb-3 h-12 w-12 opacity-50" />
-          <p className="typography-body">No providers detected</p>
+          <p className="typography-body">未检测到提供商</p>
           <p className="typography-meta mt-1 opacity-75">Check your runtime configuration</p>
         </div>
       </div>
@@ -577,7 +577,7 @@ export const ProvidersPage: React.FC = () => {
                             value={providerSearchQuery}
                             onChange={(e) => setProviderSearchQuery(e.target.value)}
                             onKeyDown={(e) => e.stopPropagation()}
-                            placeholder="Search..."
+                            placeholder="搜索..."
                             className="flex-1 bg-transparent typography-meta outline-none placeholder:text-muted-foreground"
                             autoFocus
                           />
@@ -589,7 +589,7 @@ export const ProvidersPage: React.FC = () => {
                               return (p.name || p.id).toLowerCase().includes(query) || p.id.toLowerCase().includes(query);
                             });
                             if (filtered.length === 0) {
-                              return <p className="py-4 text-center typography-meta text-muted-foreground">No providers found</p>;
+                              return <p className="py-4 text-center typography-meta text-muted-foreground">未找到提供商</p>;
                             }
                             return filtered.map((provider) => (
                               <DropdownMenuItem
@@ -714,7 +714,7 @@ export const ProvidersPage: React.FC = () => {
                               {oauthDetails[codeKey]?.userCode && (
                                 <div className="flex items-center gap-2 mt-2">
                                   <Input value={oauthDetails[codeKey]?.userCode} readOnly className="font-mono text-center tracking-widest" />
-                                  <Button variant="outline" size="xs" className="!font-normal" onClick={() => handleCopyOAuthCode(oauthDetails[codeKey]?.userCode ?? '')}>Copy Code</Button>
+                                  <Button variant="outline" size="xs" className="!font-normal" onClick={() => handleCopyOAuthCode(oauthDetails[codeKey]?.userCode ?? '')}>复制代码</Button>
                                 </div>
                               )}
 
@@ -738,7 +738,7 @@ export const ProvidersPage: React.FC = () => {
                                         [codeKey]: event.target.value,
                                       }))
                                     }
-                                    placeholder="Paste authorization code"
+                                    placeholder="粘贴授权码"
                                     className="font-mono text-xs"
                                   />
                                   <Button
@@ -907,7 +907,7 @@ export const ProvidersPage: React.FC = () => {
                           {oauthDetails[codeKey]?.userCode && (
                             <div className="flex items-center gap-2 mt-2">
                               <Input value={oauthDetails[codeKey]?.userCode} readOnly className="font-mono text-center tracking-widest" />
-                              <Button variant="outline" size="xs" className="!font-normal" onClick={() => handleCopyOAuthCode(oauthDetails[codeKey]?.userCode ?? '')}>Copy Code</Button>
+                              <Button variant="outline" size="xs" className="!font-normal" onClick={() => handleCopyOAuthCode(oauthDetails[codeKey]?.userCode ?? '')}>复制代码</Button>
                             </div>
                           )}
 
@@ -931,7 +931,7 @@ export const ProvidersPage: React.FC = () => {
                                     [codeKey]: event.target.value,
                                   }))
                                 }
-                                placeholder="Paste authorization code"
+                                placeholder="粘贴授权码"
                                 className="font-mono text-xs"
                               />
                               <Button
@@ -1032,7 +1032,7 @@ export const ProvidersPage: React.FC = () => {
               <Input
                 value={modelQuery}
                 onChange={(event) => setModelQuery(event.target.value)}
-                placeholder="Filter models..."
+                placeholder="筛选模型..."
                 className="h-7 pl-8 w-full"
               />
             </div>

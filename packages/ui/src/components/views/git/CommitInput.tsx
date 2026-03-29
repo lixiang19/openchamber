@@ -18,7 +18,7 @@ const MAX_HEIGHT = 200;
 export const CommitInput: React.FC<CommitInputProps> = ({
   value,
   onChange,
-  placeholder = 'Commit message',
+  placeholder = '提交消息',
   disabled = false,
   hasTouchInput = false,
   isMobile = false,

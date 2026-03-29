@@ -287,7 +287,7 @@ export const TerminalView: React.FC = () => {
                             case 'reconnecting': {
                                 const attempt = event.attempt ?? 0;
                                 const maxAttempts = event.maxAttempts ?? 3;
-                                setConnectionError(`Reconnecting (${attempt}/${maxAttempts})...`);
+                                setConnectionError(`正在重连 (${attempt}/${maxAttempts})...`);
                                 setIsFatalError(false);
                                 break;
                             }
@@ -314,7 +314,7 @@ export const TerminalView: React.FC = () => {
                                 );
                                 setTabSessionId(directory, tabId, null);
                                 setConnecting(directory, tabId, false);
-                                setConnectionError(isActionTab ? null : 'Terminal session ended');
+                                setConnectionError(isActionTab ? null : '终端会话已结束');
                                 setIsFatalError(false);
                                 disconnectStream();
                                 break;
@@ -436,7 +436,7 @@ export const TerminalView: React.FC = () => {
                         setConnectionError(
                             error instanceof Error
                                 ? error.message
-                                : 'Failed to start terminal session'
+                                : '启动终端会话失败'
                         );
                         setIsFatalError(true);
                         setConnecting(directory, tabId, false);
@@ -525,7 +525,7 @@ export const TerminalView: React.FC = () => {
         try {
             await closeTab(effectiveDirectory, tabId);
         } catch (error) {
-            setConnectionError(error instanceof Error ? error.message : 'Failed to restart terminal');
+            setConnectionError(error instanceof Error ? error.message : '重启终端失败');
             setIsFatalError(true);
         } finally {
             setIsRestarting(false);
@@ -601,7 +601,7 @@ export const TerminalView: React.FC = () => {
             if (!terminalId) return;
 
             void terminal.sendInput(terminalId, payload).catch((error) => {
-                setConnectionError(error instanceof Error ? error.message : 'Failed to send input');
+                setConnectionError(error instanceof Error ? error.message : '发送输入失败');
             });
 
             if (modifierConsumed) {
@@ -1011,7 +1011,7 @@ export const TerminalView: React.FC = () => {
                                                     e.stopPropagation();
                                                     handleCloseTab(tab.id);
                                                 }}
-                                                title="Close tab"
+                                                title="关闭标签"
                                             >
                                                 {isMobile ? <span aria-hidden>×</span> : <RiCloseLine size={12} />}
                                             </button>
@@ -1026,7 +1026,7 @@ export const TerminalView: React.FC = () => {
                                         'ml-1 flex items-center justify-center rounded-md border border-[var(--interactive-border)] bg-transparent text-[var(--surface-muted-foreground)] hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)]',
                                         isMobile ? '!min-h-0 !min-w-0 h-8 w-8' : 'h-6.5 w-6.5'
                                     )}
-                                    title="New tab"
+                                    title="新建标签"
                                 >
                                     <RiAddLine size={isMobile ? 18 : 16} />
                                 </button>

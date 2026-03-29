@@ -99,9 +99,9 @@ const CommandTextarea: React.FC<CommandTextareaProps> = ({ value, onChange }) =>
         : parseShellCommand(trimmed);
       setText(lines.join('\n'));
       onChange(lines);
-      toast.success(`Pasted ${lines.length} argument${lines.length !== 1 ? 's' : ''}`);
+      toast.success(`粘贴了 ${lines.length} 个参数`);
     } catch {
-      toast.error('Cannot read clipboard');
+      toast.error('无法读取剪贴板');
     }
   };
 
@@ -114,7 +114,7 @@ const CommandTextarea: React.FC<CommandTextareaProps> = ({ value, onChange }) =>
           className="!font-normal gap-1 text-muted-foreground"
           onClick={handlePasteFromClipboard}
           type="button"
-          title="Paste full command from clipboard and auto-split"
+          title="从剪贴板粘贴完整命令并自动分割"
         >
           <RiClipboardLine className="h-3 w-3" />
           Paste command
@@ -223,7 +223,7 @@ const EnvEditor: React.FC<EnvEditorProps> = ({ value, onChange }) => {
         if (key) parsed.push({ key, value: val });
       }
       if (parsed.length === 0) {
-        toast.error('No KEY=VALUE pairs found in clipboard');
+        toast.error('剪贴板中未找到 KEY=VALUE 对');
         return;
       }
       // Merge: update existing keys, append new ones
@@ -234,7 +234,7 @@ const EnvEditor: React.FC<EnvEditorProps> = ({ value, onChange }) => {
         else merged.push(p);
       }
       onChange(merged);
-      toast.success(`Imported ${parsed.length} variable${parsed.length !== 1 ? 's' : ''}`);
+      toast.success(`导入了 ${parsed.length} 个变量`);
     } catch {
       toast.error('Cannot read clipboard');
     }
@@ -256,7 +256,7 @@ const EnvEditor: React.FC<EnvEditorProps> = ({ value, onChange }) => {
           className="!font-normal gap-1 text-muted-foreground"
           onClick={handlePasteDotEnv}
           type="button"
-          title="Paste KEY=VALUE lines from clipboard"
+          title="从剪贴板粘贴 KEY=VALUE 行"
         >
           <RiClipboardLine className="h-3 w-3" />
           Paste .env
@@ -271,7 +271,7 @@ const EnvEditor: React.FC<EnvEditorProps> = ({ value, onChange }) => {
             <Input
               value={entry.key}
               onChange={(e) => updateRow(idx, 'key', e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'))}
-              placeholder="API_KEY"
+              placeholder="API_密钥"
               className="w-36 shrink-0 font-mono typography-meta uppercase"
               spellCheck={false}
             />
@@ -440,15 +440,15 @@ export const McpPage: React.FC = () => {
 
   const handleSave = async () => {
     const name = isNewServer ? draftName.trim() : selectedMcpName ?? '';
-    if (!name) { toast.error('Name is required'); return; }
+    if (!name) { toast.error('名称必填'); return; }
     if (isNewServer && mcpServers.some((s) => s.name === name)) {
-      toast.error('A server with this name already exists'); return;
+      toast.error('此名称的服务器已存在'); return;
     }
     if (mcpType === 'local' && command.filter(Boolean).length === 0) {
-      toast.error('Command cannot be empty for a local server'); return;
+      toast.error('本地服务器的命令不能为空'); return;
     }
     if (mcpType === 'remote' && !url.trim()) {
-      toast.error('URL cannot be empty for a remote server'); return;
+      toast.error('远程服务器的 URL 不能为空'); return;
     }
 
     const draft: McpDraft = { name, scope: draftScope, type: mcpType, command, url, environment: envEntries, enabled };
@@ -473,7 +473,7 @@ export const McpPage: React.FC = () => {
     setIsDeleting(true);
     const ok = await deleteMcp(selectedMcpName);
     if (ok) { toast.success(`"${selectedMcpName}" deleted`); setShowDeleteConfirm(false); }
-    else toast.error('Failed to delete');
+    else toast.error('删除失败');
     setIsDeleting(false);
   };
 
@@ -491,7 +491,7 @@ export const McpPage: React.FC = () => {
       }
       await refreshStatus({ directory: currentDirectory, silent: true });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Connection failed');
+      toast.error(err instanceof Error ? err.message : '连接失败');
     } finally {
       setIsConnecting(false);
     }

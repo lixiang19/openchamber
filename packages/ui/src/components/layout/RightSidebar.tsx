@@ -177,7 +177,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ isOpen, children, cl
           onPointerCancel={handlePointerEnd}
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize right panel"
+          aria-label="调整右侧面板大小"
         />
       )}
       <div

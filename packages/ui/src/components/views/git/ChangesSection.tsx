@@ -109,14 +109,14 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
       <section className={containerClassName}>
         <header className={headerClassName}>
           <div className="flex min-w-0 items-center gap-2">
-            <h3 className="typography-ui-header font-semibold text-foreground">Changes</h3>
+            <h3 className="typography-ui-header font-semibold text-foreground">变更</h3>
             {totalCount > 0 ? (
               <button
                 type="button"
                 onClick={areAllSelected ? onClearSelection : onSelectAll}
                 disabled={isRevertingAll}
                 aria-checked={isPartiallySelected ? 'mixed' : hasAnySelected}
-                aria-label={areAllSelected ? 'Clear file selection' : 'Select all files'}
+                aria-label={areAllSelected ? '清除文件选择' : '选择所有文件'}
                 className={cn(
                   'inline-flex h-6 items-center gap-1 rounded px-1.5 text-muted-foreground',
                   'hover:bg-interactive-hover/55 hover:text-foreground',
@@ -188,7 +188,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                 })}
               </div>
             ) : (
-              <div role="list" aria-label="Changed files">
+              <div role="list" aria-label="变更的文件">
                 {changeEntries.map((file, index) => (
                   <div
                     key={file.path}

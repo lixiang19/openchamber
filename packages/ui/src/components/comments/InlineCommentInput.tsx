@@ -140,7 +140,7 @@ export function InlineCommentInput({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Add a comment... (Cmd+Enter to save)"
+          placeholder="添加评论... (Cmd+Enter 保存)"
           className="min-h-[80px] text-sm resize-y"
           style={{
             backgroundColor: currentTheme?.colors?.surface?.subtle,

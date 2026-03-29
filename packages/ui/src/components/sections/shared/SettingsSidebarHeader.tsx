@@ -23,14 +23,14 @@ interface SettingsSidebarHeaderProps {
  * <SettingsSidebarHeader
  *   count={agents.length}
  *   onAdd={() => setCreateDialogOpen(true)}
- *   addButtonLabel="Create new agent"
+ *   addButtonLabel="创建新智能体"
  * />
  */
 export const SettingsSidebarHeader: React.FC<SettingsSidebarHeaderProps> = ({
   count,
   onAdd,
   label = 'Total',
-  addButtonLabel = 'Add new item',
+  addButtonLabel = '添加新项',
 }) => {
   const { isMobile } = useDeviceInfo();
 

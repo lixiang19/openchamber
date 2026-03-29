@@ -27,19 +27,19 @@ export const resolveUsageTone = (percent: number | null): 'safe' | 'warn' | 'cri
 };
 
 export const formatWindowLabel = (label: string): string => {
-  if (label === '5h') return '5-Hour';
-  if (label === '7d') return '7-Day Limit';
-  if (label === '7d-sonnet') return '7-Day Sonnet Limit';
-  if (label === '7d-opus') return '7-Day Opus Limit';
-  if (label === 'weekly') return 'Weekly Limit';
-  if (label === 'daily') return 'Daily';
-  if (label === 'monthly') return 'Monthly Limit';
-  if (label === 'credits') return 'Credits';
-  if (label === 'session') return 'Session';
-  if (label === 'premium') return 'Premium Interactions';
-  if (label === 'chat') return 'Chat Requests';
-  if (label === 'completions') return 'Completions';
-  if (label === 'premium_interactions') return 'Premium interactions';
+  if (label === '5h') return '5小时';
+  if (label === '7d') return '7天限制';
+  if (label === '7d-sonnet') return '7天 Sonnet 限制';
+  if (label === '7d-opus') return '7天 Opus 限制';
+  if (label === 'weekly') return '每周限制';
+  if (label === 'daily') return '每日';
+  if (label === 'monthly') return '每月限制';
+  if (label === 'credits') return '额度';
+  if (label === 'session') return '会话';
+  if (label === 'premium') return '高级交互';
+  if (label === 'chat') return '聊天请求';
+  if (label === 'completions') return '补全';
+  if (label === 'premium_interactions') return '高级交互';
   return label;
 };
 

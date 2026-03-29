@@ -215,7 +215,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                             isFavorite ? "text-primary" : "text-muted-foreground"
                         )}
                         aria-label={isFavorite ? "Unfavorite" : "Favorite"}
-                        title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                        title={isFavorite ? "从收藏中移除" : "添加到收藏"}
                     >
                         {isFavorite ? (
                             <RiStarFill className="h-3.5 w-3.5" />
@@ -269,7 +269,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             <MobileOverlayPanel
                 open={isMobilePanelOpen}
                 onClose={closeMobilePanel}
-                title="Select model"
+                title="选择模型"
             >
                 <div className="space-y-1">
                     {/* Favorites Section for Mobile */}
@@ -315,7 +315,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                                                     toggleFavoriteModel(providerID, modelID);
                                                 }}
                                                 className="model-favorite-button flex h-8 w-8 items-center justify-center text-primary hover:text-primary/80 active:scale-95 touch-manipulation"
-                                                aria-label="Unfavorite"
+                                                aria-label="取消收藏"
                                             >
                                                 <RiStarFill className="h-4 w-4" />
                                             </button>
@@ -369,7 +369,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                                                     toggleFavoriteModel(providerID, modelID);
                                                 }}
                                                 className="model-favorite-button flex h-8 w-8 items-center justify-center text-muted-foreground/50 hover:text-primary/80 active:scale-95 touch-manipulation"
-                                                aria-label="Favorite"
+                                                aria-label="收藏"
                                             >
                                                 <RiStarLine className="h-4 w-4" />
                                             </button>
@@ -598,7 +598,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                                             <RiSearchLine className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                                             <Input
                                                 type="text"
-                                                placeholder="Search models"
+                                                placeholder="搜索模型"
                                                 value={searchQuery}
                                                 onChange={(e) => setSearchQuery(e.target.value)}
                                                 onKeyDown={handleKeyDown}

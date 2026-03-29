@@ -152,7 +152,7 @@ export const BottomTerminalDock: React.FC<BottomTerminalDockProps> = ({ isOpen, 
           onPointerDown={handlePointerDown}
           role="separator"
           aria-orientation="horizontal"
-          aria-label="Resize terminal panel"
+          aria-label="调整终端面板大小"
         />
       )}
 
@@ -171,8 +171,8 @@ export const BottomTerminalDock: React.FC<BottomTerminalDockProps> = ({ isOpen, 
             type="button"
             onClick={() => setBottomTerminalOpen(false)}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-            title="Close terminal panel"
-            aria-label="Close terminal panel"
+            title="关闭终端面板"
+            aria-label="关闭终端面板"
           >
             <RiCloseLine className="h-6 w-6" />
           </button>

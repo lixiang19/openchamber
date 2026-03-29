@@ -183,7 +183,7 @@ export const SkillsCatalogPage: React.FC<SkillsCatalogPageProps> = ({ mode, onMo
                 onValueChange={(v) => setSelectedSource(v)}
               >
                 <SelectTrigger className="w-fit">
-                  <SelectValue placeholder="Select source" />
+                  <SelectValue placeholder="选择源" />
                 </SelectTrigger>
                 <SelectContent align="start">
                   {sources.map((src) => (
@@ -206,7 +206,7 @@ export const SkillsCatalogPage: React.FC<SkillsCatalogPageProps> = ({ mode, onMo
                   }
                 }}
                 disabled={isLoadingCatalog || isLoadingSource}
-                title="Refresh"
+                title="刷新"
               >
                 <RiRefreshLine className={cn("h-3.5 w-3.5", (isLoadingCatalog || isLoadingSource) && "animate-spin")} />
               </Button>
@@ -218,7 +218,7 @@ export const SkillsCatalogPage: React.FC<SkillsCatalogPageProps> = ({ mode, onMo
                   className="!font-normal h-6 w-6 px-0 text-[var(--status-error)] hover:text-[var(--status-error)]"
                   onClick={() => setIsRemoveCatalogDialogOpen(true)}
                   disabled={isRemovingCatalog}
-                  title="Remove Catalog"
+                  title="删除目录"
                 >
                   <RiDeleteBinLine className="h-3.5 w-3.5" />
                 </Button>
@@ -239,7 +239,7 @@ export const SkillsCatalogPage: React.FC<SkillsCatalogPageProps> = ({ mode, onMo
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search skills..."
+                  placeholder="搜索技能..."
                   className="h-7 pl-8 w-full sm:w-64"
                 />
               </div>
@@ -263,7 +263,7 @@ export const SkillsCatalogPage: React.FC<SkillsCatalogPageProps> = ({ mode, onMo
           <section className="px-2 pb-2 pt-0">
             {filtered.length === 0 && !isLoadingSource ? (
               <div className="py-8 text-center text-muted-foreground">
-                <p className="typography-body">No skills found</p>
+                <p className="typography-body">未找到技能</p>
                 <p className="typography-meta mt-1 opacity-75">Try a different search or refresh the catalog</p>
               </div>
             ) : isLoadingSource ? (

@@ -796,7 +796,7 @@ function ProjectEditPanel({
     <MobileOverlayPanel
       open={isOpen}
       onClose={onClose}
-      title="Edit Projects"
+      title="编辑项目"
       footer={
         <p className="text-xs text-[var(--surface-mutedForeground)] text-center">
           Drag items to reorder, or use arrows to move. Tap edit to change details.
@@ -1016,7 +1016,7 @@ function ProjectBar({
           type="button"
           onClick={onAddProject}
           className="flex items-center justify-center !py-1.5 px-2 rounded-md border border-[var(--primary-base)]/60 bg-[var(--primary-base)]/5 text-[var(--primary-base)]/80 hover:text-[var(--primary-base)] hover:bg-[var(--primary-base)]/10 !min-h-0"
-          aria-label="Add project"
+          aria-label="添加项目"
         >
           <RiAddLine className="h-3 w-3" />
         </button>
@@ -1092,7 +1092,7 @@ function ProjectBar({
         type="button"
         onClick={onAddProject}
         className="flex items-center justify-center !py-1.5 px-2 rounded-md border border-[var(--primary-base)]/60 bg-[var(--primary-base)]/5 text-[var(--primary-base)]/80 hover:text-[var(--primary-base)] hover:bg-[var(--primary-base)]/10 shrink-0 !min-h-0"
-        aria-label="Add project"
+        aria-label="添加项目"
       >
         <RiAddLine className="h-3.5 w-3.5" />
       </button>

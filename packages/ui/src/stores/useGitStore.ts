@@ -467,7 +467,7 @@ export const useGitStore = create<GitStore>()(
             newDirectories.set(directory, {
               ...dirState,
               isGitRepo: false,
-              branches: undefined,
+              branches: null,
               lastRepoCheckAt: now,
             });
             set({ directories: newDirectories });

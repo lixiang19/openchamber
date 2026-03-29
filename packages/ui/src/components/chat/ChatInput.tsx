@@ -2628,7 +2628,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                         type="button"
                         className={footerIconButtonClass}
                         onClick={() => handlePickLocalFiles()}
-                        title="Attach files"
+                        title="附加文件"
                         aria-label="Attach files"
                     >
                         <RiAttachment2 className={cn(iconSizeClass, 'text-current')} />
@@ -2639,7 +2639,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                             <button
                                 type="button"
                                 className={footerIconButtonClass}
-                                title="Add attachment"
+                                title="添加附件"
                                 aria-label="Add attachment"
                             >
                                 <RiAddCircleLine className={cn(iconSizeClass, 'text-current')} />
@@ -2652,7 +2652,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                 }}
                             >
                                 <RiAttachment2 />
-                                Attach files
+                                附加文件
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 onSelect={() => {
@@ -2819,7 +2819,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors"
-                                    aria-label="Open issue in browser"
+                                    aria-label="在浏览器中打开议题"
                                 >
                                     <RiExternalLinkLine className="h-4 w-4 text-muted-foreground" />
                                 </a>
@@ -2870,7 +2870,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors"
-                                    aria-label="Open pull request in browser"
+                                    aria-label="在浏览器中打开拉取请求"
                                 >
                                     <RiExternalLinkLine className="h-4 w-4 text-muted-foreground" />
                                 </a>
@@ -2880,7 +2880,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                         setLinkedPr(null);
                                     }}
                                     className="flex items-center justify-center h-6 w-6 hover:bg-[var(--interactive-hover)] rounded-full transition-colors cursor-pointer"
-                                    aria-label="Remove linked pull request"
+                                    aria-label="移除关联拉取请求"
                                 >
                                     <RiCloseLine className="h-4 w-4 text-muted-foreground" />
                                 </span>
@@ -2929,7 +2929,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                         type="button"
                                         className={iconButtonBaseClass}
                                         onClick={() => handlePickLocalFiles()}
-                                        title="Attach files"
+                                        title="附加文件"
                                         aria-label="Attach files"
                                     >
                                         <RiAttachment2 className={cn(iconSizeClass, 'text-current')} />
@@ -3153,7 +3153,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                                     event.preventDefault();
                                                 }}
                                                 onClick={() => setExpandedInput(!isExpandedInput)}
-                                                aria-label="Toggle focus mode"
+                                                aria-label="切换专注模式"
                                                 aria-pressed={isExpandedInput}
                                             >
                                                 <RiFullscreenLine className={cn(iconSizeClass)} />

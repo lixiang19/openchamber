@@ -194,7 +194,7 @@ export const ChatContainer: React.FC = () => {
             size="xs"
             onClick={handleReturnToParentSession}
             className="absolute left-3 top-3 z-20 !font-normal bg-[var(--surface-background)]/95"
-            aria-label="Return to parent session"
+            aria-label="返回父会话"
             title={parentSession.title?.trim() ? `Return to: ${parentSession.title}` : 'Return to parent session'}
         >
             <RiArrowLeftLine className="h-4 w-4" />

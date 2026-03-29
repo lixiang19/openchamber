@@ -199,13 +199,13 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
         mode === 'dialog' ? (
           <DialogFooter>
             <Button variant="default" size="sm" onClick={handleClose}>
-              {hasError ? 'Close' : 'Done'}
+              {hasError ? '关闭' : '完成'}
             </Button>
           </DialogFooter>
         ) : (
           <div className="flex justify-end">
             <Button variant="default" size="sm" onClick={handleClose}>
-              {hasError ? 'Close' : 'Done'}
+              {hasError ? '关闭' : '完成'}
             </Button>
           </div>
         )
@@ -217,7 +217,7 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
     <div className="space-y-4">
       {/* Operation Selection */}
       <div className="space-y-3">
-        <p className="typography-meta text-muted-foreground">Operation</p>
+        <p className="typography-meta text-muted-foreground">操作</p>
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
@@ -239,11 +239,11 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
                   operation === 'merge' ? 'text-foreground' : 'text-muted-foreground'
                 )}
               >
-                Merge
+                合并
               </span>
             </div>
             <p className="typography-micro text-muted-foreground">
-              Combines branches with a merge commit and preserves history.
+              使用合并提交合并分支并保留历史记录。
             </p>
           </button>
 
@@ -267,11 +267,11 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
                   operation === 'rebase' ? 'text-foreground' : 'text-muted-foreground'
                 )}
               >
-                Rebase
+                变基
               </span>
             </div>
                     <p className="typography-micro text-muted-foreground">
-                      Moves your commits to be on top of another branch. Creates linear history.
+                      将你的提交移动到另一个分支之上。创建线性历史记录。
                     </p>
                   </button>
         </div>
@@ -280,13 +280,13 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
       {/* Branch Selection */}
       <div className="space-y-3">
         <p className="typography-meta text-muted-foreground">
-          {operation === 'merge' ? `Branch to merge into ${targetBranchLabel}` : 'Branch to rebase onto'}
+          {operation === 'merge' ? `要合并到 ${targetBranchLabel} 的分支` : '要变基到的分支'}
         </p>
         <DropdownMenu open={branchDropdownOpen} onOpenChange={setBranchDropdownOpen} modal={false}>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="lg" className="w-full justify-between">
               <span className={cn('truncate', !selectedBranch && 'text-muted-foreground')}>
-                {selectedBranch || 'Select a branch...'}
+                {selectedBranch || '选择分支...'}
               </span>
               <RiArrowDownSLine className="size-4 opacity-60 shrink-0" />
             </Button>
@@ -298,15 +298,15 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
             <Command className="h-full min-h-0">
               <CommandInput
                 ref={searchInputRef}
-                placeholder="Search branches..."
+                placeholder="搜索分支..."
                 value={branchSearch}
                 onValueChange={setBranchSearch}
               />
               <CommandList className="h-full min-h-0" disableHorizontal>
-                <CommandEmpty>No branches found.</CommandEmpty>
+                <CommandEmpty>未找到分支。</CommandEmpty>
 
                 {filteredLocal.length > 0 && (
-                  <CommandGroup heading="Local branches">
+                  <CommandGroup heading="本地分支">
                     {filteredLocal.map((branch) => (
                       <CommandItem key={`local-${branch}`} onSelect={() => handleSelectBranch(branch)}>
                         <span className="typography-ui-label text-foreground truncate">{branch}</span>
@@ -318,7 +318,7 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
                 {filteredLocal.length > 0 && filteredRemote.length > 0 ? <CommandSeparator /> : null}
 
                 {filteredRemote.length > 0 && (
-                  <CommandGroup heading="Remote branches">
+                  <CommandGroup heading="远程分支">
                     {filteredRemote.map((branch) => (
                       <CommandItem key={`remote-${branch}`} onSelect={() => handleSelectBranch(branch)}>
                         <span className="typography-ui-label text-foreground truncate">{branch}</span>
@@ -338,12 +338,12 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
           <p className="typography-meta text-muted-foreground">
             {operation === 'merge' ? (
               <>
-                This will merge <span className="font-mono text-foreground">{selectedBranch}</span> into{' '}
+                This will merge <span className="font-mono text-foreground">{selectedBranch}</span> 合并到{' '}
                 <span className="font-mono text-foreground">{targetBranchLabel}</span>
               </>
             ) : (
               <>
-                This will rebase <span className="font-mono text-foreground">{targetBranchLabel}</span> onto{' '}
+                这将把 <span className="font-mono text-foreground">{targetBranchLabel}</span> 变基到{' '}
                 <span className="font-mono text-foreground">{selectedBranch}</span>
               </>
             )}
@@ -354,7 +354,7 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
       {mode === 'dialog' ? (
         <DialogFooter className="gap-2 pt-1">
           <Button variant="ghost" size="sm" onClick={handleCancel}>
-            Cancel
+            取消
           </Button>
           <Button
             variant="default"
@@ -366,12 +366,12 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
             {operation === 'merge' ? (
               <>
                 <RiGitMergeLine className="size-4" />
-                Merge
+                合并
               </>
             ) : (
               <>
                 <RiGitBranchLine className="size-4" />
-                Rebase
+                变基
               </>
             )}
           </Button>
@@ -379,11 +379,11 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
       ) : (
         <div className="flex items-center gap-2 pt-1">
           <Button variant="destructive" size="sm" onClick={handleCancel} disabled={isDisabled}>
-            Reset
+            重置
           </Button>
           <div className="flex-1" />
           <Button variant="default" size="sm" onClick={handleConfirm} disabled={isDisabled || !selectedBranch}>
-            {operation === 'merge' ? 'Merge' : 'Rebase'}
+            {operation === 'merge' ? '合并' : '变基'}
           </Button>
         </div>
       )}
@@ -397,9 +397,9 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
       <section className="border-0 bg-transparent rounded-none">
         <header className="border-b border-border/40 px-0 py-3">
           <div className="space-y-1">
-            <div className="typography-ui-header font-semibold text-foreground">Update branch</div>
+            <div className="typography-ui-header font-semibold text-foreground">更新分支</div>
             <div className="typography-micro text-muted-foreground">
-              Bring changes from another branch into{' '}
+              Bring changes from another branch 合并到{' '}
               <span className="font-mono text-foreground">{targetBranchLabel}</span>.
             </div>
           </div>
@@ -429,7 +429,7 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
           </Button>
         </TooltipTrigger>
         <TooltipContent sideOffset={8}>
-          Merge or rebase changes from another branch.
+          从其他分支合并或变基变更。
         </TooltipContent>
       </Tooltip>
 
@@ -446,13 +446,13 @@ export const BranchIntegrationSection: React.FC<BranchIntegrationSectionProps> =
               <DialogDescription>
               {isOperating ? (
                 operationCompleted ? (
-                  hasError ? 'Operation failed' : 'Operation completed'
+                  hasError ? '操作失败' : '操作完成'
                 ) : (
-                  `${operation === 'merge' ? 'Merging' : 'Rebasing'} in progress...`
+                  `${operation === 'merge' ?  '合并' : 'Rebasing'}进行中...`
                 )
               ) : (
                 <>
-                  Choose how to bring changes from another branch into{' '}
+                  Choose how to bring changes from another branch 合并到{' '}
                   <span className="font-mono text-foreground">{targetBranchLabel}</span>
                   .
                 </>

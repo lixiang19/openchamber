@@ -63,17 +63,17 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             <CardHeader className="text-center">
               <CardTitle className="flex items-center justify-center gap-2 text-destructive">
                 <RiErrorWarningLine className="h-5 w-5" />
-                Something went wrong
+                出错了
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground text-center">
-                The application encountered an unexpected error. This has been logged for debugging.
+                应用程序遇到了意外错误。此错误已记录用于调试。
               </p>
 
               {this.state.error && (
                 <details className="text-xs font-mono bg-muted p-3 rounded">
-                  <summary className="cursor-pointer hover:bg-interactive-hover/80">Error details</summary>
+                  <summary className="cursor-pointer hover:bg-interactive-hover/80">错误详情</summary>
                   <pre className="mt-2 overflow-x-auto">
                     {this.state.error.toString()}
                     {this.state.errorInfo?.componentStack ? `\n\nComponent stack:${this.state.errorInfo.componentStack}` : ''}
@@ -84,10 +84,10 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               <div className="flex gap-2">
                 <Button onClick={this.handleReset} variant="outline" className="flex-1">
                   <RiRestartLine className="h-4 w-4 mr-2" />
-                  Try again
+                  重试
                 </Button>
                 <Button onClick={this.handleCopy} variant="outline" className="flex-1">
-                  {this.state.copied ? 'Copied' : 'Copy'}
+                  {this.state.copied ? '已复制' : '复制'}
                 </Button>
               </div>
             </CardContent>

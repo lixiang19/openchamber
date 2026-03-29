@@ -33,7 +33,7 @@ export const piClient = {
     const payload = await parseResponse<{ commands?: PiSlashCommandInfo[] }>(response);
     return Array.isArray(payload?.commands) ? payload.commands : [];
   },
-  async createSession(payload?: { cwd?: string; title?: string; parentID?: string | null; thinking?: string }): Promise<PiSessionViewState> {
+  async createSession(payload?: { cwd?: string; title?: string; parentID?: string | null; thinkingLevel?: string }): Promise<PiSessionViewState> {
     const response = await fetch(`${API_BASE}/sessions`, {
       method: 'POST',
       headers: {
@@ -50,7 +50,7 @@ export const piClient = {
     });
     return parseResponse<PiSessionViewState>(response);
   },
-  async updateSession(sessionId: string, payload: { title?: string }): Promise<PiSessionViewState> {
+  async updateSession(sessionId: string, payload: { title?: string; thinkingLevel?: string }): Promise<PiSessionViewState> {
     const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}`, {
       method: 'PUT',
       headers: {

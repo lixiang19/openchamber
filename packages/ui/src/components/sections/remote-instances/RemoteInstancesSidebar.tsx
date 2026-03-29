@@ -93,7 +93,7 @@ export const RemoteInstancesSidebar: React.FC<RemoteInstancesSidebarProps> = ({ 
       setSelectedId(id);
       onItemSelect?.();
     } catch (error) {
-      toast.error('Failed to create SSH instance', {
+      toast.error('创建 SSH 实例失败', {
         description: error instanceof Error ? error.message : String(error),
       });
     }
@@ -141,7 +141,7 @@ export const RemoteInstancesSidebar: React.FC<RemoteInstancesSidebarProps> = ({ 
               size="icon"
               className="h-7 w-7 -my-1 text-muted-foreground"
               onClick={() => void handleAdd()}
-              aria-label="Add SSH instance"
+              aria-label="添加 SSH 实例"
             >
               <RiAddLine className="size-4" />
             </Button>
@@ -193,7 +193,7 @@ export const RemoteInstancesSidebar: React.FC<RemoteInstancesSidebarProps> = ({ 
                 },
               },
               {
-                label: 'Remove',
+                label: '移除',
                 icon: RiDeleteBinLine,
                 destructive: true,
                 onClick: () => {

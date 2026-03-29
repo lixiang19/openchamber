@@ -172,7 +172,7 @@ export const ProjectActionsSection: React.FC<ProjectActionsSectionProps> = ({ pr
         primaryActionId: null,
       });
       if (!ok) {
-        toast.error('Failed to save actions');
+        toast.error('保存操作失败');
         return;
       }
       setInitialSnapshot(JSON.stringify({ actions }));
@@ -181,9 +181,9 @@ export const ProjectActionsSection: React.FC<ProjectActionsSectionProps> = ({ pr
           detail: { projectId: projectRef.id },
         }));
       }
-      toast.success('Project actions saved');
+      toast.success('项目操作已保存');
     } catch {
-      toast.error('Failed to save actions');
+      toast.error('保存操作失败');
     } finally {
       setIsSaving(false);
     }
@@ -200,7 +200,7 @@ export const ProjectActionsSection: React.FC<ProjectActionsSectionProps> = ({ pr
         </div>
         <Button type="button" variant="outline" size="xs" className="!font-normal" onClick={handleAddAction}>
           <RiAddLine className="h-3.5 w-3.5" />
-          Add action
+          添加操作
         </Button>
       </div>
 
@@ -267,7 +267,7 @@ export const ProjectActionsSection: React.FC<ProjectActionsSectionProps> = ({ pr
                               <button
                                 type="button"
                                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--interactive-border)] text-foreground hover:bg-[var(--interactive-hover)]"
-                                aria-label="Select icon"
+                                aria-label="选择图标"
                               >
                                 <SelectedIcon className="h-4 w-4" />
                               </button>
@@ -299,7 +299,7 @@ export const ProjectActionsSection: React.FC<ProjectActionsSectionProps> = ({ pr
                           <Input
                             value={action.name}
                             onChange={(event) => updateAction(action.id, (current) => ({ ...current, name: event.target.value }))}
-                            placeholder="Action name"
+                            placeholder="操作名称"
                             className="h-7 max-w-[14rem]"
                           />
                       </div>
@@ -344,7 +344,7 @@ export const ProjectActionsSection: React.FC<ProjectActionsSectionProps> = ({ pr
                               }))}
                               ariaLabel={`Auto-open URL for ${title}`}
                             />
-                            <span className="typography-ui-label font-normal text-foreground/80">Open URL from output or custom URL below</span>
+                            <span className="typography-ui-label font-normal text-foreground/80">从输出或下方自定义 URL 打开</span>
                           </div>
                         </div>
 
@@ -357,7 +357,7 @@ export const ProjectActionsSection: React.FC<ProjectActionsSectionProps> = ({ pr
                                   ...current,
                                   openUrl: event.target.value,
                                 }))}
-                                placeholder="Override URL (optional)"
+                                placeholder="覆盖 URL（可选）"
                                 className="h-7 w-full max-w-[24rem]"
                               />
                               <Tooltip delayDuration={1000}>
@@ -388,7 +388,7 @@ export const ProjectActionsSection: React.FC<ProjectActionsSectionProps> = ({ pr
                                     }}
                                   >
                                     <SelectTrigger className="h-7 w-full max-w-[30rem]">
-                                      <SelectValue placeholder="Use output/manual URL" />
+                                      <SelectValue placeholder="使用输出/手动 URL" />
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="__none__">Use output/manual URL</SelectItem>

@@ -41,7 +41,7 @@ export const usePwaInstallPrompt = () => {
       await promptEvent.prompt();
       const { outcome } = await promptEvent.userChoice;
       if (outcome === 'accepted') {
-        toast.success('Install started');
+        toast.success('安装已开始');
       }
     };
 
@@ -58,10 +58,10 @@ export const usePwaInstallPrompt = () => {
         return;
       }
 
-      installToastId = toast.info('Install Ridge for quicker access', {
+      installToastId = toast.info('安装 ridge 以快速访问', {
         duration: Infinity,
         action: {
-          label: 'Install',
+          label: '安装',
           onClick: () => {
             void triggerInstall();
           },
@@ -72,7 +72,7 @@ export const usePwaInstallPrompt = () => {
     const onAppInstalled = () => {
       deferredPrompt = null;
       dismissInstallToast();
-      toast.success('Ridge installed');
+      toast.success('ridge 已安装');
     };
 
     window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt as EventListener);

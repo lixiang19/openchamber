@@ -48,8 +48,8 @@ export const SettingsProjectSelector: React.FC<{ className?: string }> = ({ clas
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              aria-label="Switch project"
-              title="Switch project"
+              aria-label="切换项目"
+              title="切换项目"
               className={cn(
                 // Mirror Input sizing so headers align visually.
                 'text-foreground border border-border/80 appearance-none flex h-8 w-full min-w-0 rounded-lg bg-transparent px-3 py-1 outline-none',

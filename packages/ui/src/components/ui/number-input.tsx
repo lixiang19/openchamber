@@ -211,7 +211,7 @@ const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
         >
           <button
             type="button"
-            aria-label="Decrease value"
+            aria-label="减少值"
             disabled={decrementDisabled}
             onTouchStart={handleMobileTouchActivate(handleMobileDecrement)}
             onClick={handleMobileClickActivate(handleMobileDecrement)}
@@ -238,7 +238,7 @@ const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
 
           <button
             type="button"
-            aria-label="Increase value"
+            aria-label="增加值"
             disabled={incrementDisabled}
             onTouchStart={handleMobileTouchActivate(handleMobileIncrement)}
             onClick={handleMobileClickActivate(handleMobileIncrement)}
@@ -265,7 +265,7 @@ const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
       >
         <button
           type="button"
-          aria-label="Decrease value"
+          aria-label="减少值"
           disabled={decrementDisabled}
           onClick={() => commitValue(baseValue - step)}
           className={cn(
@@ -299,7 +299,7 @@ const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
         />
         <button
           type="button"
-          aria-label="Increase value"
+          aria-label="增加值"
           disabled={incrementDisabled}
           onClick={() => commitValue(baseValue + step)}
           className={cn(

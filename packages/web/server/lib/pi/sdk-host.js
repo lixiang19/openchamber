@@ -353,6 +353,19 @@ export const createPiSdkHost = () => {
     return true;
   };
 
+  const updateRecordThinkingLevel = (record, thinkingLevel) => {
+    const nextThinkingLevel = normalizeThinkingLevel(thinkingLevel);
+    if (!nextThinkingLevel) {
+      throw new Error('Invalid thinking level');
+    }
+    if (record.session.thinkingLevel === nextThinkingLevel) {
+      return false;
+    }
+    record.session.setThinkingLevel(nextThinkingLevel);
+    record.updatedAt = Date.now();
+    return true;
+  };
+
   const emitNotification = (record, level, message) => {
     emit({
       type: 'notification',
@@ -1060,7 +1073,7 @@ export const createPiSdkHost = () => {
       subscribers.add(listener);
       return () => subscribers.delete(listener);
     },
-    async createSession({ cwd, title, parentID } = {}) {
+    async createSession({ cwd, title, parentID, thinkingLevel } = {}) {
       const normalizedCwd = normalizeString(cwd) || process.cwd();
       const record = await createManagedSessionRecord({
         cwd: normalizedCwd,
@@ -1072,6 +1085,9 @@ export const createPiSdkHost = () => {
         updatedAt: Date.now(),
         persistTitle: true,
       });
+      if (thinkingLevel !== undefined) {
+        updateRecordThinkingLevel(record, thinkingLevel);
+      }
       emitEventEnvelope(record, 'pi_system', {
         kind: 'session_created',
         title: record.title,
@@ -1123,13 +1139,26 @@ export const createPiSdkHost = () => {
       const record = await ensureSessionLoaded(sessionId);
       return buildSessionSnapshot(record);
     },
-    async renameSession(sessionId, { title } = {}) {
+    async updateSession(sessionId, { title, thinkingLevel } = {}) {
       const record = await ensureSessionLoaded(sessionId);
-      const nextTitle = normalizeString(title);
-      if (!nextTitle) {
-        throw new Error('Session title is required');
+      let updated = false;
+
+      if (title !== undefined) {
+        const nextTitle = normalizeString(title);
+        if (!nextTitle) {
+          throw new Error('Session title is required');
+        }
+        updated = updateRecordSessionName(record, nextTitle, 'provided') || updated;
       }
-      updateRecordSessionName(record, nextTitle, 'provided');
+
+      if (thinkingLevel !== undefined) {
+        updated = updateRecordThinkingLevel(record, thinkingLevel) || updated;
+      }
+
+      if (!updated) {
+        throw new Error('No session fields to update');
+      }
+
       return buildSessionSnapshot(record);
     },
     async prompt(sessionId, { text, model, agent, images } = {}) {

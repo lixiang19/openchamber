@@ -328,7 +328,7 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
       <MobileOverlayPanel
         open={open}
         onClose={() => onOpenChange(false)}
-        title="Add project directory"
+        title="添加项目目录"
         className="max-w-full"
         contentMaxHeightClassName="max-h-[min(70vh,520px)] h-[min(70vh,520px)]"
         footer={<div className="flex flex-row gap-2">{renderActionButtons()}</div>}

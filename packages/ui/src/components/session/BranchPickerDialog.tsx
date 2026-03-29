@@ -386,7 +386,7 @@ export function BranchPickerDialog({ open, onOpenChange, project }: BranchPicker
                               onChange={(event) => setEditValue(event.target.value)}
                               className="flex-1 min-w-0 h-5 bg-transparent text-sm leading-none outline-none placeholder:text-muted-foreground"
                               autoFocus
-                              placeholder="Rename branch"
+                              placeholder="重命名分支"
                               onKeyDown={(event) => {
                                 if (event.key === 'Escape') {
                                   event.preventDefault();
@@ -440,7 +440,7 @@ export function BranchPickerDialog({ open, onOpenChange, project }: BranchPicker
                               onClick={() => void handleCreateWorktreeForBranch(branchName)}
                               disabled={disableCreateWorktree}
                               className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-interactive-hover/40 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                              aria-label="Create worktree"
+                              aria-label="创建工作树"
                             >
                               {isCreatingWorktree ? (
                                 <RiLoader4Line className="h-4 w-4 animate-spin" />
@@ -515,7 +515,7 @@ export function BranchPickerDialog({ open, onOpenChange, project }: BranchPicker
                           onClick={() => void commitRename(branchName)}
                           disabled={isRenaming}
                           className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-interactive-hover/40 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                          aria-label="Confirm rename"
+                          aria-label="确认重命名"
                         >
                           {isRenaming ? (
                             <RiLoader4Line className="h-4 w-4 animate-spin" />
@@ -527,7 +527,7 @@ export function BranchPickerDialog({ open, onOpenChange, project }: BranchPicker
                           type="button"
                           onClick={cancelRename}
                           className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-interactive-hover/40 text-muted-foreground hover:text-foreground transition-colors"
-                          aria-label="Cancel rename"
+                          aria-label="取消重命名"
                         >
                           <RiCloseLine className="h-4 w-4" />
                         </button>
@@ -552,7 +552,7 @@ export function BranchPickerDialog({ open, onOpenChange, project }: BranchPicker
                               ? 'bg-destructive/10 text-destructive hover:bg-destructive/15'
                               : 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'
                           )}
-                          aria-label="Confirm delete"
+                          aria-label="确认删除"
                         >
                           {isDeleting ? (
                             <RiLoader4Line className="h-4 w-4 animate-spin" />
@@ -564,7 +564,7 @@ export function BranchPickerDialog({ open, onOpenChange, project }: BranchPicker
                           type="button"
                           onClick={cancelDelete}
                           className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-interactive-hover/40 text-muted-foreground hover:text-foreground transition-colors"
-                          aria-label="Cancel delete"
+                          aria-label="取消删除"
                         >
                           <RiCloseLine className="h-4 w-4" />
                         </button>

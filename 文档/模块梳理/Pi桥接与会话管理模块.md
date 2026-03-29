@@ -240,13 +240,14 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
     index.js
         |
         v
-[2] PI_SDK_HOST.createSession({ cwd, title })
+[2] PI_SDK_HOST.createSession({ cwd, title, thinkingLevel })
     sdk-host.js
         |
         +--> SessionManager.create(cwd)
         +--> createAgentSession(..., sessionManager)
         +--> bind question/task/permission extension
   +--> 若调用方显式提供 title，则 session.setSessionName(title)
+  +--> 若调用方显式提供 thinkingLevel，则 session.setThinkingLevel(...)
         |
         v
 [3] emit session_created
@@ -255,6 +256,7 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
 [4] 返回完整 session snapshot
 ```
 
+- 新建会话允许在会话创建阶段显式写入 thinkingLevel，前端草稿状态不会再丢失到 SDK 默认值。
 - 新建会话明确落盘，不再依赖默认行为。
 - 未显式命名的新会话只会先占位创建；真正的人类可读标题在首条用户消息进入时由 Pi host 生成。
 - 会话建立后立即可出现在列表中，并能在后续重启后继续被列出。
@@ -318,7 +320,7 @@ packages/web/server/index.js
 
 packages/ui/src/lib/pi/client.ts
   -> /api/pi/sessions
-  -> /api/pi/sessions/:id
+  -> /api/pi/sessions/:id (title / thinkingLevel update)
   -> /api/pi/events
 
 packages/ui/src/stores/sessionStore.ts

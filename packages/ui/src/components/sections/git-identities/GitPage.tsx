@@ -105,7 +105,7 @@ export const GitPage: React.FC = () => {
       toast.success(`Profile "${deleteDialogProfile.name}" deleted`);
       setDeleteDialogProfile(null);
     } else {
-      toast.error('Failed to delete profile');
+      toast.error('删除配置文件失败');
     }
     setIsDeletePending(false);
   };
@@ -158,7 +158,7 @@ export const GitPage: React.FC = () => {
                 <div className="py-8 px-4 text-center text-muted-foreground">
                   <RiShieldKeyholeLine className="mx-auto mb-2 h-8 w-8 opacity-40" />
                   <p className="typography-ui-label">No identities configured</p>
-                  <p className="typography-meta mt-1 opacity-75">Create one to manage Git author settings per project</p>
+                  <p className="typography-meta mt-1 opacity-75">创建一个以按项目管理 Git 作者设置</p>
                 </div>
               )}
 
@@ -202,7 +202,7 @@ export const GitPage: React.FC = () => {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete Profile</DialogTitle>
+            <DialogTitle>删除配置文件</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete "{deleteDialogProfile?.name}"?
             </DialogDescription>

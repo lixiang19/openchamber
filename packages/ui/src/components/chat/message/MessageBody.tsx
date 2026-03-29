@@ -434,7 +434,7 @@ const UserMessageBody: React.FC<{
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6 text-muted-foreground bg-transparent hover:text-foreground hover:!bg-transparent active:!bg-transparent focus-visible:!bg-transparent focus-visible:ring-2 focus-visible:ring-primary/50"
-                                aria-label="Revert to this message"
+                                aria-label="还原到此消息"
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                     event.stopPropagation();
@@ -455,7 +455,7 @@ const UserMessageBody: React.FC<{
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6 text-muted-foreground bg-transparent hover:text-foreground hover:!bg-transparent active:!bg-transparent focus-visible:!bg-transparent focus-visible:ring-2 focus-visible:ring-primary/50"
-                                aria-label="Fork from this message"
+                                aria-label="从此消息分叉"
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                     event.stopPropagation();
@@ -477,7 +477,7 @@ const UserMessageBody: React.FC<{
                                 size="icon"
                                 data-visible={copyHintVisible || isMessageCopied ? 'true' : undefined}
                                 className="h-6 w-6 text-muted-foreground bg-transparent hover:text-foreground hover:!bg-transparent active:!bg-transparent focus-visible:!bg-transparent focus-visible:ring-2 focus-visible:ring-primary/50"
-                                aria-label="Copy message text"
+                                aria-label="复制消息文本"
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={handleCopyButtonClick}
                                 onFocus={() => setCopyHintVisible(true)}
@@ -1396,7 +1396,7 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
                                   !hasCopyableText && 'opacity-50'
                               )}
                               disabled={!hasCopyableText}
-                              aria-label="Copy message text"
+                              aria-label="复制消息文本"
                               aria-hidden={!hasCopyableText}
                               onPointerDown={(event) => event.stopPropagation()}
                               onClick={handleCopyButtonClick}

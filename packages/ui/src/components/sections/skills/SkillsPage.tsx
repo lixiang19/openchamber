@@ -424,7 +424,7 @@ const SkillsInstalledPage: React.FC = () => {
                 <Textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Brief description of what this skill does..."
+                  placeholder="此技能的简要描述..."
                   rows={2}
                   className="w-full resize-none min-h-[60px] max-h-32 bg-transparent"
                 />
@@ -446,7 +446,7 @@ const SkillsInstalledPage: React.FC = () => {
             <Textarea
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              placeholder="Step-by-step instructions, guidelines, or reference content..."
+              placeholder="分步说明、指南或参考内容..."
               className="min-h-[220px] max-h-[60vh] font-mono typography-meta"
             />
           </section>
@@ -470,7 +470,7 @@ const SkillsInstalledPage: React.FC = () => {
               if (filesToShow.length === 0) {
                 return (
                   <p className="typography-meta text-muted-foreground py-1.5">
-                    No supporting files. Use "Add File" to include reference materials.
+                    没有支持文件。使用"添加文件"来包含参考资料。
                   </p>
                 );
               }
@@ -533,7 +533,7 @@ const SkillsInstalledPage: React.FC = () => {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete Supporting File</DialogTitle>
+            <DialogTitle>删除支持文件</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete "{deleteFilePath}"?
             </DialogDescription>
@@ -595,7 +595,7 @@ const SkillsInstalledPage: React.FC = () => {
                 <Textarea
                   value={newFileContent}
                   onChange={(e) => setNewFileContent(e.target.value)}
-                  placeholder="File content..."
+                  placeholder="文件内容..."
                   outerClassName="h-[45vh] min-h-[250px] max-h-[55vh]"
                   className="h-full min-h-0 font-mono typography-meta"
                 />

@@ -36,7 +36,7 @@ export const MemoryDebugPanel: React.FC<MemoryDebugPanelProps> = ({ onClose }) =
       const memoryState = sessionMemoryState.get(session.id);
       return {
         id: session.id,
-        title: session.title || 'Untitled',
+        title: session.title || '未命名',
         messageCount,
         isStreaming: memoryState?.isStreaming || false,
         isZombie: memoryState?.isZombie || false,

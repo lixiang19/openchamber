@@ -289,7 +289,7 @@ export const ProjectNotesTodoPanel: React.FC<ProjectNotesTodoPanelProps> = ({
             onClick={handleAddTodo}
             disabled={isLoading || todoInputValue.trim().length === 0}
             className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-border/70 text-muted-foreground hover:text-foreground hover:bg-interactive-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Add todo"
+            aria-label="添加待办"
           >
             <RiAddLine className="h-4 w-4" />
           </button>

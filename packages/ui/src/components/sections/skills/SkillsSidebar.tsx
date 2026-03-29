@@ -220,7 +220,7 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({ onItemSelect }) =>
         {skills.length === 0 ? (
           <div className="py-12 px-4 text-center text-muted-foreground">
             <RiBookOpenLine className="mx-auto mb-3 h-10 w-10 opacity-50" />
-            <p className="typography-ui-label font-medium">No skills configured</p>
+            <p className="typography-ui-label font-medium">未配置技能</p>
             <p className="typography-meta mt-1 opacity-75">Use the + button above to create one</p>
           </div>
         ) : (
@@ -340,7 +340,7 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({ onItemSelect }) =>
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete Skill</DialogTitle>
+            <DialogTitle>删除技能</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete skill "{deleteDialogSkill?.name}"?
             </DialogDescription>
@@ -374,7 +374,7 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({ onItemSelect }) =>
           <Input
             value={renameNewName}
             onChange={(e) => setRenameNewName(e.target.value)}
-            placeholder="New skill name..."
+            placeholder="新技能名称..."
             className="text-foreground placeholder:text-muted-foreground"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {

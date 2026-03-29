@@ -965,7 +965,7 @@ export function DesktopHostSwitcherDialog({
               <Input
                 value={editLabel}
                 onChange={(e) => setEditLabel(e.target.value)}
-                placeholder="Label"
+                placeholder="标签"
                 disabled={isSaving}
               />
               <Input
@@ -1026,7 +1026,7 @@ export function DesktopHostSwitcherDialog({
               <Input
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
-                placeholder="Label (optional)"
+                placeholder="标签（可选）"
                 disabled={!tauriAvailable || isSaving}
               />
               <Input

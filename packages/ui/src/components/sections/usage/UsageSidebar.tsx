@@ -103,7 +103,7 @@ export const UsageSidebar: React.FC<UsageSidebarProps> = ({ onItemSelect }) => {
               disabled={!usageAutoRefresh}
             >
               <SelectTrigger className="w-fit">
-                <SelectValue placeholder="Interval" />
+                <SelectValue placeholder="间隔" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="30000">30s</SelectItem>
@@ -115,8 +115,8 @@ export const UsageSidebar: React.FC<UsageSidebarProps> = ({ onItemSelect }) => {
               variant="ghost"
               className="h-7 w-7 px-0 text-muted-foreground"
               onClick={() => fetchAllQuotas()}
-              aria-label="Refresh usage"
-              title="Refresh usage"
+              aria-label="刷新用量"
+              title="刷新用量"
               disabled={isLoading}
             >
               <RiRefreshLine className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
@@ -127,7 +127,7 @@ export const UsageSidebar: React.FC<UsageSidebarProps> = ({ onItemSelect }) => {
           <span className="typography-micro text-muted-foreground">Display</span>
           <Select value={usageDisplayMode} onValueChange={handleUsageDisplayModeChange}>
             <SelectTrigger className="w-fit">
-              <SelectValue placeholder="Display mode" />
+              <SelectValue placeholder="显示模式" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="usage">Usage</SelectItem>

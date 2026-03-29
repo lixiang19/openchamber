@@ -114,7 +114,7 @@ export const McpSidebar: React.FC<McpSidebarProps> = ({ onItemSelect }) => {
     if (success) {
       toast.success(`MCP server "${deleteTarget.name}" deleted`);
     } else {
-      toast.error('Failed to delete MCP server');
+      toast.error('删除 MCP 服务器失败');
     }
     setDeleteTarget(null);
     setIsDeleting(false);
@@ -133,7 +133,7 @@ export const McpSidebar: React.FC<McpSidebarProps> = ({ onItemSelect }) => {
             variant="ghost"
             className="h-7 w-7 px-0 -my-1 text-muted-foreground"
             onClick={handleCreateNew}
-            title="Add MCP server"
+            title="添加 MCP 服务器"
           >
             <RiAddLine className="h-3.5 w-3.5" />
           </Button>
@@ -300,7 +300,7 @@ export const McpSidebar: React.FC<McpSidebarProps> = ({ onItemSelect }) => {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete MCP Server</DialogTitle>
+            <DialogTitle>删除 MCP 服务器</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete "{deleteTarget?.name}"? This will remove it from{' '}
               <code className="text-foreground">opencode.json</code>.

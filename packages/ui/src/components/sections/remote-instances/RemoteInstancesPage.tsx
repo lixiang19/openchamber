@@ -613,7 +613,7 @@ export const RemoteInstancesPage: React.FC = () => {
 
     void operation
       .catch((error) => {
-        toast.error('Retry failed', {
+        toast.error('重试失败', {
           description: error instanceof Error ? error.message : String(error),
         });
       })
@@ -636,15 +636,15 @@ export const RemoteInstancesPage: React.FC = () => {
     (statusPhase === 'error' || statusPhase === 'idle' || !statusPhase || (isReconnecting && reconnectAppearsStuck)) &&
     !isConnecting;
 
-  const primaryButtonLabel = isReady ? 'Disconnect' : canDisconnect ? 'Cancel' : 'Connect';
+  const primaryButtonLabel = isReady ? '断开连接' : canDisconnect ? '取消' : '连接';
 
   if (!draft) {
     return (
       <SettingsPageLayout>
         <div className="mb-8">
           <div className="mb-1 px-1 space-y-0.5">
-            <h3 className="typography-ui-header font-medium text-foreground">Remote Instances</h3>
-            <p className="typography-meta text-muted-foreground">Manage SSH-backed OpenChamber instances.</p>
+            <h3 className="typography-ui-header font-medium text-foreground">远程实例</h3>
+            <p className="typography-meta text-muted-foreground">管理基于 SSH 的 ridge 实例。</p>
           </div>
           <section className="px-2 pb-2 pt-0 space-y-3">
             <p className="typography-meta text-muted-foreground">Select an instance from the sidebar or import one from SSH config.</p>
@@ -659,7 +659,7 @@ export const RemoteInstancesPage: React.FC = () => {
           {isImportsLoading ? (
             <p className="typography-meta text-muted-foreground">Loading SSH hosts...</p>
           ) : importCandidates.length === 0 ? (
-            <p className="typography-meta text-muted-foreground">No SSH config hosts found.</p>
+            <p className="typography-meta text-muted-foreground">未找到 SSH 配置主机。</p>
           ) : (
             <div className="space-y-2">
               {importCandidates.map((candidate) => (
@@ -697,7 +697,7 @@ export const RemoteInstancesPage: React.FC = () => {
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Create from wildcard pattern</DialogTitle>
+              <DialogTitle>从通配符模式创建</DialogTitle>
               <DialogDescription>
                 {patternHost ? `${patternHost} requires a concrete destination.` : 'Enter destination.'}
               </DialogDescription>
@@ -800,7 +800,7 @@ export const RemoteInstancesPage: React.FC = () => {
                     toast.success('SSH instance removed');
                   })
                   .catch((err) => {
-                    toast.error('Failed to remove SSH instance', {
+                    toast.error('移除 SSH 实例失败', {
                       description: err instanceof Error ? err.message : String(err),
                     });
                   });
@@ -850,7 +850,7 @@ export const RemoteInstancesPage: React.FC = () => {
                   nickname: event.target.value,
                 }))
               }
-              placeholder="Production Host"
+              placeholder="生产环境主机"
             />
           </div>
           <div className="flex flex-col gap-1.5 py-1.5 md:flex-row md:items-center md:gap-8">
@@ -882,7 +882,7 @@ export const RemoteInstancesPage: React.FC = () => {
           <div className="flex flex-col gap-1.5 py-1.5 md:flex-row md:items-center md:gap-8">
             <div className="w-56 shrink-0">
               <HintLabel
-                label="Mode"
+                label="模式"
                 hint="Managed installs/updates and starts OpenChamber remotely. External assumes it is already running."
               />
             </div>
@@ -899,7 +899,7 @@ export const RemoteInstancesPage: React.FC = () => {
               }
             >
               <SelectTrigger className="h-7 w-fit min-w-[140px]">
-                <SelectValue placeholder="Select mode" />
+                <SelectValue placeholder="选择模式" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="managed">Managed (auto start)</SelectItem>
@@ -911,7 +911,7 @@ export const RemoteInstancesPage: React.FC = () => {
           <div className="flex flex-col gap-1.5 py-1.5 md:flex-row md:items-center md:gap-8">
             <div className="w-56 shrink-0">
               <HintLabel
-                label="Preferred remote port"
+                label="首选远程端口"
                 hint="Port OpenChamber should use on the remote host. Leave empty to let the runtime choose."
               />
             </div>
@@ -968,7 +968,7 @@ export const RemoteInstancesPage: React.FC = () => {
                 }
               >
                 <SelectTrigger className="h-7 w-fit min-w-[140px]">
-                  <SelectValue placeholder="Select install method" />
+                  <SelectValue placeholder="选择安装方法" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="bun">bun</SelectItem>
@@ -984,7 +984,7 @@ export const RemoteInstancesPage: React.FC = () => {
             <div className="flex flex-col gap-1.5 py-1.5 md:flex-row md:items-center md:gap-8">
               <div className="w-56 shrink-0">
                 <HintLabel
-                  label="Keep server running"
+                  label="保持服务器运行"
                   hint="If enabled, OpenChamber daemon is left running remotely when you disconnect."
                 />
               </div>
@@ -1016,7 +1016,7 @@ export const RemoteInstancesPage: React.FC = () => {
           <div className="flex flex-col gap-1.5 py-1.5 md:flex-row md:items-center md:gap-8">
             <div className="w-56 shrink-0">
               <HintLabel
-                label="Bind host"
+                label="绑定主机"
                 hint="Network interface for the main local URL. Use 127.0.0.1/localhost for local-only access."
               />
             </div>
@@ -1039,7 +1039,7 @@ export const RemoteInstancesPage: React.FC = () => {
               }}
             >
               <SelectTrigger className="h-7 w-fit min-w-[140px]">
-                <SelectValue placeholder="Select bind host" />
+                <SelectValue placeholder="选择绑定主机" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="127.0.0.1">127.0.0.1</SelectItem>
@@ -1052,7 +1052,7 @@ export const RemoteInstancesPage: React.FC = () => {
           <div className="flex flex-col gap-1.5 py-1.5 md:flex-row md:items-center md:gap-8">
             <div className="w-56 shrink-0">
               <HintLabel
-                label="Preferred local port"
+                label="首选本地端口"
                 hint="Preferred local port for the main OpenChamber tunnel. Leave empty for auto-select."
               />
             </div>
@@ -1089,7 +1089,7 @@ export const RemoteInstancesPage: React.FC = () => {
                 variant="outline"
                 size="xs"
                 className="!font-normal h-7 w-7 px-0"
-                title="Pick random port"
+                title="随机选择端口"
                 onClick={() =>
                   updateDraft((current) => ({
                     ...current,
@@ -1132,7 +1132,7 @@ export const RemoteInstancesPage: React.FC = () => {
                   },
                 }))
               }
-              placeholder="Password or key passphrase"
+              placeholder="密码或密钥密码"
             />
           </div>
 
@@ -1155,7 +1155,7 @@ export const RemoteInstancesPage: React.FC = () => {
                   },
                 }))
               }
-              placeholder="Protect remote UI with password"
+              placeholder="使用密码保护远程UI"
             />
           </div>
         </section>
@@ -1223,7 +1223,7 @@ export const RemoteInstancesPage: React.FC = () => {
                     </CollapsibleTrigger>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Switch checked={forward.enabled} onCheckedChange={(checked) => updateForward((item) => ({ ...item, enabled: checked }))} aria-label="Enable forward" />
+                    <Switch checked={forward.enabled} onCheckedChange={(checked) => updateForward((item) => ({ ...item, enabled: checked }))} aria-label="启用转发" />
                     <Button
                       type="button"
                       variant="ghost"
@@ -1260,7 +1260,7 @@ export const RemoteInstancesPage: React.FC = () => {
                         }
                       >
                         <SelectTrigger className="h-7 w-fit min-w-[140px]">
-                          <SelectValue placeholder="Type" />
+                          <SelectValue placeholder="类型" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="local">Local (-L)</SelectItem>
@@ -1394,7 +1394,7 @@ export const RemoteInstancesPage: React.FC = () => {
                           onClick={() => {
                             void openExternalUrl(localEndpointUrl).then((opened) => {
                               if (!opened) {
-                                toast.error('Failed to open local endpoint');
+                                toast.error('打开本地端点失败');
                               }
                             });
                           }}
@@ -1553,7 +1553,7 @@ export const RemoteInstancesPage: React.FC = () => {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Create from wildcard pattern</DialogTitle>
+            <DialogTitle>从通配符模式创建</DialogTitle>
             <DialogDescription>
               {patternHost ? `${patternHost} requires a concrete destination.` : 'Enter destination.'}
             </DialogDescription>

@@ -65,7 +65,7 @@ export const GitHubSettings: React.FC = () => {
           await refreshStatus(runtimeGitHub);
         }
       } catch (error) {
-        console.warn('Failed to load GitHub auth status:', error);
+        console.warn('加载 GitHub 授权状态失败:', error);
       }
     })();
     return () => {
@@ -100,8 +100,8 @@ export const GitHubSettings: React.FC = () => {
       const url = payload.verificationUriComplete || payload.verificationUri;
       void openExternal(url);
     } catch (error) {
-      console.error('Failed to start GitHub connect:', error);
-      toast.error('Failed to start GitHub connect');
+      console.error('启动 GitHub 连接失败:', error);
+      toast.error('启动 GitHub 连接失败');
     } finally {
       setIsBusy(false);
     }
@@ -187,7 +187,7 @@ export const GitHubSettings: React.FC = () => {
           throw new Error(response.statusText);
         }
       }
-      toast.success('GitHub disconnected');
+      toast.success('GitHub 已断开连接');
       await refreshStatus(runtimeGitHub, { force: true });
     } catch (error) {
       console.error('Failed to disconnect GitHub:', error);
@@ -223,7 +223,7 @@ export const GitHubSettings: React.FC = () => {
       toast.success('GitHub account switched');
     } catch (error) {
       console.error('Failed to switch GitHub account:', error);
-      toast.error('Failed to switch GitHub account');
+      toast.error('切换 GitHub 账号失败');
     } finally {
       setIsBusy(false);
     }
@@ -247,7 +247,7 @@ export const GitHubSettings: React.FC = () => {
               <RiInformationLine className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
             </TooltipTrigger>
             <TooltipContent sideOffset={8} className="max-w-xs">
-              Connect a GitHub account for in-app PR and issue workflows.
+              连接 GitHub 账号以在应用内使用 PR 和 issue 工作流。
             </TooltipContent>
           </Tooltip>
         </div>
@@ -286,13 +286,13 @@ export const GitHubSettings: React.FC = () => {
             </div>
 
             <Button size="sm" variant="outline" onClick={disconnect} disabled={isBusy} className={cn("text-[var(--status-error)] hover:text-[var(--status-error)]", isMobile ? "w-full" : undefined)}>
-              Disconnect
+              断开连接
             </Button>
           </div>
         ) : (
           <div className="flex items-center justify-between gap-4 px-4 py-4">
             <div className="flex min-w-0 flex-col">
-              <span className="typography-ui-label text-foreground">Not Connected</span>
+              <span className="typography-ui-label text-foreground">未连接</span>
             </div>
             <Button size="sm" variant="default" onClick={startConnect} disabled={isBusy}>
               Connect GitHub
@@ -302,7 +302,7 @@ export const GitHubSettings: React.FC = () => {
 
         {accounts.length > 1 && (
           <div className="mt-2 border-t border-[var(--surface-subtle)] pt-2 px-2 pb-1">
-            <div className="typography-micro text-muted-foreground mb-2 px-1">Other Accounts</div>
+            <div className="typography-micro text-muted-foreground mb-2 px-1">其他账号</div>
             <div className="space-y-1">
               {accounts.map((account) => {
                 const accountUser = account.user;
@@ -316,7 +316,7 @@ export const GitHubSettings: React.FC = () => {
                       {accountUser?.avatarUrl ? (
                         <img
                           src={accountUser.avatarUrl}
-                          alt={accountUser.login ? `${accountUser.login} avatar` : 'GitHub avatar'}
+                          alt={accountUser.login ? `${accountUser.login} avatar` : 'GitHub 头像'}
                           className="h-6 w-6 shrink-0 rounded-full border border-[var(--interactive-border)] bg-[var(--surface-muted)] object-cover"
                           loading="lazy"
                           referrerPolicy="no-referrer"
@@ -345,7 +345,7 @@ export const GitHubSettings: React.FC = () => {
                         onClick={() => activateAccount(account.id)}
                         disabled={isBusy}
                       >
-                        Switch to
+                        切换到
                       </Button>
                     )}
                   </div>
@@ -375,7 +375,7 @@ export const GitHubSettings: React.FC = () => {
           <div className="space-y-1">
             <h4 className="typography-ui-label text-foreground">Authorize OpenChamber</h4>
             <p className="typography-meta text-muted-foreground">
-              In GitHub, enter the following code to authorize this device:
+              在 GitHub 中，输入以下代码以授权此设备：
             </p>
           </div>
           <div className="flex items-center justify-between gap-3 mt-4">
@@ -386,19 +386,19 @@ export const GitHubSettings: React.FC = () => {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Open GitHub
+                打开 GitHub
               </a>
             </Button>
           </div>
           <div className="mt-4 flex items-center justify-between">
             <span className="typography-micro text-muted-foreground animate-pulse">
-              Waiting for approval… (auto-refresh)
+              等待批准…（自动刷新）
             </span>
             <Button size="sm" variant="ghost" disabled={isBusy} onClick={() => {
               stopPolling();
               setFlow(null);
             }}>
-              Cancel
+              取消
             </Button>
           </div>
         </div>

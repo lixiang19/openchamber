@@ -54,8 +54,10 @@ import { isDesktopShell } from '@/lib/desktop';
 import { getAgentColor } from '@/lib/agentColors';
 import { useDeviceInfo } from '@/lib/device';
 import { getEditModeColors } from '@/lib/permissions/editModeColors';
+import { piClient } from '@/lib/pi/client';
 import { cn, fuzzyMatch } from '@/lib/utils';
 import { useContextStore } from '@/stores/contextStore';
+import { useSessionManagementStore } from '@/stores/sessionStore';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useUIStore } from '@/stores/useUIStore';
@@ -315,7 +317,6 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
         setCurrentVariant,
         getCurrentModelVariants,
         setAgent,
-        setSettingsDefaultThinkingLevel,
         getCurrentProvider,
         getModelMetadata,
         getCurrentAgent,
@@ -335,6 +336,8 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
 
     const {
         currentSessionId,
+        newSessionDraft,
+        setNewSessionDraftThinkingLevel,
         messages,
         saveSessionAgentSelection,
         saveAgentModelForSession,
@@ -1077,21 +1080,18 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
     ]);
 
     const handleThinkingLevelChange = React.useCallback(async (level: typeof THINKING_LEVELS[number]['value']) => {
-        const newValue = level === 'off' ? undefined : level;
-        setSettingsDefaultThinkingLevel(newValue);
-
         try {
-            const { updateDesktopSettings } = await import('@/lib/persistence');
-            await updateDesktopSettings({ defaultThinkingLevel: newValue });
-            await fetch('/api/config/settings', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ defaultThinkingLevel: newValue }),
-            });
+            if (currentSessionId) {
+                const snapshot = await piClient.updateSession(currentSessionId, { thinkingLevel: level });
+                useSessionManagementStore.getState().setPiSessionSnapshot(snapshot);
+                return;
+            }
+
+            setNewSessionDraftThinkingLevel(level);
         } catch (error) {
             console.warn('Failed to save thinking level:', error);
         }
-    }, [setSettingsDefaultThinkingLevel]);
+    }, [currentSessionId, setNewSessionDraftThinkingLevel]);
 
     const handleAgentChange = (agentName: string) => {
         try {
@@ -1515,7 +1515,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
             <MobileOverlayPanel
                 open={activeMobilePanel === 'model'}
                 onClose={closeMobilePanel}
-                title="Select model"
+                title="选择模型"
             >
                 <div className="flex flex-col gap-2">
                     <div>
@@ -1532,7 +1532,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                                     type="button"
                                     onClick={() => setMobileModelQuery('')}
                                     className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                                    aria-label="Clear search"
+                                    aria-label="清除搜索"
                                 >
                                     <RiCloseCircleLine className="h-4 w-4" />
                                 </button>
@@ -1744,7 +1744,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                                                                 : "text-muted-foreground"
                                                         )}
                                                         aria-label={isFavoriteModel(provider.id as string, model.id as string) ? "Unfavorite" : "Favorite"}
-                                                        title={isFavoriteModel(provider.id as string, model.id as string) ? "Remove from favorites" : "Add to favorites"}
+                                                        title={isFavoriteModel(provider.id as string, model.id as string) ? "Remove from favorites" : "添加到收藏"}
                                                     >
                                                         {isFavoriteModel(provider.id as string, model.id as string) ? (
                                                             <RiStarFill className="h-4 w-4" />
@@ -1789,7 +1789,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
             <MobileOverlayPanel
                 open={activeMobilePanel === 'variant'}
                 onClose={closeMobilePanel}
-                title="Thinking"
+                title="思考"
             >
                 <div className="flex flex-col gap-1.5">
                     <button
@@ -2090,7 +2090,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                             isFavorite ? "text-primary" : "text-muted-foreground"
                         )}
                         aria-label={isFavorite ? "Unfavorite" : "Favorite"}
-                        title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                        title={isFavorite ? "Remove from favorites" : "添加到收藏"}
                     >
                         {isFavorite ? (
                             <RiStarFill className="h-3.5 w-3.5" />
@@ -2667,7 +2667,9 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
     const renderThinkingLevelSelector = () => {
         // 优先显示当前 pi 会话的 thinking level，如果没有会话则显示当前 agent 的默认 thinking
         const currentLevel = currentSessionThinkingLevel
+            ?? newSessionDraft?.thinkingLevel
             ?? currentAgent?.thinking
+            ?? settingsDefaultThinkingLevel
             ?? 'off';
         const isOff = currentLevel === 'off';
 
@@ -2751,7 +2753,9 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
 
         // 优先显示当前 pi 会话的 thinking level，如果没有会话则显示当前 agent 的默认 thinking
         const currentLevel = currentSessionThinkingLevel
+            ?? newSessionDraft?.thinkingLevel
             ?? currentAgent?.thinking
+            ?? settingsDefaultThinkingLevel
             ?? 'off';
 
         const handleSelect = (level: typeof THINKING_LEVELS[number]['value']) => {
@@ -2773,7 +2777,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
             <MobileOverlayPanel
                 open={activeMobilePanel === 'thinking'}
                 onClose={closeMobilePanel}
-                title="Thinking Level"
+                title="思考级别"
             >
                 <div className="flex flex-col gap-1.5">
                     {THINKING_LEVELS.map((level) => {

@@ -192,7 +192,7 @@ const SessionFolderItemBase = <TSessionNode,>({
                 onChange={(event) => handleDraftChange(event.target.value)}
                 className="flex-1 min-w-0 bg-transparent typography-ui-label outline-none placeholder:text-muted-foreground"
                 autoFocus
-                placeholder="Folder name"
+                placeholder="文件夹名称"
                 onClick={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}
                 onMouseDown={(event) => event.stopPropagation()}
@@ -281,7 +281,7 @@ const SessionFolderItemBase = <TSessionNode,>({
                   }}
                   className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-interactive-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                   aria-label={`New sub-folder in ${folder.name}`}
-                  title="New sub-folder"
+                  title="新建子文件夹"
                 >
                   <RiFolderAddLine className="h-3.5 w-3.5" />
                 </button>

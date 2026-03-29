@@ -432,7 +432,7 @@ const ImagePreviewDialog: React.FC<{
                         onMouseDown={(event) => event.stopPropagation()}
                         onClick={showPrevious}
                         className="absolute left-3 top-1/2 -translate-y-1/2 z-10 h-10 w-10 flex items-center justify-center rounded-full bg-black/25 text-foreground/90 backdrop-blur-sm hover:bg-black/35 focus:outline-none focus:ring-2 focus:ring-primary/60"
-                        aria-label="Previous image"
+                        aria-label="上一张图片"
                     >
                         <RiArrowLeftSLine className="h-6 w-6" />
                     </button>
@@ -441,7 +441,7 @@ const ImagePreviewDialog: React.FC<{
                         onMouseDown={(event) => event.stopPropagation()}
                         onClick={showNext}
                         className="absolute right-3 top-1/2 -translate-y-1/2 z-10 h-10 w-10 flex items-center justify-center rounded-full bg-black/25 text-foreground/90 backdrop-blur-sm hover:bg-black/35 focus:outline-none focus:ring-2 focus:ring-primary/60"
-                        aria-label="Next image"
+                        aria-label="下一张图片"
                     >
                         <RiArrowRightSLine className="h-6 w-6" />
                     </button>
@@ -470,7 +470,7 @@ const ImagePreviewDialog: React.FC<{
                             type="button"
                             className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/80 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/60"
                             onClick={() => onOpenChange(false)}
-                            aria-label="Close image preview"
+                            aria-label="关闭图片预览"
                         >
                             <RiCloseLine className="h-4 w-4" />
                         </button>
@@ -916,7 +916,7 @@ const MermaidPreviewDialog: React.FC<{
                             type="button"
                             className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/80 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/60"
                             onClick={() => onOpenChange(false)}
-                            aria-label="Close diagram preview"
+                            aria-label="关闭图表预览"
                         >
                             <RiCloseLine className="h-4 w-4" />
                         </button>

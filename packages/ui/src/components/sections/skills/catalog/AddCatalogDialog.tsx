@@ -172,7 +172,7 @@ export const AddCatalogDialog: React.FC<AddCatalogDialogProps> = ({ open, onOpen
     const count = result.items?.length || 0;
     setScanCount(count);
     if (count === 0) {
-      toast.error('No skills found in this repository');
+      toast.error('此仓库中未找到技能');
       setScanOk(false);
       return;
     }
@@ -232,7 +232,7 @@ export const AddCatalogDialog: React.FC<AddCatalogDialogProps> = ({ open, onOpen
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl" keyboardAvoid>
         <DialogHeader>
-          <DialogTitle>Add skills catalog</DialogTitle>
+          <DialogTitle>添加技能目录</DialogTitle>
           <DialogDescription>
             Add a Git repository as a new catalog source. OpenChamber will scan it for folders containing <code className="font-mono">SKILL.md</code>.
           </DialogDescription>

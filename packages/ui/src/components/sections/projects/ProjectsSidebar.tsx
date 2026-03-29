@@ -36,21 +36,21 @@ export const ProjectsSidebar: React.FC<{ onItemSelect?: () => void }> = ({ onIte
         if (result.success && result.path) {
           const added = addProject(result.path, { id: result.projectId });
           if (!added) {
-            toast.error('Failed to add project', {
+            toast.error('添加项目失败', {
               description: 'Please select a valid directory.',
             });
             return;
           }
           setSelectedId(added.id);
         } else if (result.error && result.error !== '目录选择已取消') {
-          toast.error('Failed to select directory', {
+          toast.error('选择目录失败', {
             description: result.error,
           });
         }
       })
       .catch((error) => {
         console.error('Failed to select directory:', error);
-        toast.error('Failed to select directory');
+        toast.error('选择目录失败');
       });
   }, [addProject, setSelectedId, tauriIpcAvailable]);
 
@@ -84,7 +84,7 @@ export const ProjectsSidebar: React.FC<{ onItemSelect?: () => void }> = ({ onIte
                     size="icon"
                     className="h-7 w-7 -my-1 text-muted-foreground"
                     onClick={() => setCreateProjectDialogOpen(true)}
-                    aria-label="Create project"
+                    aria-label="创建项目"
                   >
                     <RiAddLine className="size-4" />
                   </Button>
@@ -94,7 +94,7 @@ export const ProjectsSidebar: React.FC<{ onItemSelect?: () => void }> = ({ onIte
                     size="icon"
                     className="h-7 w-7 -my-1 text-muted-foreground"
                     onClick={handleAddProject}
-                    aria-label="Add project"
+                    aria-label="添加项目"
                   >
                     <RiFolderAddLine className="size-4" />
                   </Button>

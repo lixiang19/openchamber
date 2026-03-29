@@ -302,7 +302,7 @@ export const TodoView: React.FC = () => {
             onClick={() => void loadTodos()}
             disabled={isLoading || !currentDirectory.trim()}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--interactive-border)] bg-transparent text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Reload project todo file"
+            aria-label="重新加载项目待办文件"
           >
             {isLoading ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiRefreshLine className="h-4 w-4" />}
           </button>
@@ -318,7 +318,7 @@ export const TodoView: React.FC = () => {
                 void handleAddTodo();
               }
             }}
-            placeholder="Add the next concrete task"
+            placeholder="添加下一个具体任务"
             disabled={disableEditing || isSaving}
             className="h-8 bg-[var(--surface-elevated)]"
           />
@@ -439,7 +439,7 @@ export const TodoView: React.FC = () => {
                       onClick={() => handleSendToCurrentChat(item)}
                       disabled={!currentSessionId}
                       className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
-                      aria-label={`Send ${item.text} to current chat`}
+                      aria-label={`发送 ${item.text} 到当前聊天`}
                     >
                       <RiSendPlaneLine className="h-3.5 w-3.5" />
                     </button>
@@ -448,7 +448,7 @@ export const TodoView: React.FC = () => {
                       type="button"
                       onClick={() => void handleDeleteTodo(item.id)}
                       className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)]"
-                      aria-label={`Delete ${item.text}`}
+                      aria-label={`删除 ${item.text}`}
                     >
                       <RiDeleteBinLine className="h-3.5 w-3.5" />
                     </button>

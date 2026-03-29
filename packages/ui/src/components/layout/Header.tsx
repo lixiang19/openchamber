@@ -369,7 +369,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [isMobileRateLimitsOpen, setIsMobileRateLimitsOpen] = React.useState(false);
   const [isDesktopServicesOpen, setIsDesktopServicesOpen] = React.useState(false);
   const [isUsageRefreshSpinning, setIsUsageRefreshSpinning] = React.useState(false);
-  const [currentInstanceLabel, setCurrentInstanceLabel] = React.useState('Local');
+  const [currentInstanceLabel, setCurrentInstanceLabel] = React.useState('本地');
   const compactCurrentInstanceLabel = React.useMemo(() => formatCompactHeaderLabel(currentInstanceLabel), [currentInstanceLabel]);
   const [desktopServicesTab, setDesktopServicesTab] = React.useState<'instance' | 'usage' | 'mcp'>(
     isDesktopApp ? 'instance' : 'usage'
@@ -420,7 +420,7 @@ export const Header: React.FC<HeaderProps> = ({
         return;
       }
 
-      setCurrentInstanceLabel('Instance');
+      setCurrentInstanceLabel('实例');
     } catch {
       setCurrentInstanceLabel('Local');
     }
@@ -1068,13 +1068,13 @@ export const Header: React.FC<HeaderProps> = ({
       ];
 
       if (showPlanTab) {
-        base.push({ id: 'plan', label: 'Plan', icon: RiFileTextLine });
+        base.push({ id: 'plan', label: '计划', icon: RiFileTextLine });
       }
 
       base.push(
-        { id: 'diff', label: 'Diff', icon: 'diff' },
-        { id: 'files', label: 'Files', icon: RiFolder6Line },
-        { id: 'terminal', label: 'Terminal', icon: RiTerminalBoxLine },
+        { id: 'diff', label: '差异', icon: 'diff' },
+        { id: 'files', label: '文件', icon: RiFolder6Line },
+        { id: 'terminal', label: '终端', icon: RiTerminalBoxLine },
       );
 
       return base;
@@ -1097,10 +1097,10 @@ export const Header: React.FC<HeaderProps> = ({
   const servicesTabs = React.useMemo(() => {
     const base: Array<{ value: 'instance' | 'usage' | 'mcp'; label: string; icon: RemixiconComponentType }> = [];
     if (isDesktopApp) {
-      base.push({ value: 'instance', label: 'Instance', icon: RiServerLine });
+      base.push({ value: 'instance', label: '实例', icon: RiServerLine });
     }
     base.push(
-      { value: 'usage', label: 'Usage', icon: RiTimerLine },
+      { value: 'usage', label: '用量', icon: RiTimerLine },
       { value: 'mcp', label: 'MCP', icon: McpIcon as unknown as RemixiconComponentType }
     );
     return base;
@@ -1116,8 +1116,8 @@ export const Header: React.FC<HeaderProps> = ({
 
   const quotaDisplayTabs = React.useMemo(() => {
     return [
-      { value: 'usage' as const, label: 'Used' },
-      { value: 'remaining' as const, label: 'Remaining' },
+      { value: 'usage' as const, label: '已用' },
+      { value: 'remaining' as const, label: '剩余' },
     ];
   }, []);
 
@@ -1127,7 +1127,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const mobileServicesTabItems = React.useMemo<SortableTabsStripItem[]>(() => {
     return [
-      { id: 'usage', label: 'Usage', icon: <RiTimerLine className="h-3.5 w-3.5" /> },
+      { id: 'usage', label: '用量', icon: <RiTimerLine className="h-3.5 w-3.5" /> },
       { id: 'mcp', label: 'MCP', icon: <RiCommandLine className="h-3.5 w-3.5" /> },
     ];
   }, []);
@@ -1363,7 +1363,7 @@ export const Header: React.FC<HeaderProps> = ({
           <TooltipTrigger asChild>
             <button
               type="button"
-              aria-label="Open plan"
+              aria-label="打开计划"
               onClick={handleOpenContextPlan}
               className={cn(desktopHeaderIconButtonClass, isContextPlanActive && 'bg-[var(--interactive-hover)]')}
             >
@@ -1410,7 +1410,7 @@ export const Header: React.FC<HeaderProps> = ({
           </TooltipTrigger>
           <TooltipContent>
             <p>
-              {isDesktopApp ? `Current instance: ${currentInstanceLabel}` : 'Services'} ({shortcutLabel('toggle_services_menu')}; next tab {shortcutLabel('cycle_services_tab')})
+              {isDesktopApp ? `当前实例: ${currentInstanceLabel}` : '服务'} ({shortcutLabel('toggle_services_menu')}; next tab {shortcutLabel('cycle_services_tab')})
             </p>
           </TooltipContent>
         </Tooltip>
@@ -1628,7 +1628,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={toggleBottomTerminal}
-            aria-label="Toggle terminal panel"
+            aria-label="切换终端面板"
             className={desktopHeaderIconButtonClass}
           >
             <RiTerminalBoxLine className="h-[18px] w-[18px]" />
@@ -1702,7 +1702,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>New session ({shortcutLabel('new_chat')})</p>
+              <p>新建会话 ({shortcutLabel('new_chat')})</p>
             </TooltipContent>
           </Tooltip>
         ) : null}
@@ -1926,7 +1926,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      aria-label="View services"
+                      aria-label="查看服务"
                       className={mobileHeaderIconButtonClass}
                     >
                       <RiStackLine className="h-5 w-5" />

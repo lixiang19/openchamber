@@ -34,7 +34,7 @@ export const AIHighlightsBox: React.FC<AIHighlightsBoxProps> = ({
               size="icon"
               className="size-6"
               onClick={handleInsert}
-              aria-label="Insert highlights into commit message"
+              aria-label="将亮点插入提交消息"
             >
               <RiArrowDownLine className="size-4" />
             </Button>

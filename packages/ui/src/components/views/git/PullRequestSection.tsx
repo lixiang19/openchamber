@@ -1219,7 +1219,7 @@ export const PullRequestSection: React.FC<{
       scheduleActionRefresh();
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      toast.error('Merge failed', { description: message });
+      toast.error('合并失败', { description: message });
       if (pr.url) {
         void openExternal(pr.url);
       }
@@ -1326,12 +1326,12 @@ export const PullRequestSection: React.FC<{
                     type="button"
                     className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-border/60 bg-background/70 hover:bg-interactive-hover/60"
                     onClick={() => void openExternal(pr.url)}
-                    aria-label="Open PR on GitHub"
+                    aria-label="在 GitHub 中打开 PR"
                   >
                     <PrStateIcon className="size-4 shrink-0" style={{ color: prColorVar }} />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent><p>Open PR on GitHub</p></TooltipContent>
+                <TooltipContent><p>在 GitHub 中打开 PR</p></TooltipContent>
               </Tooltip>
             ) : (
               <PrStateIcon className="size-4 shrink-0" style={{ color: 'var(--surface-muted-foreground)' }} />
@@ -1435,7 +1435,7 @@ export const PullRequestSection: React.FC<{
                         <Input
                           value={editTitle}
                           onChange={(e) => setEditTitle(e.target.value)}
-                          placeholder="PR title"
+                          placeholder="PR 标题"
                           autoCorrect={hasTouchInput ? "on" : "off"}
                           autoCapitalize={hasTouchInput ? "sentences" : "off"}
                           spellCheck={hasTouchInput}
@@ -1444,7 +1444,7 @@ export const PullRequestSection: React.FC<{
                           value={editBody}
                           onChange={(e) => setEditBody(e.target.value)}
                           className="min-h-[120px] bg-background/80"
-                          placeholder="Describe this PR"
+                          placeholder="描述此 PR"
                           autoCorrect={hasTouchInput ? "on" : "off"}
                           autoCapitalize={hasTouchInput ? "sentences" : "off"}
                           spellCheck={hasTouchInput}
@@ -1467,11 +1467,11 @@ export const PullRequestSection: React.FC<{
                     )}
                     {canMerge && pr.draft ? (
                       <div className="typography-micro text-muted-foreground">
-                        Draft PRs must be marked ready before merge.
+                        草稿 PR 必须先标记为就绪才能合并。
                       </div>
                     ) : null}
                     {!canMerge ? (
-                      <div className="typography-micro text-muted-foreground">No merge permission; use Open in GitHub.</div>
+                      <div className="typography-micro text-muted-foreground">没有合并权限；请在 GitHub 中打开。</div>
                     ) : null}
                   </div>
 
@@ -1492,12 +1492,12 @@ export const PullRequestSection: React.FC<{
                                     setEditBody(pr.body || '');
                                   }}
                                   disabled={isUpdating}
-                                  aria-label="Cancel editing"
+                                  aria-label="取消编辑"
                                 >
                                   <RiCloseLine className="size-4" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent><p>Cancel editing</p></TooltipContent>
+                              <TooltipContent><p>取消编辑</p></TooltipContent>
                             </Tooltip>
                             <Tooltip delayDuration={300}>
                               <TooltipTrigger asChild>
@@ -1506,12 +1506,12 @@ export const PullRequestSection: React.FC<{
                                   className="h-7 w-7 px-0"
                                   onClick={() => updatePr(pr)}
                                   disabled={isUpdating || !editTitle.trim()}
-                                  aria-label="Save PR title and description"
+                                  aria-label="保存 PR 标题和描述"
                                 >
                                   {isUpdating ? <RiLoader4Line className="size-4 animate-spin" /> : <RiCheckLine className="size-4" />}
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent><p>Save PR title and description</p></TooltipContent>
+                              <TooltipContent><p>保存 PR 标题和描述</p></TooltipContent>
                             </Tooltip>
                           </>
                         ) : (
@@ -1522,12 +1522,12 @@ export const PullRequestSection: React.FC<{
                                 size="sm"
                                 className="h-7 w-7 px-0"
                                 onClick={() => setIsEditingPr(true)}
-                                aria-label="Edit PR title and description"
+                                aria-label="编辑 PR 标题和描述"
                               >
                                 <RiEditLine className="size-4" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent><p>Edit PR title and description</p></TooltipContent>
+                            <TooltipContent><p>编辑 PR 标题和描述</p></TooltipContent>
                           </Tooltip>
                         )
                       ) : null}
@@ -1541,12 +1541,12 @@ export const PullRequestSection: React.FC<{
                               className="h-7 w-7 px-0"
                               onClick={openChecksDialog}
                               disabled={isLoadingCheckDetails}
-                              aria-label="Open checks details"
+                              aria-label="打开检查详情"
                             >
                               {isLoadingCheckDetails ? <RiLoader4Line className="size-4 animate-spin" /> : <RiInformationLine className="size-4" />}
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent><p>Open checks details</p></TooltipContent>
+                          <TooltipContent><p>打开检查详情</p></TooltipContent>
                         </Tooltip>
                       ) : null}
 
@@ -1558,12 +1558,12 @@ export const PullRequestSection: React.FC<{
                               size="sm"
                               className="h-7 w-7 px-0 border-[var(--status-success-border)] bg-[var(--status-success-background)] text-[var(--status-success)]"
                               onClick={sendFailedChecksToChat}
-                              aria-label="Resolve failed checks with agent"
+                              aria-label="使用智能体解决失败的检查"
                             >
                               <RiErrorWarningLine className="size-4" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent><p>Resolve failed checks with agent</p></TooltipContent>
+                          <TooltipContent><p>使用智能体解决失败的检查</p></TooltipContent>
                         </Tooltip>
                       ) : null}
 
@@ -1574,12 +1574,12 @@ export const PullRequestSection: React.FC<{
                             size="sm"
                             className="h-7 w-7 px-0"
                             onClick={openCommentsDialog}
-                            aria-label="Open PR comments"
+                            aria-label="打开 PR 评论"
                           >
                             <RiChat4Line className="size-4" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent><p>Open PR comments</p></TooltipContent>
+                        <TooltipContent><p>打开 PR 评论</p></TooltipContent>
                       </Tooltip>
 
                       <Tooltip delayDuration={300}>
@@ -1589,12 +1589,12 @@ export const PullRequestSection: React.FC<{
                             size="sm"
                             className="h-7 w-7 px-0 border-[var(--status-success-border)] bg-[var(--status-success-background)] text-[var(--status-success)]"
                             onClick={sendCommentsToChat}
-                            aria-label="Share comments with agent"
+                            aria-label="与智能体分享评论"
                           >
                             <RiAiGenerate2 className="size-4" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent><p>Share comments with agent</p></TooltipContent>
+                        <TooltipContent><p>与智能体分享评论</p></TooltipContent>
                       </Tooltip>
 
                       {canMerge && pr.draft && pr.state === 'open' ? (
@@ -1606,12 +1606,12 @@ export const PullRequestSection: React.FC<{
                               className="h-7 w-7 px-0"
                               onClick={() => markReady(pr)}
                               disabled={isMarkingReady || isMerging || isUpdating || isEditingPr}
-                              aria-label="Mark PR ready for review"
+                              aria-label="标记 PR 准备就绪以供审查"
                             >
                               {isMarkingReady ? <RiLoader4Line className="size-4 animate-spin" /> : <RiCheckboxCircleLine className="size-4" />}
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent><p>Mark PR ready for review</p></TooltipContent>
+                          <TooltipContent><p>标记 PR 准备就绪以供审查</p></TooltipContent>
                         </Tooltip>
                       ) : null}
                     </div>
@@ -1628,9 +1628,9 @@ export const PullRequestSection: React.FC<{
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="squash">Squash</SelectItem>
-                              <SelectItem value="merge">Merge</SelectItem>
-                              <SelectItem value="rebase">Rebase</SelectItem>
+                              <SelectItem value="squash">压缩提交</SelectItem>
+                              <SelectItem value="merge">合并提交</SelectItem>
+                              <SelectItem value="rebase">变基</SelectItem>
                             </SelectContent>
                           </Select>
                           <Tooltip delayDuration={300}>
@@ -1640,12 +1640,12 @@ export const PullRequestSection: React.FC<{
                                 className="h-7 w-7 px-0"
                                 onClick={() => mergePr(pr)}
                                 disabled={isMerging || isMarkingReady || pr.state !== 'open' || pr.draft || isUpdating || isEditingPr}
-                                aria-label="Merge pull request"
+                                aria-label="合并拉取请求"
                               >
                                 {isMerging ? <RiLoader4Line className="size-4 animate-spin" /> : <RiGitMergeLine className="size-4" />}
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent><p>Merge pull request</p></TooltipContent>
+                            <TooltipContent><p>合并拉取请求</p></TooltipContent>
                           </Tooltip>
                         </>
                       ) : null}
@@ -1657,7 +1657,7 @@ export const PullRequestSection: React.FC<{
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="typography-ui-label text-foreground">Create PR</div>
+                    <div className="typography-ui-label text-foreground">创建 PR</div>
                     <div className="typography-micro text-muted-foreground truncate">
                       {branch} → {targetBaseBranch}
                     </div>
@@ -1677,7 +1677,7 @@ export const PullRequestSection: React.FC<{
                   <Input
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="PR title"
+                    placeholder="PR 标题"
                     autoCorrect={hasTouchInput ? "on" : "off"}
                     autoCapitalize={hasTouchInput ? "sentences" : "off"}
                     spellCheck={hasTouchInput}
@@ -1689,7 +1689,7 @@ export const PullRequestSection: React.FC<{
                   {availableBaseBranches.length > 0 ? (
                     <Select value={targetBaseBranch} onValueChange={setTargetBaseBranch}>
                       <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Select base branch" />
+                        <SelectValue placeholder="选择基础分支" />
                       </SelectTrigger>
                       <SelectContent>
                         {availableBaseBranches.map((candidate) => (
@@ -1712,7 +1712,7 @@ export const PullRequestSection: React.FC<{
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
                     className="min-h-[110px] bg-background/80"
-                    placeholder="What changed and why"
+                    placeholder="变更内容和原因"
                     autoCorrect={hasTouchInput ? "on" : "off"}
                     autoCapitalize={hasTouchInput ? "sentences" : "off"}
                     spellCheck={hasTouchInput}
@@ -1739,7 +1739,7 @@ export const PullRequestSection: React.FC<{
                       e.stopPropagation();
                       setDraft((v) => !v);
                     }}
-                    aria-label="Toggle draft PR"
+                    aria-label="切换草稿 PR"
                     className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     {draft ? (
@@ -1763,7 +1763,7 @@ export const PullRequestSection: React.FC<{
                         size="sm"
                         onClick={() => setIsContextSheetOpen(true)}
                       >
-                        {additionalContext.trim() ? 'Edit' : 'Add'}
+                        {additionalContext.trim() ? '编辑' : '添加'}
                       </Button>
                     </div>
                     {additionalContext.trim() && (
@@ -1781,7 +1781,7 @@ export const PullRequestSection: React.FC<{
                         Additional context (optional)
                       </span>
                       <span className="typography-micro text-[var(--primary-base)]">
-                        {isContextOpen ? 'Hide' : additionalContext.trim() ? 'Edit' : 'Add'}
+                        {isContextOpen ? '隐藏' : additionalContext.trim() ? '编辑' : '添加'}
                       </span>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
@@ -1790,10 +1790,10 @@ export const PullRequestSection: React.FC<{
                           value={additionalContext}
                           onChange={(e) => setAdditionalContext(e.target.value)}
                           className="min-h-[100px] bg-transparent"
-                          placeholder="Explain why this change is needed...&#10;Mention how to test (commands / steps)...&#10;Call out risks / rollout plan..."
+                          placeholder="解释为什么需要此变更...&#10;说明如何测试（命令/步骤）...&#10;提及风险/上线计划..."
                         />
                         <p className="typography-micro text-muted-foreground">
-                          This text is only used to guide PR generation.
+                          此文本仅用于指导 PR 生成。
                         </p>
                       </div>
                     </CollapsibleContent>
@@ -1804,7 +1804,7 @@ export const PullRequestSection: React.FC<{
                 <MobileOverlayPanel
                   open={isContextSheetOpen}
                   onClose={() => setIsContextSheetOpen(false)}
-                  title="Additional context"
+                  title="额外上下文"
                   footer={
                     <Button
                       size="sm"
@@ -1820,11 +1820,11 @@ export const PullRequestSection: React.FC<{
                       value={additionalContext}
                       onChange={(e) => setAdditionalContext(e.target.value)}
                       className="min-h-[200px] bg-transparent"
-                      placeholder="Explain why this change is needed...&#10;Mention how to test (commands / steps)...&#10;Call out risks / rollout plan..."
+                      placeholder="解释为什么需要此变更...&#10;说明如何测试（命令/步骤）...&#10;提及风险/上线计划..."
                       autoFocus
                     />
                     <p className="typography-micro text-muted-foreground">
-                      This text is only used to guide PR generation.
+                      此文本仅用于指导 PR 生成。
                     </p>
                   </div>
                 </MobileOverlayPanel>
@@ -1849,7 +1849,7 @@ export const PullRequestSection: React.FC<{
                     <span className="inline-flex size-4 items-center justify-center">
                       {isCreating ? <RiLoader4Line className="size-4 animate-spin" /> : <RiGitPullRequestLine className="size-4" />}
                     </span>
-                    <span>Create PR</span>
+                    <span>创建 PR</span>
                   </Button>
                 </div>
               </div>
@@ -1949,13 +1949,13 @@ export const PullRequestSection: React.FC<{
                                       size="sm"
                                       className="h-6 px-0 has-[>svg]:px-0 sm:px-2 sm:has-[>svg]:px-2.5 text-[var(--status-success)] hover:bg-[var(--status-success-background)] hover:text-[var(--status-success)] justify-start"
                                       onClick={() => sendSingleCommentToChat(comment)}
-                                      aria-label="Send this comment to agent"
+                                      aria-label="发送此评论给智能体"
                                     >
                                       <RiAiGenerate2 className="size-3.5" />
                                       Send to agent
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent><p>Send this comment to agent</p></TooltipContent>
+                                  <TooltipContent><p>发送此评论给智能体</p></TooltipContent>
                                 </Tooltip>
                               </div>
                               <div className="typography-micro text-muted-foreground">

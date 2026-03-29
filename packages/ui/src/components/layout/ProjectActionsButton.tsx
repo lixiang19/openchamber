@@ -645,7 +645,7 @@ export const ProjectActionsButton = ({
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
             className
           )}
-          aria-label="Add action"
+          aria-label="添加操作"
           onClick={openProjectActionsSettings}
         >
           <RiAddLine className="h-5 w-5" />
@@ -665,7 +665,7 @@ export const ProjectActionsButton = ({
         onClick={openProjectActionsSettings}
       >
         <RiAddLine className="h-4 w-4 text-muted-foreground" />
-        <span className="header-open-label whitespace-nowrap">Add action</span>
+        <span className="header-open-label whitespace-nowrap">添加操作</span>
       </button>
     );
   }
@@ -781,7 +781,7 @@ export const ProjectActionsButton = ({
               'border-l border-[var(--interactive-border)] text-muted-foreground',
               'hover:bg-interactive-hover hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
             )}
-            aria-label="Choose project action"
+            aria-label="选择项目操作"
           >
             <RiArrowDownSLine className="h-4 w-4" />
           </button>

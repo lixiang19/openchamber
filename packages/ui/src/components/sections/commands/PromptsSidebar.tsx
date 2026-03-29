@@ -232,7 +232,7 @@ export const PromptsSidebar: React.FC<PromptsSidebarProps> = ({ onItemSelect }) 
             <input
               value={renameNewName}
               onChange={(e) => setRenameNewName(e.target.value)}
-              placeholder="New prompt name..."
+              placeholder="新提示词名称..."
               className="w-full h-8 px-2 rounded border bg-transparent typography-meta mb-4"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {

@@ -111,7 +111,7 @@ export const HistoryCommitRow: React.FC<HistoryCommitRowProps> = ({
           {isLoadingFiles ? (
             <div className="flex items-center gap-2 py-2">
               <RiLoader4Line className="size-4 animate-spin text-muted-foreground" />
-              <span className="typography-micro text-muted-foreground">Loading files...</span>
+              <span className="typography-micro text-muted-foreground">正在加载文件...</span>
             </div>
           ) : files.length === 0 ? (
             <p className="typography-micro text-muted-foreground py-2">No files</p>

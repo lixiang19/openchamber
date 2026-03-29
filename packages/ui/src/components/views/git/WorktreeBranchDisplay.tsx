@@ -90,7 +90,7 @@ export const WorktreeBranchDisplay: React.FC<WorktreeBranchDisplayProps> = ({
             value={editBranchName}
             onChange={(e) => setEditBranchName(e.target.value)}
             className="flex-1 min-w-0 bg-transparent typography-ui-label outline-none placeholder:text-muted-foreground"
-            placeholder="Branch name"
+            placeholder="分支名称"
             onKeyDown={handleKeyDown}
             autoFocus
           />
@@ -131,7 +131,7 @@ export const WorktreeBranchDisplay: React.FC<WorktreeBranchDisplayProps> = ({
             size="sm"
             className="h-7 w-7 p-0 shrink-0"
             onClick={handleStartEdit}
-            title="Rename branch"
+            title="重命名分支"
           >
             <RiEditLine className="size-4" />
           </Button>

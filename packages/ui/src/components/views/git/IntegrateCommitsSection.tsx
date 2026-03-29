@@ -380,7 +380,7 @@ Important:
                 className="w-72 p-0 max-h-(--radix-dropdown-menu-content-available-height) flex flex-col overflow-hidden"
               >
                 <Command className="h-full min-h-0">
-                  <CommandInput ref={searchInputRef} placeholder="Search branches..." />
+                  <CommandInput ref={searchInputRef} placeholder="搜索分支..." />
                   <CommandList
                     className="h-full min-h-0"
                     scrollbarClassName="overlay-scrollbar--flush overlay-scrollbar--dense overlay-scrollbar--zero"
@@ -478,7 +478,7 @@ Important:
                   </span>
                 ))}
                 {ui.details.unmergedFiles.length > 6 && (
-                  <span className="text-xs text-muted-foreground">+{ui.details.unmergedFiles.length - 6} more</span>
+                  <span className="text-xs text-muted-foreground">+{ui.details.unmergedFiles.length - 6} 更多</span>
                 )}
               </div>
               <div className="flex items-center gap-2 pt-1">

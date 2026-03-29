@@ -1314,7 +1314,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
                 type="button"
                 onClick={toggleSidebar}
                 className={desktopSidebarToggleButtonClass}
-                aria-label="Close sessions"
+                aria-label="关闭会话"
               >
                 <RiLayoutLeftLine className="h-[18px] w-[18px]" />
               </button>

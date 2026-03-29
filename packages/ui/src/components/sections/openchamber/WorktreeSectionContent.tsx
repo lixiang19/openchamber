@@ -291,7 +291,7 @@ export const WorktreeSectionContent: React.FC<WorktreeSectionContentProps> = ({ 
                   value={command}
                   onChange={(e) => handleSetupCommandChange(index, e.target.value)}
                   onBlur={handleCommandBlur}
-                  placeholder="e.g., bun install"
+                  placeholder="例如：bun install"
                   className="h-7 w-[30rem] max-w-full font-mono text-xs"
                 />
                   <button
@@ -300,7 +300,7 @@ export const WorktreeSectionContent: React.FC<WorktreeSectionContentProps> = ({ 
                     handleRemoveCommand(index);
                     }}
                     className="flex-shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-                    aria-label="Remove command"
+                    aria-label="移除命令"
                   >
                   <RiCloseLine className="h-4 w-4" />
                 </button>

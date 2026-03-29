@@ -314,7 +314,7 @@ export const SessionAuthGate: React.FC<SessionAuthGateProps> = ({ children }) =>
                     ref={passwordInputRef}
                     type="password"
                     autoComplete="current-password"
-                    placeholder="Enter password"
+                    placeholder="输入密码"
                     value={password}
                     onChange={(event) => {
                       setPassword(event.target.value);

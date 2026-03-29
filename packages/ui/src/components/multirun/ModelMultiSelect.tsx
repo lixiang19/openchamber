@@ -393,7 +393,7 @@ export const ModelMultiSelect: React.FC<ModelMultiSelectProps> = ({
                     <Input
                       ref={searchInputRef}
                       type="text"
-                      placeholder="Search models"
+                      placeholder="搜索模型"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyDown={handleKeyDown}

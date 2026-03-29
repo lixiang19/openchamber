@@ -68,8 +68,8 @@ const MANAGED_LOCAL_TUNNEL_DOC_URL = 'https://developers.cloudflare.com/cloudfla
 
 const TUNNEL_MODE_OPTIONS: Array<{ value: TunnelMode; label: string; tooltip: string }> = [
   { value: 'quick', label: 'Quick', tooltip: 'Quick Tunnel is best effort and Cloudflare does not guarantee uptime.' },
-  { value: 'managed-remote', label: 'Managed Remote', tooltip: 'Managed Remote uses your Cloudflare account and hostname for long-lived access.' },
-  { value: 'managed-local', label: 'Managed Local', tooltip: 'Managed Local uses your local cloudflared configuration file.' },
+  { value: 'managed-remote', label: '托管远程', tooltip: 'Managed Remote uses your Cloudflare account and hostname for long-lived access.' },
+  { value: 'managed-local', label: 'Managed Local', tooltip: '托管本地使用本地的 cloudflared 配置文件。' },
 ];
 
 const MANAGED_LOCAL_CONFIG_ALLOWED_EXTENSIONS = ['.yml', '.yaml', '.json'];
@@ -695,8 +695,8 @@ export const TunnelSettings: React.FC = () => {
       if (tunnelMode === 'managed-remote') {
         if (!selectedPreset) {
           setState('idle');
-          setManagedRemoteValidationError('Select or add a managed remote tunnel first');
-          toast.error('Select or add a managed remote tunnel first');
+          setManagedRemoteValidationError('先选择或添加一个托管远程隧道');
+          toast.error('先选择或添加一个托管远程隧道');
           return;
         }
 
@@ -727,15 +727,15 @@ export const TunnelSettings: React.FC = () => {
       const data = (await res.json()) as TunnelStartResponse;
 
       if (!res.ok || !data.ok) {
-        if (tunnelMode === 'managed-remote' && typeof data.error === 'string' && data.error.includes('Managed remote tunnel token is required')) {
+        if (tunnelMode === 'managed-remote' && typeof data.error === 'string' && data.error.includes('托管远程隧道令牌必填')) {
           setState('idle');
           setManagedRemoteValidationError('Managed remote tunnel token is required before starting');
           toast.error('Add a managed remote tunnel token before starting');
           return;
         }
         setState('error');
-        setErrorMessage(data.error || 'Failed to start tunnel');
-        toast.error(data.error || 'Failed to start tunnel');
+        setErrorMessage(data.error || '启动隧道失败');
+        toast.error(data.error || '启动隧道失败');
         return;
       }
 
@@ -777,8 +777,8 @@ export const TunnelSettings: React.FC = () => {
       }
     } catch {
       setState('error');
-      setErrorMessage('Failed to start tunnel');
-      toast.error('Failed to start tunnel');
+      setErrorMessage('启动隧道失败');
+      toast.error('启动隧道失败');
     }
   }, [
     managedRemoteTunnelPresets,
@@ -866,7 +866,7 @@ export const TunnelSettings: React.FC = () => {
         managedRemoteTunnelPresets: presets,
       });
     } catch {
-      toast.error('Failed to save selected managed remote tunnel');
+      toast.error('保存选定的托管远程隧道失败');
     }
   }, []);
 
@@ -891,16 +891,16 @@ export const TunnelSettings: React.FC = () => {
       return;
     }
     if (!hostname) {
-      toast.error('Managed remote tunnel hostname is required');
+      toast.error('托管远程隧道主机名必填');
       return;
     }
     if (!token) {
-      toast.error('Managed remote tunnel token is required');
+      toast.error('托管远程隧道令牌必填');
       return;
     }
 
     if (managedRemoteTunnelPresets.some((preset) => preset.hostname === hostname)) {
-      toast.error('This hostname already exists');
+      toast.error('此主机名已存在');
       return;
     }
 
@@ -1078,7 +1078,7 @@ export const TunnelSettings: React.FC = () => {
                 disabled={isSavingMode || state === 'starting' || state === 'stopping'}
               >
                 <SelectTrigger className="max-w-[16rem]">
-                  <SelectValue placeholder="Select provider" />
+                  <SelectValue placeholder="选择提供商" />
                 </SelectTrigger>
                 <SelectContent>
                   {providerCapabilities.length > 0
@@ -1198,7 +1198,7 @@ export const TunnelSettings: React.FC = () => {
               )}
 
               <div className="mb-1 flex items-center justify-between gap-3">
-                <p className="typography-ui-label text-foreground">Saved managed remote tunnels</p>
+                <p className="typography-ui-label text-foreground">已保存的托管远程隧道</p>
                 <Button
                   variant="ghost"
                   size="xs"
@@ -1312,7 +1312,7 @@ export const TunnelSettings: React.FC = () => {
                   })}
                 </div>
               ) : (
-                <p className="typography-meta text-muted-foreground/70">No managed remote tunnels saved yet.</p>
+                <p className="typography-meta text-muted-foreground/70">尚未保存托管远程隧道。</p>
               )}
 
               {isAddingPreset && (
@@ -1320,14 +1320,14 @@ export const TunnelSettings: React.FC = () => {
                   <Input
                     value={newPresetName}
                     onChange={(event) => setNewPresetName(event.target.value)}
-                    placeholder="Tunnel name (e.g. Production)"
+                    placeholder="隧道名称（例如：Production）"
                     className="h-7"
                     disabled={isSavingMode || state === 'starting' || state === 'stopping'}
                   />
                   <Input
                     value={newPresetHostname}
                     onChange={(event) => setNewPresetHostname(event.target.value)}
-                    placeholder="Hostname (e.g. oc.example.com)"
+                    placeholder="主机名（例如：oc.example.com）"
                     className="h-7"
                     disabled={isSavingMode || state === 'starting' || state === 'stopping'}
                   />
@@ -1335,7 +1335,7 @@ export const TunnelSettings: React.FC = () => {
                     type="password"
                     value={newPresetToken}
                     onChange={(event) => setNewPresetToken(event.target.value)}
-                    placeholder="Token"
+                    placeholder="令牌"
                     className="h-7"
                     disabled={isSavingMode || state === 'starting' || state === 'stopping'}
                   />
@@ -1381,7 +1381,7 @@ export const TunnelSettings: React.FC = () => {
                     <button
                       type="button"
                       className="rounded p-0.5 text-muted-foreground/70 hover:text-foreground"
-                      aria-label="Managed remote tunnel token info"
+                      aria-label="托管远程隧道令牌信息"
                     >
                       <RiInformationLine className="h-3.5 w-3.5" />
                     </button>
@@ -1420,7 +1420,7 @@ export const TunnelSettings: React.FC = () => {
                     onBlur={() => {
                       void handleManagedLocalConfigInputBlur();
                     }}
-                    placeholder="Using default cloudflared config"
+                    placeholder="使用默认 cloudflared 配置"
                     className="h-7"
                     disabled={state === 'starting' || state === 'stopping' || isSavingMode}
                   />
@@ -1428,7 +1428,7 @@ export const TunnelSettings: React.FC = () => {
                     variant="outline"
                     size="xs"
                     className="h-7 w-7 p-0"
-                    aria-label="Browse config file"
+                    aria-label="浏览配置文件"
                     onClick={() => {
                       void handleBrowseManagedLocalConfig();
                     }}
@@ -1441,7 +1441,7 @@ export const TunnelSettings: React.FC = () => {
                       variant="ghost"
                       size="xs"
                       className="h-7 w-7 p-0"
-                      aria-label="Clear config file"
+                      aria-label="清除配置文件"
                       onClick={() => {
                         void handleManagedLocalConfigClear();
                       }}
@@ -1453,8 +1453,8 @@ export const TunnelSettings: React.FC = () => {
                 </div>
                 <p className="typography-meta text-muted-foreground/70">
                   {managedLocalConfigPath
-                    ? 'Custom config file will be used when starting the tunnel.'
-                    : 'When empty, cloudflared uses its default config (~/.cloudflared/config.yml).'}
+                    ? '启动隧道时将使用自定义配置文件。'
+                    : '为空时，cloudflared 使用其默认配置 (~/.cloudflared/config.yml).'}
                 </p>
                 {isManagedLocalConfigPathInvalid && (
                   <p className="typography-meta text-[var(--status-error)]">{MANAGED_LOCAL_CONFIG_EXTENSION_ERROR}</p>
@@ -1526,7 +1526,7 @@ export const TunnelSettings: React.FC = () => {
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select saved tunnel" />
+                      <SelectValue placeholder="选择已保存的隧道" />
                     </SelectTrigger>
                     <SelectContent fitContent>
                       {managedRemoteTunnelPresets.map((preset) => (
@@ -1560,8 +1560,8 @@ export const TunnelSettings: React.FC = () => {
                 className={cn(primaryCtaClass, state === 'starting' && 'opacity-70')}
               >
                 {state === 'starting'
-                  ? <><RiLoader4Line className="size-3.5 animate-spin" /> Starting tunnel...</>
-                  : 'Start Tunnel'}
+                  ? <><RiLoader4Line className="size-3.5 animate-spin" /> 正在启动隧道...</>
+                  : '启动隧道'}
               </Button>
             </div>
           )}
@@ -1633,8 +1633,8 @@ export const TunnelSettings: React.FC = () => {
                 className="gap-2 text-[var(--status-error)]"
               >
                 {state === 'stopping'
-                  ? <><RiLoader4Line className="size-3.5 animate-spin" /> Stopping...</>
-                  : 'Stop Tunnel'}
+                  ? <><RiLoader4Line className="size-3.5 animate-spin" /> 正在停止...</>
+                  : '停止隧道'}
               </Button>
             </div>
           </div>

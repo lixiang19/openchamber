@@ -152,7 +152,7 @@ export const NotificationSettings: React.FC = () => {
           gitModelId: '',
         });
       } catch (error) {
-        console.warn('Failed to save utility model setting:', error);
+        console.warn('保存实用模型设置失败:', error);
       }
     },
     [setSettingsZenModel]
@@ -214,13 +214,13 @@ export const NotificationSettings: React.FC = () => {
         if (permission === 'granted') {
           setNativeNotificationsEnabled(true);
         } else {
-          toast.error('Notification permission denied', {
-            description: 'Please enable notifications in your browser settings.',
+          toast.error('通知权限被拒绝', {
+            description: '请在浏览器设置中启用通知。',
           });
         }
       } catch (error) {
-        console.error('Failed to request notification permission:', error);
-        toast.error('Failed to request notification permission');
+        console.error('请求通知权限失败:', error);
+        toast.error('请求通知权限失败');
       }
     } else if (checked && notificationPermission === 'granted') {
       setNativeNotificationsEnabled(true);
@@ -404,7 +404,7 @@ export const NotificationSettings: React.FC = () => {
         const permission = await Notification.requestPermission();
         setNotificationPermission(permission);
         if (permission !== 'granted') {
-          toast.error('Notification permission denied', {
+          toast.error('通知权限被拒绝', {
             description: 'Enable notifications in your browser settings.',
           });
           return;
@@ -412,7 +412,7 @@ export const NotificationSettings: React.FC = () => {
       }
 
       if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
-        toast.error('Notification permission denied', {
+        toast.error('通知权限被拒绝', {
           description: 'Enable notifications in your browser settings.',
         });
         return;
@@ -420,7 +420,7 @@ export const NotificationSettings: React.FC = () => {
 
       const key = await apis.push.getVapidPublicKey();
       if (!key?.publicKey) {
-        toast.error('Failed to load push key');
+        toast.error('加载推送密钥失败');
         return;
       }
 
@@ -467,7 +467,7 @@ export const NotificationSettings: React.FC = () => {
       }
 
       setPushSubscribed(true);
-      toast.success('Background notifications enabled');
+      toast.success('后台通知已启用');
     } catch (error) {
       console.error('[Push] Enable failed:', error);
       const formatted = formatUnknownError(error);
@@ -504,7 +504,7 @@ export const NotificationSettings: React.FC = () => {
       await subscription.unsubscribe();
       await apis.push.unsubscribe({ endpoint });
       setPushSubscribed(false);
-      toast.success('Background notifications disabled');
+      toast.success('后台通知已禁用');
     } finally {
       setPushBusy(false);
     }
@@ -578,7 +578,7 @@ export const NotificationSettings: React.FC = () => {
               </p>
               {notificationPermission === 'denied' && (
                 <p className="typography-meta text-[var(--status-error)] mt-1">
-                  Notification permission denied. Enable it in your browser settings.
+                  通知权限被拒绝。请在浏览器设置中启用。
                 </p>
               )}
               {notificationPermission === 'granted' && !nativeNotificationsEnabled && (
@@ -622,7 +622,7 @@ export const NotificationSettings: React.FC = () => {
                   }}
                 >
                   <Checkbox checked={notifyOnCompletion} onChange={setNotifyOnCompletion} ariaLabel="Agent completion" />
-                  <span className="typography-ui-label text-foreground">Agent Completion</span>
+                  <span className="typography-ui-label text-foreground">智能体完成</span>
                 </div>
 
                 <div
@@ -673,7 +673,7 @@ export const NotificationSettings: React.FC = () => {
                   }}
                 >
                   <Checkbox checked={notifyOnQuestion} onChange={setNotifyOnQuestion} ariaLabel="Agent questions" />
-                  <span className="typography-ui-label text-foreground">Agent Questions</span>
+                  <span className="typography-ui-label text-foreground">智能体问题</span>
                 </div>
               </section>
             </div>
@@ -685,7 +685,7 @@ export const NotificationSettings: React.FC = () => {
                   Notification Templates
                 </h3>
                 <p className="typography-meta text-muted-foreground mt-0.5">
-                  Variables: <code className="text-[var(--primary-base)]">{'{project_name}'}</code> <code className="text-[var(--primary-base)]">{'{worktree}'}</code> <code className="text-[var(--primary-base)]">{'{branch}'}</code> <code className="text-[var(--primary-base)]">{'{session_name}'}</code> <code className="text-[var(--primary-base)]">{'{agent_name}'}</code> <code className="text-[var(--primary-base)]">{'{model_name}'}</code> <code className="text-[var(--primary-base)]">{'{last_message}'}</code>
+                  变量： <code className="text-[var(--primary-base)]">{'{project_name}'}</code> <code className="text-[var(--primary-base)]">{'{worktree}'}</code> <code className="text-[var(--primary-base)]">{'{branch}'}</code> <code className="text-[var(--primary-base)]">{'{session_name}'}</code> <code className="text-[var(--primary-base)]">{'{agent_name}'}</code> <code className="text-[var(--primary-base)]">{'{model_name}'}</code> <code className="text-[var(--primary-base)]">{'{last_message}'}</code>
                 </p>
               </div>
 
@@ -724,7 +724,7 @@ export const NotificationSettings: React.FC = () => {
             <div className="mb-8">
               <div className="mb-1 px-1">
                 <h3 className="typography-ui-header font-medium text-foreground">
-                  AI Summarization
+                  AI 总结
                 </h3>
               </div>
 
@@ -753,7 +753,7 @@ export const NotificationSettings: React.FC = () => {
                 <div className={cn("flex flex-col gap-2 py-1 sm:flex-row sm:items-center sm:gap-8")}>
                   <div className="flex min-w-0 flex-col sm:w-56 shrink-0">
                     <div className="flex items-center gap-2">
-                      <span className="typography-ui-label text-foreground">Summarization Model</span>
+                      <span className="typography-ui-label text-foreground">总结模型</span>
                       <Tooltip delayDuration={1000}>
                         <TooltipTrigger asChild>
                           <RiInformationLine className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
@@ -770,10 +770,10 @@ export const NotificationSettings: React.FC = () => {
                       onValueChange={handleUtilityModelChange}
                     >
                       <SelectTrigger className="w-fit min-w-[220px]">
-                        <SelectValue placeholder="Not selected" />
+                        <SelectValue placeholder="未选择" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={UTILITY_NOT_SELECTED_VALUE}>Not selected</SelectItem>
+                        <SelectItem value={UTILITY_NOT_SELECTED_VALUE}>未选择</SelectItem>
                         {utilityModelOptions.map((model) => (
                           <SelectItem key={model.id} value={model.id}>
                             {model.name}
@@ -788,7 +788,7 @@ export const NotificationSettings: React.FC = () => {
                   <>
                     <div className="flex items-center gap-8 py-1.5 mt-1 border-t border-[var(--surface-subtle)]">
                       <div className="flex min-w-0 flex-col w-56 shrink-0">
-                        <span className="typography-ui-label text-foreground">Threshold</span>
+                        <span className="typography-ui-label text-foreground">阈值</span>
                         <span className="typography-meta text-muted-foreground">Messages longer than this will be summarized</span>
                       </div>
                       <div className="flex items-center gap-2 w-fit">
@@ -806,8 +806,8 @@ export const NotificationSettings: React.FC = () => {
                           onClick={() => setSummaryThreshold(DEFAULT_SUMMARY_THRESHOLD)}
                           disabled={summaryThreshold === DEFAULT_SUMMARY_THRESHOLD}
                           className="h-7 w-7 px-0 text-muted-foreground hover:text-foreground"
-                          aria-label="Reset threshold"
-                          title="Reset"
+                          aria-label="重置阈值"
+                          title="重置"
                         >
                           <RiRestartLine className="h-3.5 w-3.5" />
                         </Button>
@@ -815,8 +815,8 @@ export const NotificationSettings: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-8 py-1.5">
                       <div className="flex min-w-0 flex-col w-56 shrink-0">
-                        <span className="typography-ui-label text-foreground">Length</span>
-                        <span className="typography-meta text-muted-foreground">Target character length of the summary</span>
+                        <span className="typography-ui-label text-foreground">长度</span>
+                        <span className="typography-meta text-muted-foreground">总结的目标字符长度</span>
                       </div>
                       <div className="flex items-center gap-2 w-fit">
                         <NumberInput
@@ -833,8 +833,8 @@ export const NotificationSettings: React.FC = () => {
                           onClick={() => setSummaryLength(DEFAULT_SUMMARY_LENGTH)}
                           disabled={summaryLength === DEFAULT_SUMMARY_LENGTH}
                           className="h-7 w-7 px-0 text-muted-foreground hover:text-foreground"
-                          aria-label="Reset summary length"
-                          title="Reset"
+                          aria-label="重置摘要长度"
+                          title="重置"
                         >
                           <RiRestartLine className="h-3.5 w-3.5" />
                         </Button>
@@ -845,7 +845,7 @@ export const NotificationSettings: React.FC = () => {
                   <div className={cn("py-1.5 mt-1 border-t border-[var(--surface-subtle)]", isMobile ? "flex flex-col gap-3" : "flex items-center gap-8")}>
                     <div className={cn("flex min-w-0 flex-col", isMobile ? "w-full" : "w-56 shrink-0")}>
                       <span className="typography-ui-label text-foreground">Max Length</span>
-                      <span className="typography-meta text-muted-foreground">Truncate {'{last_message}'} to this length</span>
+                      <span className="typography-meta text-muted-foreground">截断 {'{last_message}'} to this length</span>
                     </div>
                     <div className={cn("flex items-center gap-2", isMobile ? "w-full" : "w-fit")}>
                       <NumberInput
@@ -862,8 +862,8 @@ export const NotificationSettings: React.FC = () => {
                         onClick={() => setMaxLastMessageLength(DEFAULT_MAX_LAST_MESSAGE_LENGTH)}
                         disabled={maxLastMessageLength === DEFAULT_MAX_LAST_MESSAGE_LENGTH}
                         className="h-7 w-7 px-0 text-muted-foreground hover:text-foreground"
-                        aria-label="Reset max message length"
-                        title="Reset"
+                        aria-label="重置最大消息长度"
+                        title="重置"
                       >
                         <RiRestartLine className="h-3.5 w-3.5" />
                       </Button>
@@ -902,7 +902,7 @@ export const NotificationSettings: React.FC = () => {
                   <span className={cn("typography-ui-label", !pushSupported ? "text-muted-foreground" : "text-foreground")}>Enable push notifications</span>
                   <span className="typography-meta text-muted-foreground">
                     {!pushSupported
-                      ? "Push not supported. Desktop Chrome/Edge and Android support push. iOS requires an installed PWA."
+                      ? "推送不支持。桌面版 Chrome/Edge 和 Android 支持推送。iOS 需要安装 PWA。"
                       : "Receive alerts via your operating system background service"}
                   </span>
                 </div>

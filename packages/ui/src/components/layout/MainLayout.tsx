@@ -675,7 +675,7 @@ export const MainLayout: React.FC = () => {
                             setMobileLeftDrawerOpen(false);
                             setRightSidebarOpen(false);
                         }}
-                        aria-label="Close drawer"
+                        aria-label="关闭抽屉"
                     />
                     
                     {/* Left drawer (Session) */}

@@ -107,7 +107,7 @@ export const KeyboardShortcutsSettings: React.FC = () => {
     setShortcutOverride(pendingOverwrite.actionId, pendingOverwrite.combo);
     setPendingOverwrite(null);
     setErrorText('');
-    setWarningText(isRiskyBrowserShortcut(pendingOverwrite.combo) ? 'This shortcut can conflict with browser defaults. It is still saved.' : '');
+    setWarningText(isRiskyBrowserShortcut(pendingOverwrite.combo) ? '此快捷键可能与浏览器默认快捷键冲突。仍然已保存。' : '');
     setDraftByAction((current) => {
       const rest = { ...current };
       delete rest[pendingOverwrite.actionId];
@@ -131,7 +131,7 @@ export const KeyboardShortcutsSettings: React.FC = () => {
     <div className="mb-8">
       <div className="mb-1 px-1">
         <div className="flex items-center gap-2">
-          <h3 className="typography-ui-header font-medium text-foreground">Keyboard Shortcuts</h3>
+          <h3 className="typography-ui-header font-medium text-foreground">键盘快捷键</h3>
           <Button
             type="button"
             variant="outline"
@@ -163,11 +163,11 @@ export const KeyboardShortcutsSettings: React.FC = () => {
           {pendingOverwrite && (
             <div className="rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-background)] p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <span className="typography-meta text-foreground">
-                This combo is already used by another shortcut. Overwrite and clear that other mapping?
+                此组合已被其他快捷键使用。覆盖并清除该映射吗？
               </span>
               <div className="flex gap-2 shrink-0">
                 <Button type="button" size="xs" className="!font-normal" onClick={confirmOverwrite}>Overwrite</Button>
-                <Button type="button" size="xs" className="!font-normal" variant="ghost" onClick={() => setPendingOverwrite(null)}>Cancel</Button>
+                <Button type="button" size="xs" className="!font-normal" variant="ghost" onClick={() => setPendingOverwrite(null)}>取消</Button>
               </div>
             </div>
           )}
@@ -251,7 +251,7 @@ export const KeyboardShortcutsSettings: React.FC = () => {
                   Save
                 </Button>
                 <Button type="button" size="xs" className="!font-normal" variant="ghost" onClick={() => resetOne(action.id)}>
-                  Reset
+                  重置
                 </Button>
               </div>
             </div>

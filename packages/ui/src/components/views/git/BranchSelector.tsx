@@ -189,7 +189,7 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
       <DropdownMenuContent align="start" className="w-72 p-0 max-h-[60vh] flex flex-col">
         <Command className="h-full min-h-0">
           <CommandInput
-            placeholder="Search branches..."
+            placeholder="搜索分支..."
             value={search}
             onValueChange={setSearch}
           />
@@ -247,7 +247,7 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
                 <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg">
                   <input
                     ref={createInputRef}
-                    placeholder="New branch name"
+                    placeholder="新分支名称"
                     value={newBranchName}
                     onChange={(e) => setNewBranchName(e.target.value)}
                     onKeyDown={(e) => {

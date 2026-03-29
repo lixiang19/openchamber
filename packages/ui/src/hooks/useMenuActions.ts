@@ -216,7 +216,7 @@ export const useMenuActions = (
 
         case 'download-logs': {
           void showOpenCodeStatus().catch(() => {
-            toast.error('Failed to collect OpenCode status');
+            toast.error('收集 OpenCode 状态失败');
           });
           break;
         }

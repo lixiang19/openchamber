@@ -107,7 +107,7 @@ const AgentGroupItem: React.FC<AgentGroupItemProps> = ({ group, isSelected, onSe
                     'opacity-0 group-hover:opacity-100',
                     menuOpen && 'opacity-100',
                   )}
-                  aria-label="Group menu"
+                  aria-label="组菜单"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <RiMore2Line className="h-3.5 w-3.5" />
@@ -200,7 +200,7 @@ export const AgentManagerSidebar: React.FC<AgentManagerSidebarProps> = ({
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search Agent Groups..."
+            placeholder="搜索智能体组..."
             className="pl-8 h-8 rounded-lg border-border/40 bg-background/50 typography-meta"
           />
         </div>

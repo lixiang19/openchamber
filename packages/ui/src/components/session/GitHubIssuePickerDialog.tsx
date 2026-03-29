@@ -669,7 +669,7 @@ Do not implement changes until I confirm; end with: “Next actions: <1 sentence
                   e.stopPropagation();
                   setCreateInWorktree((v) => !v);
                 }}
-                aria-label="Toggle worktree"
+                aria-label="切换工作树"
                 className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 {createInWorktree ? (

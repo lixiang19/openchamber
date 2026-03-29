@@ -64,7 +64,7 @@ export async function createWorktreeSession(): Promise<{ id: string } | null> {
 
   const activeProject = useProjectsStore.getState().getActiveProject();
   if (!activeProject?.path) {
-    toast.error('No active project', {
+    toast.error('没有活动项目', {
       description: 'Please select a project first.',
     });
     return null;
@@ -215,7 +215,7 @@ export async function createWorktreeSession(): Promise<{ id: string } | null> {
     return session;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create worktree session';
-    toast.error('Failed to create worktree', {
+    toast.error('创建工作树失败', {
       description: message,
     });
     return null;
@@ -239,7 +239,7 @@ export async function createWorktreeOnly(): Promise<string | null> {
 
   const activeProject = useProjectsStore.getState().getActiveProject();
   if (!activeProject?.path) {
-    toast.error('No active project', {
+    toast.error('没有活动项目', {
       description: 'Please select a project first.',
     });
     return null;
@@ -289,7 +289,7 @@ export async function createWorktreeOnly(): Promise<string | null> {
     return metadata.path;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create worktree';
-    toast.error('Failed to create worktree', {
+    toast.error('创建工作树失败', {
       description: message,
     });
     return null;
@@ -476,7 +476,7 @@ export async function createWorktreeSessionForBranch(
     return session;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create worktree session';
-    toast.error('Failed to create worktree', {
+    toast.error('创建工作树失败', {
       description: message,
     });
     return null;
@@ -643,7 +643,7 @@ export async function createWorktreeSessionForNewBranch(
         return { id: session.id, branch: metadata.branch || base };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to create worktree session';
-      toast.error('Failed to create worktree', { description: message });
+      toast.error('创建工作树失败', { description: message });
       return null;
     }
   } finally {

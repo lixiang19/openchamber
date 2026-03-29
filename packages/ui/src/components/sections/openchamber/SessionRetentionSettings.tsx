@@ -24,7 +24,7 @@ export const SessionRetentionSettings: React.FC = () => {
   const handleRunCleanup = React.useCallback(async () => {
     const result = await runCleanup({ force: true });
     if (result.deletedIds.length === 0 && result.failedIds.length === 0) {
-      toast.message('No sessions eligible for deletion');
+      toast.message('没有符合删除条件的会话');
       return;
     }
     if (result.deletedIds.length > 0) {
@@ -47,7 +47,7 @@ export const SessionRetentionSettings: React.FC = () => {
               <RiInformationLine className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
             </TooltipTrigger>
             <TooltipContent sideOffset={8} className="max-w-xs">
-              Automatically delete inactive sessions based on their last activity. Keeps recent 5 sessions.
+              根据上次活动自动删除非活动会话。保留最近5个会话。
             </TooltipContent>
           </Tooltip>
         </div>
@@ -70,9 +70,9 @@ export const SessionRetentionSettings: React.FC = () => {
           <Checkbox
             checked={autoDeleteEnabled}
             onChange={setAutoDeleteEnabled}
-            ariaLabel="Enable auto-cleanup"
+            ariaLabel="启用自动清理"
           />
-          <span className="typography-ui-label text-foreground">Enable Auto-Cleanup</span>
+          <span className="typography-ui-label text-foreground">启用自动清理</span>
         </div>
 
         <div className="flex flex-col gap-2 py-1.5 sm:flex-row sm:items-center sm:gap-8">
@@ -86,18 +86,18 @@ export const SessionRetentionSettings: React.FC = () => {
               min={MIN_DAYS}
               max={MAX_DAYS}
               step={1}
-              aria-label="Retention period in days"
+              aria-label="保留期限（天）"
               className="w-20 tabular-nums"
             />
-            <span className="typography-ui-label text-muted-foreground">days</span>
+            <span className="typography-ui-label text-muted-foreground">天</span>
             <Button size="sm"
               type="button"
               variant="ghost"
               onClick={() => setAutoDeleteAfterDays(DEFAULT_RETENTION_DAYS)}
               disabled={autoDeleteAfterDays === DEFAULT_RETENTION_DAYS}
               className="h-7 w-7 px-0 text-muted-foreground hover:text-foreground"
-              aria-label="Reset retention period"
-              title="Reset"
+              aria-label="重置保留期限"
+              title="重置"
             >
               <RiRestartLine className="h-3.5 w-3.5" />
             </Button>
@@ -119,12 +119,12 @@ export const SessionRetentionSettings: React.FC = () => {
               disabled={isRunning}
               className="!font-normal"
             >
-              {isRunning ? 'Cleaning up...' : 'Run cleanup now'}
+              {isRunning ? '清理中...' : '立即运行清理'}
             </Button>
           </div>
         </div>
         <p className="typography-meta text-muted-foreground">
-          Eligible for deletion right now: <span className="tabular-nums">{pendingCount}</span>
+          当前符合删除条件： <span className="tabular-nums">{pendingCount}</span>
         </p>
       </div>
     </div>

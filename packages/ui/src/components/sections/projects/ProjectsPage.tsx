@@ -108,10 +108,10 @@ export const ProjectsPage: React.FC = () => {
       const uploadResult = await uploadProjectIcon(selectedProject.id, pendingUploadIconFile);
       setIsUploadingIcon(false);
       if (!uploadResult.ok) {
-        toast.error(uploadResult.error || 'Failed to upload project icon');
+        toast.error(uploadResult.error || '上传项目图标失败');
         return;
       }
-      toast.success('Project icon updated');
+      toast.success('项目图标已更新');
       clearPendingUploadIcon();
       setPendingRemoveImageIcon(false);
     }
@@ -123,10 +123,10 @@ export const ProjectsPage: React.FC = () => {
       const removeResult = await removeProjectIcon(selectedProject.id);
       setIsRemovingCustomIcon(false);
       if (!removeResult.ok) {
-        toast.error(removeResult.error || 'Failed to remove project icon');
+        toast.error(removeResult.error || '移除项目图标失败');
         return;
       }
-      toast.success('Project icon removed');
+      toast.success('项目图标已移除');
       setPendingRemoveImageIcon(false);
       setIconBackground(null);
     }
@@ -220,14 +220,14 @@ export const ProjectsPage: React.FC = () => {
     void discoverProjectIcon(selectedProject.id)
       .then((result) => {
         if (!result.ok) {
-          toast.error(result.error || 'Failed to discover project icon');
+          toast.error(result.error || '发现项目图标失败');
           return;
         }
         if (result.skipped) {
-          toast.success('Custom icon already set for this project');
+          toast.success('此项目已设置自定义图标');
           return;
         }
-        toast.success('Project icon discovered');
+        toast.success('已发现项目图标');
       })
       .finally(() => {
         setIsDiscoveringIcon(false);
@@ -238,7 +238,7 @@ export const ProjectsPage: React.FC = () => {
     return (
       <ScrollableOverlay keyboardAvoid outerClassName="h-full" className="w-full">
         <div className="mx-auto w-full max-w-4xl p-3 sm:p-6 sm:pt-8">
-          <p className="typography-meta text-muted-foreground">No projects available.</p>
+          <p className="typography-meta text-muted-foreground">没有可用的项目。</p>
         </div>
       </ScrollableOverlay>
     );
@@ -272,7 +272,7 @@ export const ProjectsPage: React.FC = () => {
                 <Input 
                   value={name} 
                   onChange={(e) => setName(e.target.value)} 
-                  placeholder="Project name" 
+                  placeholder="项目名称" 
                   className="h-7 min-w-0 w-full sm:max-w-[19rem]" 
                 />
               </div>
@@ -293,7 +293,7 @@ export const ProjectsPage: React.FC = () => {
                       ? 'border-2 border-foreground bg-[var(--primary-base)]/10'
                       : 'border-border/40 hover:border-border hover:bg-[var(--surface-muted)]'
                   )}
-                  title="None"
+                  title="无"
                 >
                   <RiCloseLine className="h-4 w-4 text-muted-foreground" />
                 </button>
@@ -341,7 +341,7 @@ export const ProjectsPage: React.FC = () => {
                       ? 'border-2 border-foreground bg-[var(--primary-base)]/10'
                       : 'border-border/40 hover:border-border hover:bg-[var(--surface-muted)]'
                   )}
-                  title="None"
+                  title="无"
                 >
                   <RiCloseLine className="h-4 w-4 text-muted-foreground" />
                 </button>
@@ -391,7 +391,7 @@ export const ProjectsPage: React.FC = () => {
                     value={iconBackground ?? '#000000'}
                     onChange={(event) => setIconBackground(event.target.value)}
                     className="h-7 w-9 cursor-pointer rounded border border-border bg-transparent p-1"
-                    aria-label="Project icon background color"
+                    aria-label="项目图标背景色"
                   />
                   <Input
                     value={iconBackground ?? ''}
@@ -405,8 +405,8 @@ export const ProjectsPage: React.FC = () => {
                     variant="outline"
                     onClick={() => setIconBackground(null)}
                     className="h-7 w-7 p-0"
-                    aria-label="Clear icon background"
-                    title="Clear background"
+                    aria-label="清除图标背景"
+                    title="清除背景"
                     disabled={!iconBackground}
                   >
                     <RiCloseLine className="h-3.5 w-3.5" />

@@ -56,7 +56,7 @@ export const GitSettings: React.FC = () => {
         }
 
       } catch (error) {
-        console.warn('Failed to load git settings:', error);
+        console.warn('加载 Git 设置失败:', error);
       } finally {
         setIsLoading(false);
       }
@@ -108,7 +108,7 @@ export const GitSettings: React.FC = () => {
             }}
             ariaLabel="Enable Gitmoji picker"
           />
-          <span className="typography-ui-label text-foreground">Enable Gitmoji Picker</span>
+          <span className="typography-ui-label text-foreground">启用 Gitmoji 选择器</span>
         </div>
 
         <div
@@ -129,7 +129,7 @@ export const GitSettings: React.FC = () => {
             onChange={setFilesViewShowGitignored}
             ariaLabel="Display gitignored files"
           />
-          <span className="typography-ui-label text-foreground">Display Gitignored Files</span>
+          <span className="typography-ui-label text-foreground">显示 Gitignored 文件</span>
         </div>
       </section>
     </div>

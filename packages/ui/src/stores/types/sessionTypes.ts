@@ -119,6 +119,7 @@ export type NewSessionDraftState = {
     selectedProjectId?: string | null;
     directoryOverride: string | null;
     parentID: string | null;
+    thinkingLevel?: string;
     title?: string;
     initialPrompt?: string;
     /** Synthetic context parts to include with the initial message */
@@ -219,6 +220,7 @@ export interface SessionStore {
 
     openNewSessionDraft: (options?: { projectId?: string | null; directoryOverride?: string | null; parentID?: string | null; title?: string; initialPrompt?: string; syntheticParts?: SyntheticContextPart[]; targetFolderId?: string }) => void;
     setNewSessionDraftTarget: (target: { projectId?: string | null; directoryOverride?: string | null }) => void;
+    setNewSessionDraftThinkingLevel: (level: string | undefined) => void;
     closeNewSessionDraft: () => void;
 
     createSession: (title?: string, directoryOverride?: string | null, parentID?: string | null) => Promise<Session | null>;

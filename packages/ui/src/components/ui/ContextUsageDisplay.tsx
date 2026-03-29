@@ -103,7 +103,7 @@ export const ContextUsageDisplay: React.FC<ContextUsageDisplayProps> = ({
     <button
       type="button"
       className={sharedClassName}
-      aria-label="Context usage"
+      aria-label="上下文用量"
       aria-pressed={pressed}
       onClick={onClick}
     >
@@ -112,7 +112,7 @@ export const ContextUsageDisplay: React.FC<ContextUsageDisplayProps> = ({
   ) : (
     <div
       className={sharedClassName}
-      aria-label="Context usage"
+      aria-label="上下文用量"
       onClick={isMobile ? () => setMobileTooltipOpen(true) : undefined}
     >
       {contextContent}
@@ -126,7 +126,7 @@ export const ContextUsageDisplay: React.FC<ContextUsageDisplayProps> = ({
         <MobileOverlayPanel
           open={mobileTooltipOpen}
           onClose={() => setMobileTooltipOpen(false)}
-          title="Context Usage"
+          title="上下文用量"
         >
           <div className="flex flex-col gap-1.5">
             <div className="rounded-xl border border-border/40 bg-sidebar/30 px-3 py-2 space-y-1">

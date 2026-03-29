@@ -161,10 +161,10 @@ export const GitIdentityEditorDialog: React.FC<GitIdentityEditorDialogProps> = (
       }
 
       if (success) {
-        toast.success(isNewProfile ? 'Profile created' : '配置文件已更新');
+        toast.success(isNewProfile ? '配置文件已创建' : '配置文件已更新');
         onOpenChange(false);
       } else {
-        toast.error(isNewProfile ? '创建配置文件失败' : 'Failed to update profile');
+        toast.error(isNewProfile ? '创建配置文件失败' : '更新配置文件失败');
       }
     } catch (error) {
       console.error('Error saving profile:', error);
@@ -184,7 +184,7 @@ export const GitIdentityEditorDialog: React.FC<GitIdentityEditorDialogProps> = (
         setIsDeleteDialogOpen(false);
         onOpenChange(false);
       } else {
-        toast.error('Failed to delete profile');
+        toast.error('删除配置文件失败');
       }
     } catch (error) {
       console.error('Error deleting profile:', error);
@@ -231,7 +231,7 @@ export const GitIdentityEditorDialog: React.FC<GitIdentityEditorDialogProps> = (
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Work Profile, Personal, etc."
+                    placeholder="工作配置、个人配置等"
                     className="h-8"
                   />
                 </div>
@@ -308,7 +308,7 @@ export const GitIdentityEditorDialog: React.FC<GitIdentityEditorDialogProps> = (
                 <Input
                   value={userName}
                   onChange={(e) => setUserName(e.target.value)}
-                  placeholder="John Doe"
+                  placeholder="姓名"
                   required={!isGlobalProfile}
                   readOnly={isGlobalProfile}
                   disabled={isGlobalProfile}
@@ -457,7 +457,7 @@ export const GitIdentityEditorDialog: React.FC<GitIdentityEditorDialogProps> = (
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete Profile</DialogTitle>
+            <DialogTitle>删除配置文件</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete "{selectedProfile?.name || name}"?
             </DialogDescription>

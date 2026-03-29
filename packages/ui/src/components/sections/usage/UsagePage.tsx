@@ -160,7 +160,7 @@ export const UsagePage: React.FC = () => {
             </h2>
             <p className="typography-meta text-muted-foreground truncate">
               {isLoading ? (
-                <span className="animate-pulse">Refreshing usage...</span>
+                <span className="animate-pulse">正在刷新用量...</span>
               ) : (
                 `Last updated: ${formatTime(lastUpdated)}`
               )}

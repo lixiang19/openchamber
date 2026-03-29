@@ -538,7 +538,7 @@ const VSCodeHeader: React.FC<VSCodeHeaderProps> = ({ title, showBack, onBack, on
         <button
           onClick={onBack}
           className="inline-flex h-7 w-7 items-center justify-center text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          aria-label="Back to sessions"
+          aria-label="返回会话"
         >
           <RiArrowLeftLine className="h-5 w-5" />
         </button>
@@ -548,7 +548,7 @@ const VSCodeHeader: React.FC<VSCodeHeaderProps> = ({ title, showBack, onBack, on
         <button
           onClick={onNewSession}
           className="inline-flex h-9 w-9 items-center justify-center p-2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          aria-label="New session"
+          aria-label="新建会话"
         >
           <RiAddLine className="h-5 w-5" />
         </button>
@@ -557,7 +557,7 @@ const VSCodeHeader: React.FC<VSCodeHeaderProps> = ({ title, showBack, onBack, on
         <button
           onClick={onAgentManager}
           className="inline-flex h-9 w-9 items-center justify-center p-2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          aria-label="Open Agent Manager"
+          aria-label="打开智能体管理器"
         >
           <RiRobot2Line className="h-5 w-5" />
         </button>
@@ -578,7 +578,7 @@ const VSCodeHeader: React.FC<VSCodeHeaderProps> = ({ title, showBack, onBack, on
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              aria-label="Rate limits"
+              aria-label="速率限制"
               className="inline-flex h-9 w-9 items-center justify-center p-2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               disabled={isQuotaLoading}
             >
@@ -604,7 +604,7 @@ const VSCodeHeader: React.FC<VSCodeHeaderProps> = ({ title, showBack, onBack, on
                         }`
                       }
                       onClick={() => void handleDisplayModeChange('usage')}
-                      aria-label="Show used quota"
+                      aria-label="显示已用配额"
                     >
                       Used
                     </button>
@@ -618,7 +618,7 @@ const VSCodeHeader: React.FC<VSCodeHeaderProps> = ({ title, showBack, onBack, on
                         }`
                       }
                       onClick={() => void handleDisplayModeChange('remaining')}
-                      aria-label="Show remaining quota"
+                      aria-label="显示剩余配额"
                     >
                       Remaining
                     </button>
@@ -628,7 +628,7 @@ const VSCodeHeader: React.FC<VSCodeHeaderProps> = ({ title, showBack, onBack, on
                     className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     onClick={() => fetchAllQuotas()}
                     disabled={isQuotaLoading}
-                    aria-label="Refresh rate limits"
+                    aria-label="刷新速率限制"
                   >
                     <RiRefreshLine className="h-4 w-4" />
                   </button>
@@ -712,7 +712,7 @@ const VSCodeHeader: React.FC<VSCodeHeaderProps> = ({ title, showBack, onBack, on
         <button
           onClick={onSettings}
           className="inline-flex h-9 w-9 items-center justify-center p-2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          aria-label="Settings"
+          aria-label="设置"
         >
           <RiSettings3Line className="h-5 w-5" />
         </button>

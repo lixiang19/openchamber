@@ -24,17 +24,17 @@ export const PaceIndicator: React.FC<PaceIndicatorProps> = ({
   const statusLabel = React.useMemo(() => {
     switch (paceInfo.status) {
       case 'on-track':
-        return 'On track';
+        return '正常';
       case 'slightly-fast':
-        return 'Slightly fast';
+        return '略快';
       case 'too-fast':
-        return 'Too fast';
+        return '过快';
       case 'exhausted':
-        return 'Used up';
+        return '已用完';
     }
   }, [paceInfo.status]);
 
-  const predictionTooltip = `Predicted usage at window end based on current pace: ${paceInfo.predictText}`;
+  const predictionTooltip = `基于当前速度的窗口结束预测用量: ${paceInfo.predictText}`;
 
   if (compact) {
     return (
@@ -50,9 +50,9 @@ export const PaceIndicator: React.FC<PaceIndicatorProps> = ({
           title={paceInfo.isExhausted ? undefined : predictionTooltip}
         >
           {paceInfo.isExhausted ? (
-            <>Wait {formatRemainingTime(paceInfo.remainingSeconds)}</>
+            <>等待 {formatRemainingTime(paceInfo.remainingSeconds)}</>
           ) : (
-            <>Pred: {paceInfo.predictText}</>
+            <>预测: {paceInfo.predictText}</>
           )}
         </span>
       </div>
@@ -64,7 +64,7 @@ export const PaceIndicator: React.FC<PaceIndicatorProps> = ({
       <div className="flex items-center gap-1.5">
         {!paceInfo.isExhausted && (
           <span className="typography-micro text-muted-foreground">
-            Pace: {paceInfo.paceRateText}
+            速度: {paceInfo.paceRateText}
           </span>
         )}
       </div>
@@ -76,12 +76,12 @@ export const PaceIndicator: React.FC<PaceIndicatorProps> = ({
           {paceInfo.isExhausted ? (
             <>
               <span className="font-medium">{statusLabel}</span>
-              <span className="text-muted-foreground"> · Wait </span>
+              <span className="text-muted-foreground"> · 等待 </span>
               <span className="font-medium">{formatRemainingTime(paceInfo.remainingSeconds)}</span>
             </>
           ) : (
             <span title={predictionTooltip}>
-              <span className="text-muted-foreground">Pred: </span>
+              <span className="text-muted-foreground">预测: </span>
               <span className="font-medium">{paceInfo.predictText}</span>
             </span>
           )}

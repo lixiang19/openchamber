@@ -403,17 +403,17 @@ export const AgentsPage: React.FC = () => {
     const agentName = isNewAgent ? draftName.trim().replace(/\s+/g, '-') : selectedAgentName?.trim();
 
     if (!agentName) {
-      toast.error('Agent name is required');
+      toast.error('智能体名称必填');
       return;
     }
 
     if (!description.trim()) {
-      toast.error('Description is required');
+      toast.error('描述必填');
       return;
     }
 
     if (isNewAgent && agents.some((agent) => agent.name === agentName)) {
-      toast.error('An agent with this name already exists');
+      toast.error('此名称的智能体已存在');
       return;
     }
 
@@ -444,9 +444,9 @@ export const AgentsPage: React.FC = () => {
         if (isNewAgent) {
           setAgentDraft(null);
         }
-        toast.success(isNewAgent ? 'Agent created successfully' : 'Agent updated successfully');
+        toast.success(isNewAgent ? '智能体创建成功' : '智能体更新成功');
       } else {
-        toast.error(isNewAgent ? 'Failed to create agent' : 'Failed to update agent');
+        toast.error(isNewAgent ? '创建智能体失败' : '更新智能体失败');
       }
     } catch (error) {
       console.error('Error saving agent:', error);
@@ -499,13 +499,13 @@ export const AgentsPage: React.FC = () => {
                     <Input
                       value={draftName}
                       onChange={(event) => setDraftName(event.target.value)}
-                      placeholder="agent-name"
+                      placeholder="智能体名称"
                       className="h-7 w-48 px-2"
                     />
                   </div>
                   <Select value={draftScope} onValueChange={(value) => setDraftScope(value as AgentScope)}>
                     <SelectTrigger className="w-fit min-w-[110px]">
-                      <SelectValue placeholder="Scope" />
+                      <SelectValue placeholder="范围" />
                     </SelectTrigger>
                     <SelectContent align="end">
                       <SelectItem value="user">
@@ -532,7 +532,7 @@ export const AgentsPage: React.FC = () => {
                 <Textarea
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
-                  placeholder="What does this agent do?"
+                  placeholder="这个智能体是做什么的？"
                   rows={2}
                   className="w-full resize-none min-h-[60px] bg-transparent"
                 />
@@ -547,7 +547,7 @@ export const AgentsPage: React.FC = () => {
                 <Input
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value)}
-                  placeholder="Optional UI label"
+                  placeholder="可选的UI标签"
                   className="h-7 w-56 px-2"
                 />
               </div>
@@ -680,7 +680,7 @@ export const AgentsPage: React.FC = () => {
             <Textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
-              placeholder="You are an expert coding assistant..."
+              placeholder="你是一位专家级编程助手..."
               rows={10}
               className="w-full font-mono typography-meta min-h-[160px] max-h-[60vh] bg-transparent resize-y"
             />
@@ -697,7 +697,7 @@ export const AgentsPage: React.FC = () => {
           <section className="px-2 pb-2 pt-0 space-y-5">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="typography-ui-label text-foreground">Edit</span>
+                <span className="typography-ui-label text-foreground">编辑</span>
                 <span className="typography-micro text-muted-foreground/70 font-mono">edit + write</span>
               </div>
               <div className="flex flex-wrap gap-2">

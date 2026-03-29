@@ -678,7 +678,7 @@ export const DirectoryTree: React.FC<DirectoryTreeProps> = ({
             isMobile ? "p-1.5" : "p-1",
             alwaysShowActions ? "opacity-60" : "opacity-0 group-hover:opacity-100"
           )}
-          title="Create new directory"
+          title="创建新目录"
         >
           <RiAddLine className={cn("text-muted-foreground", isMobile ? "h-3.5 w-3.5" : "h-3 w-3")} />
         </button>
@@ -765,7 +765,7 @@ export const DirectoryTree: React.FC<DirectoryTreeProps> = ({
                       cancelCreatingDirectory();
                     }}
                     className="p-1 hover:bg-interactive-hover rounded"
-                    title="Cancel"
+                    title="取消"
                   >
                     <RiCloseLine className="h-3 w-3 text-muted-foreground" />
                   </button>
@@ -854,7 +854,7 @@ export const DirectoryTree: React.FC<DirectoryTreeProps> = ({
                     cancelCreatingDirectory();
                   }}
                   className="p-1 hover:bg-interactive-hover rounded"
-                  title="Cancel"
+                  title="取消"
                 >
                   <RiCloseLine className="h-3 w-3 text-muted-foreground" />
                 </button>
@@ -919,7 +919,7 @@ export const DirectoryTree: React.FC<DirectoryTreeProps> = ({
               "hover:bg-interactive-hover rounded-md transition-opacity",
               isMobile ? "p-1.5 opacity-60" : "p-1 opacity-0 group-hover:opacity-100"
             )}
-            title="Unpin directory"
+            title="取消固定目录"
           >
             <RiPushpin2Line className={cn("text-primary", isMobile ? "h-3.5 w-3.5" : "h-3.5 w-3.5")} />
           </button>
@@ -956,7 +956,7 @@ export const DirectoryTree: React.FC<DirectoryTreeProps> = ({
             togglePin(path);
           }}
           className="p-1 opacity-0 group-hover:opacity-100 hover:bg-interactive-hover rounded transition-opacity"
-          title="Unpin directory"
+          title="取消固定目录"
         >
           <RiPushpin2Line className="h-3 w-3 text-primary" />
         </button>
@@ -1044,7 +1044,7 @@ export const DirectoryTree: React.FC<DirectoryTreeProps> = ({
             'w-full h-8 px-2.5 justify-between items-center rounded-lg border border-transparent bg-sidebar-accent/40 text-foreground/90 hover:bg-sidebar-accent/60 typography-meta',
             triggerClassName
           )}
-          aria-label="Select working directory"
+          aria-label="选择工作目录"
         >
           <span className="flex items-center gap-1.5 min-w-0 flex-1">
             <RiFolder6Line className="h-3 w-3 flex-shrink-0 text-muted-foreground" />

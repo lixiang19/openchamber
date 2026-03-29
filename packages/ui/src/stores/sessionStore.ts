@@ -31,7 +31,7 @@ interface SessionState {
 
 interface SessionActions {
     loadSessions: () => Promise<void>;
-    createSession: (title?: string, directoryOverride?: string | null, parentID?: string | null, options?: { thinking?: string }) => Promise<Session | null>;
+    createSession: (title?: string, directoryOverride?: string | null, parentID?: string | null, options?: { thinkingLevel?: string }) => Promise<Session | null>;
     deleteSession: (id: string, options?: { archiveWorktree?: boolean; deleteRemoteBranch?: boolean; deleteLocalBranch?: boolean; remoteName?: string }) => Promise<boolean>;
     deleteSessions: (ids: string[], options?: { archiveWorktree?: boolean; deleteRemoteBranch?: boolean; deleteLocalBranch?: boolean; remoteName?: string; silent?: boolean }) => Promise<{ deletedIds: string[]; failedIds: string[] }>;
     archiveSession: (id: string) => Promise<boolean>;
@@ -389,7 +389,7 @@ export const useSessionStore = create<SessionStore>()(
                     }
                 },
 
-                createSession: async (title?: string, directoryOverride?: string | null, parentID?: string | null, options?: { thinking?: string }) => {
+                createSession: async (title?: string, directoryOverride?: string | null, parentID?: string | null, options?: { thinkingLevel?: string }) => {
                     set({ error: null });
                     const directoryStore = useDirectoryStore.getState();
                     const fallbackDirectory = normalizePath(directoryStore.currentDirectory);
@@ -472,7 +472,7 @@ export const useSessionStore = create<SessionStore>()(
                             cwd: targetDirectory ?? undefined,
                             title,
                             parentID: parentID ?? null,
-                            thinking: options?.thinking,
+                            thinkingLevel: options?.thinkingLevel,
                         });
                         const session = projectPiSessionToRuntimeSession(snapshot);
                         get().setPiSessionSnapshot(snapshot);

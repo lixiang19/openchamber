@@ -189,7 +189,7 @@ const ImagePreview = memo(({ file, onRemove }: ImagePreviewProps) => {
       <button
         onClick={onRemove}
         className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-background/80 text-foreground hover:text-destructive flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        title="Remove image"
+        title="移除图片"
         aria-label={`Remove ${displayName}`}
       >
         <RiCloseLine className="h-2.5 w-2.5" />

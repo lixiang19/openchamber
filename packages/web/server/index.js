@@ -6171,6 +6171,7 @@ async function main(options = {}) {
         cwd: req.body?.cwd,
         title: req.body?.title,
         parentID: req.body?.parentID,
+        thinkingLevel: req.body?.thinkingLevel,
       });
       res.json(session);
     } catch (error) {
@@ -6267,7 +6268,10 @@ async function main(options = {}) {
 
   app.put('/api/pi/sessions/:sessionId', async (req, res) => {
     try {
-      res.json(await PI_SDK_HOST.renameSession(req.params.sessionId, { title: req.body?.title }));
+      res.json(await PI_SDK_HOST.updateSession(req.params.sessionId, {
+        title: req.body?.title,
+        thinkingLevel: req.body?.thinkingLevel,
+      }));
     } catch (error) {
       const message = error?.message || 'Failed to update Pi session';
       const status = String(message).includes('Unknown Pi session') ? 404 : 400;

@@ -560,7 +560,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
             'hover:bg-[var(--interactive-hover)]',
             'transition-colors duration-150'
           )}
-          title="Add to current chat"
+          title="添加到当前聊天"
           type="button"
         >
           <RiAddLine className="h-4 w-4" />
@@ -578,7 +578,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
             'hover:bg-[var(--interactive-hover)]',
             'transition-colors duration-150'
           )}
-          title="Create new session with selection"
+          title="使用选择创建新会话"
           type="button"
         >
           <RiChatNewLine className="h-4 w-4" />

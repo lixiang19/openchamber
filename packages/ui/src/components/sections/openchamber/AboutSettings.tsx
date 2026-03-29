@@ -27,7 +27,7 @@ export const AboutSettings: React.FC = () => {
       const timer = setTimeout(() => {
         setShowChecking(false);
         if (didInitiateCheck.current && !updateStore.available && !updateStore.error) {
-          toast.success('You are on the latest version');
+          toast.success('已是最新版本');
           didInitiateCheck.current = false;
         }
       }, MIN_CHECKING_DURATION);
@@ -54,7 +54,7 @@ export const AboutSettings: React.FC = () => {
                 isChecking && 'animate-pulse [animation-duration:1s]'
               )}
             >
-              Check updates
+              检查更新
             </button>
           )}
 
@@ -93,7 +93,7 @@ export const AboutSettings: React.FC = () => {
     <div className="mb-8">
       <div className="mb-3 px-1">
         <h3 className="typography-ui-header font-semibold text-foreground">
-          About ridge
+          关于 ridge
         </h3>
       </div>
 
@@ -108,7 +108,7 @@ export const AboutSettings: React.FC = () => {
             {updateStore.checking && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <RiLoaderLine className="h-4 w-4 animate-spin" />
-                <span className="typography-meta">Checking...</span>
+                <span className="typography-meta">检查中...</span>
               </div>
             )}
 

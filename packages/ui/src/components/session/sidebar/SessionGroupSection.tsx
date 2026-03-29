@@ -400,7 +400,7 @@ export function SessionGroupSection(props: Props): React.ReactNode {
           onClick={() => toggleGroupSessionLimit(groupKey)}
           className="mt-0.5 flex items-center justify-start rounded-md px-1.5 py-0.5 text-left text-xs text-muted-foreground/70 leading-tight hover:text-foreground hover:underline"
         >
-          Show {remainingCount} more {remainingCount === 1 ? 'session' : 'sessions'}
+          显示 {remainingCount} 个更多{remainingCount === 1 ? '会话' : '会话'}
         </button>
       ) : null}
       {isExpanded && totalSessions > maxVisible ? (
@@ -654,7 +654,7 @@ export function SessionGroupSection(props: Props): React.ReactNode {
                    <RiAddLine className="h-4 w-4" />
                  </button>
                </TooltipTrigger>
-               <TooltipContent side="bottom" sideOffset={4}><p>New draft session</p></TooltipContent>
+               <TooltipContent side="bottom" sideOffset={4}><p>新建草稿会话</p></TooltipContent>
              </Tooltip>
            </div>
          ) : null}

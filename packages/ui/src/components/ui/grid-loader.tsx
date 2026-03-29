@@ -24,7 +24,7 @@ const GridLoader: React.FC<GridLoaderProps> = ({ className, size = 'md' }) => {
     <span
       className={cn('grid grid-cols-3 place-items-center', config.container, className)}
       style={{ width: '11px', height: '11px' }}
-      aria-label="Loading"
+      aria-label="加载中"
     >
       {Array.from({ length: 9 }, (_, i) => (
         <span

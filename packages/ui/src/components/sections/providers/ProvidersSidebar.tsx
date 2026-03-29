@@ -123,8 +123,8 @@ export const ProvidersSidebar: React.FC<ProvidersSidebarProps> = ({ onItemSelect
               setSelectedProvider(ADD_PROVIDER_ID);
               onItemSelect?.();
             }}
-            aria-label="Connect provider"
-            title="Connect provider"
+            aria-label="连接提供商"
+            title="连接提供商"
           >
             <RiAddLine className="h-3.5 w-3.5" />
           </Button>
@@ -135,7 +135,7 @@ export const ProvidersSidebar: React.FC<ProvidersSidebarProps> = ({ onItemSelect
         {providers.length === 0 ? (
           <div className="py-12 px-4 text-center text-muted-foreground">
             <RiStackLine className="mx-auto mb-3 h-10 w-10 opacity-50" />
-            <p className="typography-ui-label font-medium">No providers found</p>
+            <p className="typography-ui-label font-medium">未找到提供商</p>
             <p className="typography-meta mt-1 opacity-75">Check your runtime configuration</p>
           </div>
         ) : (

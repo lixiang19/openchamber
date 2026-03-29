@@ -403,7 +403,7 @@ export const ContextPanel: React.FC = () => {
       label,
       icon: getTabIcon(tab),
       title: tabPathLabel ? `${rawLabel}: ${tabPathLabel}` : rawLabel,
-      closeLabel: `Close ${label} tab`,
+      closeLabel: `关闭 ${label} 标签`,
     };
   }), [effectiveDirectory, tabs]);
 
@@ -472,7 +472,7 @@ export const ContextPanel: React.FC = () => {
           size="sm"
           onClick={handleClose}
           className="h-7 w-7 p-0"
-          title="Close panel"
+          title="关闭面板"
           aria-label="Close panel"
         >
           <RiCloseLine className="h-3.5 w-3.5" />
@@ -527,7 +527,7 @@ export const ContextPanel: React.FC = () => {
           onPointerCancel={handleResizeEnd}
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize context panel"
+          aria-label="调整上下文面板大小"
         />
       )}
       {header}

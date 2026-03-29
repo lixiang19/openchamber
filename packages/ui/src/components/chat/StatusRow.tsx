@@ -224,7 +224,7 @@ export const StatusRow: React.FC<StatusRowProps> = ({
       type="button"
       onClick={onAbort}
       className="flex items-center justify-center h-[1.2rem] w-[1.2rem] text-[var(--status-error)] transition-opacity hover:opacity-80 focus-visible:outline-none flex-shrink-0"
-      aria-label="Stop generating"
+      aria-label="停止生成"
     >
       <RiCloseCircleLine size={18} aria-hidden="true" />
     </button>

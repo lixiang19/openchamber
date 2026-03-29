@@ -1615,7 +1615,7 @@ Nice-to-have:
                     onValueChange={(value) => setNewBranchState(prev => ({ ...prev, sourceBranch: value }))}
                   >
                     <SelectTrigger size="lg" className="w-fit">
-                      <SelectValue placeholder="Select source branch..." />
+                      <SelectValue placeholder="选择源分支..." />
                     </SelectTrigger>
                     <SelectContent className="max-h-[280px] max-w-[320px]">
                       {isLoadingBranches ? (

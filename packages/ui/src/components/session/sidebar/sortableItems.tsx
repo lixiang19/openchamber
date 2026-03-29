@@ -232,7 +232,7 @@ export const SortableProjectItem: React.FC<SortableProjectItemProps> = ({
                         'inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 hover:text-foreground transition-opacity',
                           mobileVariant ? 'opacity-100' : isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none',
                         )}
-                        aria-label="New worktree"
+                        aria-label="新建工作树"
                       >
                         <RiNodeTree className="h-4 w-4" />
                       </button>

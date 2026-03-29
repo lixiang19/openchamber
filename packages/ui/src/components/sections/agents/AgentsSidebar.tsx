@@ -124,7 +124,7 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
 
   const handleDeleteAgent = async (agent: Agent) => {
     if (isAgentBuiltIn(agent)) {
-      toast.error('Built-in agents cannot be deleted');
+      toast.error('内置智能体无法删除');
       return;
     }
 
@@ -162,9 +162,9 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
       }
       closeConfirmActionDialog();
     } else if (confirmActionType === 'delete') {
-      toast.error('Failed to delete agent');
+      toast.error('删除智能体失败');
     } else {
-      toast.error('Failed to reset agent');
+      toast.error('重置智能体失败');
     }
 
     setIsConfirmActionPending(false);
@@ -215,7 +215,7 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
     const sanitizedName = renameNewName.trim().replace(/\s+/g, '-');
 
     if (!sanitizedName) {
-      toast.error('Agent name is required');
+      toast.error('智能体名称必填');
       return;
     }
 
@@ -225,7 +225,7 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
     }
 
     if (agents.some((a) => a.name === sanitizedName)) {
-      toast.error('An agent with this name already exists');
+      toast.error('此名称的智能体已存在');
       return;
     }
 
@@ -261,10 +261,10 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
         toast.success(`Agent renamed to "${sanitizedName}"`);
         setSelectedAgent(sanitizedName);
       } else {
-        toast.error('Failed to remove old agent after rename');
+        toast.error('重命名后移除旧智能体失败');
       }
     } else {
-      toast.error('Failed to rename agent');
+      toast.error('重命名智能体失败');
     }
 
     setRenameDialogAgent(null);
@@ -328,7 +328,7 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
         {visibleAgents.length === 0 ? (
           <div className="py-12 px-4 text-center text-muted-foreground">
             <RiRobot2Line className="mx-auto mb-3 h-10 w-10 opacity-50" />
-            <p className="typography-ui-label font-medium">No agents configured</p>
+            <p className="typography-ui-label font-medium">未配置智能体</p>
             <p className="typography-meta mt-1 opacity-75">Use the + button above to create one</p>
           </div>
         ) : (
@@ -463,7 +463,7 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
           <Input
             value={renameNewName}
             onChange={(e) => setRenameNewName(e.target.value)}
-            placeholder="New agent name..."
+            placeholder="新智能体名称..."
             className="text-foreground placeholder:text-muted-foreground"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {

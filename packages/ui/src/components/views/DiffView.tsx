@@ -1696,7 +1696,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
                             void openSelectedFileInEditorAtChange();
                         }}
                         disabled={isOpeningSelectedInEditor}
-                        title="Open this file at first changed line"
+                        title="在第一个变更行打开此文件"
                     >
                         {isOpeningSelectedInEditor ? (
                             <RiLoader4Line className="size-3.5 animate-spin" />

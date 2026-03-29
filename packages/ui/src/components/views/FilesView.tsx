@@ -2180,8 +2180,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
               variant="ghost"
               size="sm"
               className="h-6 w-6 p-0 text-muted-foreground opacity-80 hover:opacity-100"
-              title="Open in desktop app"
-              aria-label="Open in desktop app"
+              title="在桌面应用中打开"
+              aria-label="在桌面应用中打开"
             >
               <RiFileTransferLine className="h-4 w-4" />
             </Button>
@@ -2318,7 +2318,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
             onClick={() => setIsFullscreen(!isFullscreen)}
             className="h-6 w-6 p-0"
             title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-            aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            aria-label={isFullscreen ? '退出全屏' : '全屏'}
           >
             {isFullscreen ? (
               <RiFullscreenExitLine className="h-4 w-4" />
@@ -2383,7 +2383,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                   <button
                     type="button"
                     className="inline-flex min-w-0 max-w-full items-center gap-1 text-left typography-ui-label font-medium"
-                    aria-label="Open files"
+                    aria-label="打开文件"
                   >
                     <FileTypeIcon filePath={selectedFile.path} extension={selectedFile.extension} className="h-3.5 w-3.5 flex-shrink-0" />
                     <span className="min-w-0 flex-1 truncate">{selectedFile.name}</span>
@@ -2428,7 +2428,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                             handleCloseFile(file.path);
                           }}
                           className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--surface-muted-foreground)] hover:text-[var(--surface-foreground)]"
-                          aria-label={`Close ${file.name}`}
+                          aria-label={`关闭 ${file.name}`}
                         >
                           <RiCloseLine className="h-3.5 w-3.5" />
                         </button>
@@ -2489,7 +2489,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                             'rounded-sm p-0.5 text-[var(--surface-muted-foreground)] hover:text-[var(--surface-foreground)]',
                             !isActive && 'opacity-0 group-hover:opacity-100'
                           )}
-                          aria-label={`Close ${file.name}`}
+                          aria-label={`关闭 ${file.name}`}
                         >
                           <RiCloseLine size={14} />
                         </button>
@@ -2672,7 +2672,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
               ref={searchInputRef}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search files…"
+              placeholder="搜索文件..."
               className="h-8 pl-8 pr-8 typography-meta"
             />
             {searchQuery.trim().length > 0 && (
@@ -2694,7 +2694,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
             size="sm"
             onClick={() => handleOpenDialog('createFile', { path: currentDirectory, type: 'directory' })}
             className="h-8 w-8 p-0 flex-shrink-0"
-            title="New File"
+            title="新建文件"
           >
             <RiFileAddLine className="h-4 w-4" />
           </Button>

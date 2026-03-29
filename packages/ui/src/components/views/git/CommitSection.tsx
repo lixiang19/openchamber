@@ -57,7 +57,7 @@ export const CommitSection: React.FC<CommitSectionProps> = ({
   return (
     <section className={containerClassName} data-keyboard-avoid="true">
       <div className={headerClassName}>
-        <h3 className="typography-ui-header font-semibold text-foreground">Commit</h3>
+        <h3 className="typography-ui-header font-semibold text-foreground">提交</h3>
       </div>
 
       <div className={contentClassName}>
@@ -76,7 +76,7 @@ export const CommitSection: React.FC<CommitSectionProps> = ({
         <CommitInput
           value={commitMessage}
           onChange={onCommitMessageChange}
-          placeholder="Commit message"
+          placeholder="提交消息"
           disabled={commitAction !== null}
           hasTouchInput={hasTouchInput}
           isMobile={isMobile}
@@ -107,7 +107,7 @@ export const CommitSection: React.FC<CommitSectionProps> = ({
               isBusy
             }
             type="button"
-            aria-label="Generate"
+            aria-label="生成"
             className="commit-actions__btn"
           >
             {isGeneratingMessage ? (
@@ -126,7 +126,7 @@ export const CommitSection: React.FC<CommitSectionProps> = ({
             onClick={onCommit}
             disabled={!canCommit || isGeneratingMessage}
             className="commit-actions__btn whitespace-nowrap"
-            aria-label="Commit"
+            aria-label="提交"
           >
             {commitAction === 'commit' ? (
               <>
@@ -136,7 +136,7 @@ export const CommitSection: React.FC<CommitSectionProps> = ({
             ) : (
               <>
                 <RiGitCommitLine className="size-4" />
-                <span className="commit-actions__label">Commit</span>
+                <span className="commit-actions__label">提交</span>
               </>
             )}
           </Button>
@@ -150,7 +150,7 @@ export const CommitSection: React.FC<CommitSectionProps> = ({
                   onClick={() => onCommitAndPush()}
                   disabled={!canCommit || isGeneratingMessage}
                   className="h-7 w-7 p-0"
-                  aria-label="Push"
+                  aria-label="推送"
                 >
                   {commitAction === 'commitAndPush' ? (
                     <RiLoader4Line className="size-4 animate-spin" />
@@ -170,7 +170,7 @@ export const CommitSection: React.FC<CommitSectionProps> = ({
               onClick={() => onCommitAndPush()}
               disabled={!canCommit || isGeneratingMessage}
               className="commit-actions__btn"
-              aria-label="Push"
+              aria-label="推送"
             >
               {commitAction === 'commitAndPush' ? (
                 <>

@@ -339,7 +339,7 @@ const TableCopyButton: React.FC<{ tableRef: React.RefObject<HTMLDivElement | nul
       <button
         onClick={() => setShowMenu(!showMenu)}
         className="p-1 rounded hover:bg-interactive-hover/60 text-muted-foreground hover:text-foreground transition-colors"
-        title="Copy table"
+        title="复制表格"
       >
         {copied ? <RiCheckLine className="size-3.5" /> : <RiFileCopyLine className="size-3.5" />}
       </button>
@@ -396,7 +396,7 @@ const TableDownloadButton: React.FC<{ tableRef: React.RefObject<HTMLDivElement |
       <button
         onClick={() => setShowMenu(!showMenu)}
         className="p-1 rounded hover:bg-interactive-hover/60 text-muted-foreground hover:text-foreground transition-colors"
-        title="Download table"
+        title="下载表格"
       >
         <RiDownloadLine className="size-3.5" />
       </button>
@@ -597,14 +597,14 @@ const MermaidBlock: React.FC<{ source: string; mode: 'svg' | 'ascii' }> = ({ sou
         <button
           onClick={handleCopyMermaidSource}
           className="p-1 rounded hover:bg-interactive-hover/60 text-muted-foreground hover:text-foreground transition-colors"
-          title="Copy source"
+          title="复制源"
         >
           {copied ? <RiCheckLine className="size-3.5" /> : <RiFileCopyLine className="size-3.5" />}
         </button>
         <button
           onClick={handleDownloadSvg}
           className="p-1 rounded hover:bg-interactive-hover/60 text-muted-foreground hover:text-foreground transition-colors"
-          title="Download SVG"
+          title="下载 SVG"
         >
           {downloaded ? <RiCheckLine className="size-3.5" /> : <RiDownloadLine className="size-3.5" />}
         </button>
@@ -1096,7 +1096,7 @@ const useFileReferenceInteractions = ({
       candidate.setAttribute('data-ridge-file-link', 'true');
       candidate.setAttribute('data-ridge-file-ref', rawCandidate);
       candidate.setAttribute('data-ridge-file-path', resolvedPath);
-      candidate.setAttribute('title', 'Open file');
+      candidate.setAttribute('title', '打开文件');
       if (candidate.tagName.toLowerCase() !== 'a') {
         candidate.setAttribute('role', 'button');
         candidate.setAttribute('tabindex', '0');

@@ -326,7 +326,7 @@ export const SortableTabsStrip: React.FC<SortableTabsStripProps> = ({
         )}
         style={isScrollable ? { scrollbarWidth: 'none', msOverflowStyle: 'none' } : undefined}
         role="tablist"
-        aria-label="Tabs"
+        aria-label="标签"
       >
         {usesActivePillIndicator && pillRect ? (
           <div

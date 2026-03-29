@@ -50,7 +50,7 @@ const QueuedMessageChip = memo(({ message, sessionId, onEdit }: QueuedMessageChi
                     removeFromQueue(sessionId, message.id);
                 }}
                 className="flex items-center justify-center h-6 w-6 flex-shrink-0 hover:bg-[var(--interactive-hover)] rounded-full transition-colors cursor-pointer"
-                aria-label="Remove from queue"
+                aria-label="从队列中移除"
             >
                 <RiCloseLine className="h-4 w-4 text-muted-foreground" />
             </span>

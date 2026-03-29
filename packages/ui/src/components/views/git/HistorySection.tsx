@@ -165,7 +165,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                   className="data-[size=sm]:h-auto h-7 min-h-7 w-auto justify-between px-2 py-0"
                   disabled={isLogLoading}
                 >
-                  <SelectValue placeholder="Commits" />
+                  <SelectValue placeholder="提交" />
                 </SelectTrigger>
                 <SelectContent>
                   {LOG_SIZE_OPTIONS.map((option) => (

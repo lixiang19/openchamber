@@ -209,7 +209,7 @@ export const InstallSkillDialog: React.FC<InstallSkillDialogProps> = ({ open, on
                     disabled={projects.length === 1}
                   >
                     <SelectTrigger className="w-fit">
-                      <SelectValue placeholder="Choose project" />
+                      <SelectValue placeholder="选择项目" />
                     </SelectTrigger>
                     <SelectContent align="start">
                       {projects.map((p) => (

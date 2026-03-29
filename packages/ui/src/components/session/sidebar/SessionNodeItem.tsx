@@ -197,7 +197,7 @@ export function SessionNodeItem(props: Props): React.ReactNode {
               onChange={(event) => setEditTitle(event.target.value)}
               className="flex-1 min-w-0 bg-transparent typography-ui-label outline-none placeholder:text-muted-foreground"
               autoFocus
-              placeholder="Rename session"
+              placeholder="重命名会话"
               onKeyDown={(event) => {
                 if (event.key === 'Escape') {
                   event.stopPropagation();
@@ -236,7 +236,7 @@ export function SessionNodeItem(props: Props): React.ReactNode {
   const statusMarkerContent = isStreaming
     ? <GridLoader size="xs" className="text-primary" />
     : (
-        <span className="grid grid-cols-3 gap-[1px] text-[var(--status-info)]" aria-label="Unread updates" title="Unread updates">
+        <span className="grid grid-cols-3 gap-[1px] text-[var(--status-info)]" aria-label="未读更新" title="Unread updates">
           {Array.from({ length: 9 }, (_, i) => (
             ATTENTION_DIAMOND_INDICES.has(i) ? (
               <span key={i} className="h-[3px] w-[3px] rounded-full bg-current animate-attention-diamond-pulse" style={{ animationDelay: getAttentionDiamondDelay(i) }} />
@@ -460,7 +460,7 @@ export function SessionNodeItem(props: Props): React.ReactNode {
                                     ? 'opacity-100 pointer-events-auto'
                                     : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto',
                                 )}
-                                aria-label="Session menu"
+                                aria-label="会话菜单"
                                 onClick={handleMenuTriggerClick}
                                 onKeyDown={(event) => event.stopPropagation()}
                               >
@@ -472,7 +472,7 @@ export function SessionNodeItem(props: Props): React.ReactNode {
                         </div>
                       ) : null}
                       {pendingPermissionCount > 0 ? (
-                        <span className="inline-flex items-center gap-1 rounded bg-destructive/10 px-1 py-0.5 text-[0.7rem] text-destructive flex-shrink-0" title="Permission required" aria-label="Permission required">
+                        <span className="inline-flex items-center gap-1 rounded bg-destructive/10 px-1 py-0.5 text-[0.7rem] text-destructive flex-shrink-0" title="Permission required" aria-label="需要权限">
                           <RiShieldLine className="h-3 w-3" />
                           <span className="leading-none">{pendingPermissionCount}</span>
                         </span>
@@ -516,7 +516,7 @@ export function SessionNodeItem(props: Props): React.ReactNode {
                     {isPinnedSession ? <RiPushpinLine className="h-3 w-3 flex-shrink-0 text-primary" aria-label="Pinned session" /> : null}
                     <div className={cn('block min-w-0 flex-1 truncate typography-ui-label font-normal', isActive ? 'text-primary' : 'text-foreground')}>{renderHighlightedText(sessionTitle, normalizedSessionSearchQuery)}</div>
                     {pendingPermissionCount > 0 ? (
-                      <span className="inline-flex items-center gap-1 rounded bg-destructive/10 px-1 py-0.5 text-[0.7rem] text-destructive flex-shrink-0" title="Permission required" aria-label="Permission required">
+                      <span className="inline-flex items-center gap-1 rounded bg-destructive/10 px-1 py-0.5 text-[0.7rem] text-destructive flex-shrink-0" title="Permission required" aria-label="需要权限">
                         <RiShieldLine className="h-3 w-3" />
                         <span className="leading-none">{pendingPermissionCount}</span>
                       </span>
@@ -567,7 +567,7 @@ export function SessionNodeItem(props: Props): React.ReactNode {
                             : 'h-4 w-4 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto')
                         : 'h-6 w-6 opacity-100',
                     )}
-                    aria-label="Session menu"
+                    aria-label="会话菜单"
                     onClick={handleMenuTriggerClick}
                     onKeyDown={(event) => event.stopPropagation()}
                     >

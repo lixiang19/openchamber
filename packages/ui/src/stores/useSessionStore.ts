@@ -47,6 +47,28 @@ const normalizePath = (value?: string | null): string | null => {
     return replaced.length > 1 ? replaced.replace(/\/+$/, "") : replaced;
 };
 
+const THINKING_LEVEL_VALUES = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
+
+const normalizeThinkingLevel = (value?: string | null): string | undefined => {
+    if (typeof value !== 'string') {
+        return undefined;
+    }
+    const normalized = value.trim().toLowerCase();
+    return THINKING_LEVEL_VALUES.has(normalized) ? normalized : undefined;
+};
+
+const resolveDraftThinkingLevel = (draftThinkingLevel?: string | null): string => {
+    const explicitThinkingLevel = normalizeThinkingLevel(draftThinkingLevel);
+    if (explicitThinkingLevel) {
+        return explicitThinkingLevel;
+    }
+
+    const configState = useConfigStore.getState();
+    return normalizeThinkingLevel(configState.getCurrentAgent()?.thinking)
+        ?? normalizeThinkingLevel(configState.settingsDefaultThinkingLevel)
+        ?? 'off';
+};
+
 const sessionChoiceAnalysisSignature = new Map<string, string>();
 const DRAFT_TARGET_STORAGE_KEY = "oc.chatInput.lastDraftTarget";
 
@@ -234,7 +256,7 @@ export const useSessionStore = create<SessionStore>()(
             pendingInputText: null,
             pendingInputMode: 'replace',
             pendingSyntheticParts: null,
-            newSessionDraft: { open: true, selectedProjectId: null, directoryOverride: null, parentID: null },
+            newSessionDraft: { open: true, selectedProjectId: null, directoryOverride: null, parentID: null, thinkingLevel: undefined },
 
             // Voice state (initialized to disconnected/idle)
             voiceStatus: 'disconnected',
@@ -330,6 +352,7 @@ export const useSessionStore = create<SessionStore>()(
                             selectedProjectId: selectedProject?.id ?? null,
                             directoryOverride: directory,
                             parentID: options?.parentID ?? null,
+                            thinkingLevel: undefined,
                             title: options?.title,
                             initialPrompt: options?.initialPrompt,
                             syntheticParts: options?.syntheticParts,
@@ -396,10 +419,26 @@ export const useSessionStore = create<SessionStore>()(
                     });
                 },
 
+                setNewSessionDraftThinkingLevel: (level: string | undefined) => {
+                    const normalizedLevel = normalizeThinkingLevel(level);
+                    set((state) => {
+                        if (!state.newSessionDraft?.open) {
+                            return state;
+                        }
+
+                        return {
+                            newSessionDraft: {
+                                ...state.newSessionDraft,
+                                thinkingLevel: normalizedLevel,
+                            },
+                        };
+                    });
+                },
+
                 closeNewSessionDraft: () => {
                     const realCurrentSessionId = useSessionManagementStore.getState().currentSessionId;
                     set({
-                        newSessionDraft: { open: false, selectedProjectId: null, directoryOverride: null, parentID: null, title: undefined, initialPrompt: undefined, syntheticParts: undefined, targetFolderId: undefined },
+                        newSessionDraft: { open: false, selectedProjectId: null, directoryOverride: null, parentID: null, thinkingLevel: undefined, title: undefined, initialPrompt: undefined, syntheticParts: undefined, targetFolderId: undefined },
                         currentSessionId: realCurrentSessionId,
                     });
                 },
@@ -409,11 +448,9 @@ export const useSessionStore = create<SessionStore>()(
                     const targetFolderId = draft.targetFolderId;
                     get().closeNewSessionDraft();
 
-                    // 从当前 agent 获取默认 thinking level
-                    const currentAgent = useConfigStore.getState().getCurrentAgent();
-                    const thinking = currentAgent?.thinking;
-
-                    const result = await useSessionManagementStore.getState().createSession(title, directoryOverride, parentID, { thinking });
+                    const result = await useSessionManagementStore.getState().createSession(title, directoryOverride, parentID, {
+                        thinkingLevel: resolveDraftThinkingLevel(draft.thinkingLevel),
+                    });
 
                     if (result?.id) {
                         await get().setCurrentSession(result.id);
@@ -589,7 +626,9 @@ export const useSessionStore = create<SessionStore>()(
 
                         const created = await useSessionManagementStore
                             .getState()
-                            .createSession(draft.title, draftDirectoryOverride, draft.parentID ?? null);
+                            .createSession(draft.title, draftDirectoryOverride, draft.parentID ?? null, {
+                                thinkingLevel: resolveDraftThinkingLevel(draft.thinkingLevel),
+                            });
 
                         if (!created?.id) {
                             throw new Error('Failed to create session');

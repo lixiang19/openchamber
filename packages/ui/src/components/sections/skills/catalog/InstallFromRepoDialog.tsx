@@ -368,7 +368,7 @@ export const InstallFromRepoDialog: React.FC<InstallFromRepoDialogProps> = ({ op
                     disabled={projects.length === 1}
                   >
                     <SelectTrigger size="lg" className="w-full justify-between">
-                      <SelectValue placeholder="Choose project" />
+                      <SelectValue placeholder="选择项目" />
                     </SelectTrigger>
                     <SelectContent align="start">
                       {projects.map((p) => (
@@ -423,7 +423,7 @@ export const InstallFromRepoDialog: React.FC<InstallFromRepoDialogProps> = ({ op
                   <Input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search skills…"
+                    placeholder="搜索技能..."
                     className="max-w-sm"
                   />
                   <div className="flex items-center gap-2">

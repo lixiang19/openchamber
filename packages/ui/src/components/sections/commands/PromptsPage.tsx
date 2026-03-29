@@ -186,7 +186,7 @@ export const PromptsPage: React.FC = () => {
                   </div>
                   <Select value={draftScope} onValueChange={(v) => setDraftScope(v as PromptScope)}>
                     <SelectTrigger className="w-fit min-w-[100px]">
-                      <SelectValue placeholder="Scope" />
+                      <SelectValue placeholder="范围" />
                     </SelectTrigger>
                     <SelectContent align="end">
                       <SelectItem value="user">
@@ -213,7 +213,7 @@ export const PromptsPage: React.FC = () => {
                 <Input
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="What does this prompt do?"
+                  placeholder="这个提示词是做什么的？"
                   className="h-7 w-full px-2"
                 />
               </div>

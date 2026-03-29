@@ -136,7 +136,7 @@ async function installWebUpdate(): Promise<InstallWebUpdateResult> {
       autoRestart: data.autoRestart !== false,
     };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to install update' };
+    return { success: false, error: error instanceof Error ? error.message :  '安装更新失败' };
   }
 }
 

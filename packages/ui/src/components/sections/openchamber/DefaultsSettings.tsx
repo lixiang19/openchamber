@@ -9,12 +9,12 @@ import { useUIStore } from '@/stores/useUIStore';
 import { cn } from '@/lib/utils';
 
 const THINKING_LEVELS = [
-  { value: 'off', label: 'off' },
-  { value: 'minimal', label: 'minimal' },
-  { value: 'low', label: 'low' },
-  { value: 'medium', label: 'medium' },
-  { value: 'high', label: 'high' },
-  { value: 'xhigh', label: 'xhigh' },
+  { value: 'off', label: '关闭' },
+  { value: 'minimal', label: '最小' },
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+  { value: 'xhigh', label: '极高' },
 ] as const;
 
 const getDisplayModel = (
@@ -67,7 +67,7 @@ export const DefaultsSettings: React.FC = () => {
           body: JSON.stringify({ defaultModel: newValue }),
         });
       } catch (error) {
-        console.warn('Failed to save default model:', error);
+        console.warn('保存默认模型失败:', error);
       }
     },
     [providers, setModel, setProvider, setSettingsDefaultModel]
@@ -104,7 +104,7 @@ export const DefaultsSettings: React.FC = () => {
       try {
         await updateDesktopSettings({ defaultAgent: newValue ?? '' });
       } catch (error) {
-        console.warn('Failed to save default agent:', error);
+        console.warn('保存默认智能体失败:', error);
       }
     },
     [setAgent, setSettingsDefaultAgent]
@@ -120,7 +120,7 @@ export const DefaultsSettings: React.FC = () => {
 
       <section className="px-2 pb-2 pt-0 space-y-0">
         <div className="mt-0 mb-1 typography-meta text-muted-foreground">
-          New sessions will start with:{' '}
+          新会话将使用：{' '}
           {parsedModel.providerId ? (
             <span className="text-foreground">
               {parsedModel.providerId}/{parsedModel.modelId}
@@ -131,7 +131,7 @@ export const DefaultsSettings: React.FC = () => {
           {settingsDefaultThinkingLevel && (
             <>
               {' / '}
-              <span className="text-foreground">thinking: {settingsDefaultThinkingLevel}</span>
+              <span className="text-foreground">思考: {settingsDefaultThinkingLevel}</span>
             </>
           )}
           {settingsDefaultAgent && (
@@ -144,7 +144,7 @@ export const DefaultsSettings: React.FC = () => {
 
         <div className={cn('flex flex-col gap-2 py-1 sm:flex-row sm:items-center sm:gap-8')}>
           <div className="flex min-w-0 flex-col sm:w-56 shrink-0">
-            <span className="typography-ui-label text-foreground">Default Model</span>
+            <span className="typography-ui-label text-foreground">默认模型</span>
           </div>
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:w-fit sm:flex-initial">
             <ModelSelector providerId={parsedModel.providerId} modelId={parsedModel.modelId} onChange={handleModelChange} />
@@ -153,7 +153,7 @@ export const DefaultsSettings: React.FC = () => {
 
         <div className="flex flex-col gap-2 py-1 sm:flex-row sm:items-center sm:gap-8">
           <div className="flex min-w-0 flex-col sm:w-56 shrink-0">
-            <span className="typography-ui-label text-foreground">Default Thinking</span>
+            <span className="typography-ui-label text-foreground">默认思考级别</span>
           </div>
           <div className="flex items-center gap-2 sm:w-fit">
             <Select 
@@ -161,7 +161,7 @@ export const DefaultsSettings: React.FC = () => {
               onValueChange={handleThinkingLevelChange}
             >
               <SelectTrigger className="w-fit min-w-[140px]">
-                <SelectValue placeholder="Thinking level" />
+                <SelectValue placeholder="思考级别" />
               </SelectTrigger>
               <SelectContent>
                 {THINKING_LEVELS.map((level) => (
@@ -176,7 +176,7 @@ export const DefaultsSettings: React.FC = () => {
 
         <div className="flex flex-col gap-2 py-1 sm:flex-row sm:items-center sm:gap-8">
           <div className="flex min-w-0 flex-col sm:w-56 shrink-0">
-            <span className="typography-ui-label text-foreground">Default Agent</span>
+            <span className="typography-ui-label text-foreground">默认智能体</span>
           </div>
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:w-fit sm:flex-initial">
             <AgentSelector agentName={settingsDefaultAgent || ''} onChange={handleAgentChange} />
@@ -196,7 +196,7 @@ export const DefaultsSettings: React.FC = () => {
             }
           }}
         >
-          <Checkbox checked={showDeletionDialog} onChange={setShowDeletionDialog} ariaLabel="Show deletion dialog" />
+          <Checkbox checked={showDeletionDialog} onChange={setShowDeletionDialog} ariaLabel="显示删除对话框" />
           <span className="typography-ui-label text-foreground">Show Deletion Dialog</span>
         </div>
 

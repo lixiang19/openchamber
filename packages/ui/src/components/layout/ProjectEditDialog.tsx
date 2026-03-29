@@ -243,7 +243,7 @@ export const ProjectEditDialog: React.FC<ProjectEditDialogProps> = ({
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Project name"
+              placeholder="项目名称"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
@@ -273,7 +273,7 @@ export const ProjectEditDialog: React.FC<ProjectEditDialogProps> = ({
                     ? 'border-foreground scale-110'
                     : 'border-border hover:border-border/80'
                 )}
-                title="None"
+                title="无"
               >
                 <span className="w-4 h-0.5 bg-muted-foreground/40 rotate-45 rounded-full" />
               </button>
@@ -322,7 +322,7 @@ export const ProjectEditDialog: React.FC<ProjectEditDialogProps> = ({
                     ? 'border-foreground scale-110 bg-[var(--surface-elevated)]'
                     : 'border-border hover:border-border/80'
                 )}
-                title="None"
+                title="无"
               >
                 <span className="w-4 h-0.5 bg-muted-foreground/40 rotate-45 rounded-full" />
               </button>
@@ -403,7 +403,7 @@ export const ProjectEditDialog: React.FC<ProjectEditDialogProps> = ({
                   value={iconBackground ?? '#000000'}
                   onChange={(event) => setIconBackground(event.target.value)}
                   className="h-8 w-10 cursor-pointer rounded border border-border bg-transparent p-1"
-                  aria-label="Project icon background color"
+                  aria-label="项目图标背景色"
                 />
                 <Input
                   value={iconBackground ?? ''}

@@ -14,10 +14,12 @@ bun install
 
 | Script | Description | Ports |
 |--------|-------------|-------|
-| `bun run dev:web:full` | Build watcher + Express server. No HMR — manual refresh after changes. | `3001` (server + static) |
-| `bun run dev:web:hmr` | Vite dev server + Express API. **Open the Vite URL for HMR**, not the backend. | `5180` (Vite HMR), `3902` (API) |
+| `bun run dev` | 默认开发入口。启动 Vite HMR + Express API，再额外跑 `packages/ui` 的 TypeScript watch。**打开 Vite URL，不要打开后端端口。** | `5180` (Vite HMR), `3902` (API) |
+| `bun run dev:web` | Web-only HMR 开发入口。启动 Vite dev server + Express API。 | `5180` (Vite HMR), `3902` (API) |
+| `bun run dev:web:full` | Build watcher + Express server。无 HMR，改动后需要手动刷新。 | `3001` (server + static) |
+| `bun run dev:web:hmr` | Vite dev server + Express API。**打开 Vite URL for HMR，不要打开 backend。** | `5180` (Vite HMR), `3902` (API) |
 
-Both are configurable via env vars: `OPENCHAMBER_PORT`, `OPENCHAMBER_HMR_UI_PORT`, `OPENCHAMBER_HMR_API_PORT`.
+这些端口可通过环境变量调整：`RIDGE_PORT`、`RIDGE_HMR_UI_PORT`、`RIDGE_HMR_API_PORT`。
 
 ### Desktop (Tauri)
 
