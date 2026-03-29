@@ -1459,6 +1459,7 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
                    </TooltipTrigger>
                    <TooltipContent sideOffset={6}>Start new session from this answer</TooltipContent>
                </Tooltip>
+              {/* Multi-run 按钮已隐藏
               <Tooltip delayDuration={1000}>
                   <TooltipTrigger asChild>
                       <Button
@@ -1474,6 +1475,7 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
                   </TooltipTrigger>
                   <TooltipContent sideOffset={6}>Start new multi-run from this answer</TooltipContent>
               </Tooltip>
+              */}
 
               {showMessageTTSButtons && hasCopyableText && (
                   <Tooltip delayDuration={1000}>

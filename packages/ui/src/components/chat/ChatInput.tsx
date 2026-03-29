@@ -3103,7 +3103,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                 <div className="flex w-full items-center justify-between gap-x-1.5">
                                     <div className="flex items-center gap-x-1.5">
                                         {attachmentsControls}
-                                        {permissionAutoAcceptButton}
                                     </div>
                                     <div className="flex items-center min-w-0 gap-x-1 justify-end">
                                         <div className="flex items-center gap-x-1 min-w-0 max-w-[60vw] flex-shrink">
@@ -3138,6 +3137,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                             <>
                                 <div className={cn("flex items-center flex-shrink-0", footerGapClass)}>
                                     {attachmentsControls}
+                                    {/* permissionAutoAcceptButtonWithTooltip 已隐藏 */}
                                     <Tooltip delayDuration={600}>
                                         <TooltipTrigger asChild>
                                             <button
@@ -3168,7 +3168,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                                             </div>
                                         </TooltipContent>
                                     </Tooltip>
-                                    {permissionAutoAcceptButtonWithTooltip}
                                 </div>
                                 <div className={cn('flex items-center flex-1 justify-end', footerGapClass, 'md:gap-x-3')}>
                                     <ModelControls className={cn('flex-1 min-w-0 justify-end')} />

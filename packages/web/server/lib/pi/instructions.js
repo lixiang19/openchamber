@@ -2,15 +2,12 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-export const INSTRUCTIONS_SETTINGS_DIRECTORY = '.ridge';
-export const INSTRUCTIONS_SETTINGS_FILENAME = 'pi-settings.json';
+export const INSTRUCTIONS_SETTINGS_DIRECTORY = '.pi';
+export const INSTRUCTIONS_SETTINGS_FILENAME = 'settings.json';
 
 export const DEFAULT_INSTRUCTIONS_CONFIG = Object.freeze({
   enabled: false,
   files: [],
-  maxFileBytes: 8192,
-  maxTotalBytes: 32768,
-  onMissingFile: 'warn',
 });
 
 export const INSTRUCTIONS_ERROR_CODE = Object.freeze({
@@ -19,30 +16,12 @@ export const INSTRUCTIONS_ERROR_CODE = Object.freeze({
   SYMLINK_ESCAPE: 'SYMLINK_ESCAPE',
   NOT_REGULAR_FILE: 'NOT_REGULAR_FILE',
   INVALID_EXTENSION: 'INVALID_EXTENSION',
-  FILE_TOO_LARGE: 'FILE_TOO_LARGE',
-  TOTAL_TOO_LARGE: 'TOTAL_TOO_LARGE',
   NOT_UTF8: 'NOT_UTF8',
 });
 
 const ALLOWED_EXTENSIONS = new Set(['.md', '.txt', '.mdx']);
-const VALID_MISSING_FILE_BEHAVIORS = new Set(['ignore', 'warn', 'error']);
 
 const normalizeString = (value) => (typeof value === 'string' ? value.trim() : '');
-
-const normalizePositiveInteger = (value, fallback) => {
-  if (typeof value === 'number' && Number.isInteger(value) && value >= 1) {
-    return value;
-  }
-
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number.parseInt(value.trim(), 10);
-    if (Number.isInteger(parsed) && parsed >= 1) {
-      return parsed;
-    }
-  }
-
-  return fallback;
-};
 
 const createInstructionsError = (code, message, options = {}) => {
   const error = new Error(message, options.cause ? { cause: options.cause } : undefined);
@@ -77,13 +56,6 @@ const sanitizeInstructionFiles = (value) => {
   return files;
 };
 
-const normalizeMissingFileBehavior = (value) => {
-  const normalized = normalizeString(value).toLowerCase();
-  return VALID_MISSING_FILE_BEHAVIORS.has(normalized)
-    ? normalized
-    : DEFAULT_INSTRUCTIONS_CONFIG.onMissingFile;
-};
-
 const normalizeInstructionsConfig = (value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return { ...DEFAULT_INSTRUCTIONS_CONFIG };
@@ -92,9 +64,6 @@ const normalizeInstructionsConfig = (value) => {
   return {
     enabled: value.enabled === true,
     files: sanitizeInstructionFiles(value.files),
-    maxFileBytes: normalizePositiveInteger(value.maxFileBytes, DEFAULT_INSTRUCTIONS_CONFIG.maxFileBytes),
-    maxTotalBytes: normalizePositiveInteger(value.maxTotalBytes, DEFAULT_INSTRUCTIONS_CONFIG.maxTotalBytes),
-    onMissingFile: normalizeMissingFileBehavior(value.onMissingFile),
   };
 };
 
@@ -141,7 +110,7 @@ const isOutsideRoot = (rootPath, candidatePath) => {
   return relative.startsWith('..') || path.isAbsolute(relative);
 };
 
-const validateAndReadFile = async (projectRoot, relativePath, maxFileBytes) => {
+const validateAndReadFile = async (projectRoot, relativePath) => {
   const extension = path.extname(relativePath).toLowerCase();
   if (!ALLOWED_EXTENSIONS.has(extension)) {
     throw createInstructionsError(
@@ -193,14 +162,6 @@ const validateAndReadFile = async (projectRoot, relativePath, maxFileBytes) => {
     throw createInstructionsError(
       INSTRUCTIONS_ERROR_CODE.SYMLINK_ESCAPE,
       `Instructions file resolves outside project root: ${relativePath}`,
-      { file: relativePath },
-    );
-  }
-
-  if (stat.size > maxFileBytes) {
-    throw createInstructionsError(
-      INSTRUCTIONS_ERROR_CODE.FILE_TOO_LARGE,
-      `Instructions file exceeds maxFileBytes: ${relativePath}`,
       { file: relativePath },
     );
   }
@@ -270,9 +231,6 @@ export const buildProjectInstructionsContext = async (projectRoot, options = {})
     settingsPath: settings.settingsPath,
     enabled: config.enabled,
     files: [...config.files],
-    maxFileBytes: config.maxFileBytes,
-    maxTotalBytes: config.maxTotalBytes,
-    onMissingFile: config.onMissingFile,
     loadedFiles: [],
     skippedFiles: [],
     totalBytes: 0,
@@ -287,23 +245,12 @@ export const buildProjectInstructionsContext = async (projectRoot, options = {})
   const sections = [];
   for (const file of config.files) {
     try {
-      const { content, bytes } = await validateAndReadFile(projectRoot, file, config.maxFileBytes);
-      if (info.totalBytes + bytes > config.maxTotalBytes) {
-        throw createInstructionsError(
-          INSTRUCTIONS_ERROR_CODE.TOTAL_TOO_LARGE,
-          `Instructions content exceeds maxTotalBytes after reading: ${file}`,
-          { file },
-        );
-      }
-
+      const { content, bytes } = await validateAndReadFile(projectRoot, file);
       info.totalBytes += bytes;
       info.loadedFiles.push(file);
       sections.push(`<!-- From: ${file} -->\n\n${content}`);
     } catch (error) {
       if (error && typeof error === 'object' && error.code === 'ENOENT') {
-        if (config.onMissingFile === 'error') {
-          throw error;
-        }
         info.skippedFiles.push(file);
         continue;
       }

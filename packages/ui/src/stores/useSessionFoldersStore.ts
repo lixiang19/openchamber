@@ -41,7 +41,7 @@ type SessionFoldersStore = SessionFoldersState & SessionFoldersActions;
 
 const FOLDERS_STORAGE_KEY = 'oc.sessions.folders';
 const COLLAPSED_STORAGE_KEY = 'oc.sessions.folderCollapse';
-const SESSIONS_DIRECTORIES_PATH_SUFFIX = '.config/openchamber/sessions-directories.json';
+const SESSIONS_DIRECTORIES_PATH_SUFFIX = '.config/ridge/sessions-directories.json';
 const DISK_WRITE_DEBOUNCE_MS = 250;
 const ARCHIVED_SCOPE_PREFIX = '__archived__:';
 

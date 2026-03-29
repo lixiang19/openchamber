@@ -39,7 +39,7 @@ describe('createManagedProjectFromTemplate', () => {
     const soul = fs.readFileSync(path.join(projectPath, 'SOUL.md'), 'utf8');
     const identity = fs.readFileSync(path.join(projectPath, 'IDENTITY.md'), 'utf8');
     const user = fs.readFileSync(path.join(projectPath, 'USER.md'), 'utf8');
-    const piSettings = JSON.parse(fs.readFileSync(path.join(projectPath, '.ridge', 'pi-settings.json'), 'utf8'));
+    const piSettings = JSON.parse(fs.readFileSync(path.join(projectPath, '.pi', 'settings.json'), 'utf8'));
 
     expect(soul).toContain('# 小岭 的灵魂');
     expect(identity).toContain('服务对象**: 阿想');

@@ -3,6 +3,7 @@ import { OpenChamberVisualSettings } from './OpenChamberVisualSettings';
 import { AboutSettings } from './AboutSettings';
 import { SessionRetentionSettings } from './SessionRetentionSettings';
 import { DefaultsSettings } from './DefaultsSettings';
+import { PiGlobalTemplateSettings } from './PiGlobalTemplateSettings';
 import { GitSettings } from './GitSettings';
 import { NotificationSettings } from './NotificationSettings';
 import { GitHubSettings } from './GitHubSettings';
@@ -36,6 +37,9 @@ export const OpenChamberPage: React.FC<OpenChamberPageProps> = ({ section }) => 
                     <OpenChamberVisualSettings />
                     <div className="border-t border-border/40 pt-6">
                         <DefaultsSettings />
+                    </div>
+                    <div className="border-t border-border/40 pt-6">
+                        <PiGlobalTemplateSettings />
                     </div>
                     <div className="border-t border-border/40 pt-6">
                         <SessionRetentionSettings />
@@ -118,6 +122,9 @@ const SessionsSectionContent: React.FC = () => {
     return (
         <div className="space-y-6">
             <DefaultsSettings />
+            <div className="border-t border-border/40 pt-6">
+                <PiGlobalTemplateSettings />
+            </div>
             <div className="border-t border-border/40 pt-6">
                 <SessionRetentionSettings />
             </div>

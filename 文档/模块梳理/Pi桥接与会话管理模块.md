@@ -8,6 +8,7 @@
 - 负责把当前可用 task agents 以 XML 片段注入系统提示词，确保主会话在调用 `task` 工具前已知晓可委派对象与约束。
 - 负责发现 Pi agents、编译权限策略，并把权限门控注入到实际运行的 session。
 - 负责读取项目内 `.ridge/pi-settings.json`，把用户指定的说明文件安全注入到 Pi system prompt。
+- 负责向设置界面暴露 ridge 预置的 Pi 全局配置目录模板，并支持把模板整体覆盖到 `~/.pi/agent/` 后触发运行时重载。
 - 负责把 Pi 原生消息/事件规整为前端稳定语义，但不继续维护 OpenCode RPC 兼容协议。
 - 服务对象包括：浏览器端会话侧边栏、聊天消息区、状态栏、命令自动补全、服务端通知/快捷入口。
 - 不负责前端 UI 渲染细节；不负责 CLI/RPC 模式；不负责旧 OpenCode 会话协议的长期兼容。
@@ -365,7 +366,7 @@ packages/ui/src/stores/messageStore.ts
 
 | File | Location | Purpose |
 |---|---|---|
-| `~/.pi/agent/settings.json` | 用户目录 | Pi 全局设置；由 `SettingsManager.create()` 读取 |
+| `~/.pi/agent/` | 用户目录 | Pi 全局配置目录；运行时从其中读取 `settings.json`、`auth.json`、`models.json`、`sessions/` 与资源目录，Ridge 设置页可整体覆盖该目录 |
 | `.pi/settings.json` | 项目目录 | 项目级 Pi 设置，覆盖全局设置 |
 | `.ridge/pi-settings.json` | 项目目录 | Ridge 项目级指令注入配置；由模板生成，`instructions.js` 在建会话时读取 |
 | `~/.pi/agent/agents/*.md` | 用户目录 | 用户级 agent 定义，由 `discoverAgents()` 读取 |

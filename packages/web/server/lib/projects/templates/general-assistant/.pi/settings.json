@@ -5,9 +5,6 @@
       "SOUL.md",
       "IDENTITY.md",
       "USER.md"
-    ],
-    "maxFileBytes": 8192,
-    "maxTotalBytes": 32768,
-    "onMissingFile": "warn"
+    ]
   }
 }

@@ -60,13 +60,12 @@ describe('buildProjectInstructionsContext', () => {
     expect(result.contentPreview).toContain('keep answers concise');
   });
 
-  it('skips missing files only for ENOENT according to onMissingFile', async () => {
+  it('skips missing files only for ENOENT', async () => {
     const projectRoot = createTempProject();
     writeJson(getProjectPiSettingsPath(projectRoot), {
       instructions: {
         enabled: true,
         files: ['SOUL.md', 'missing.md'],
-        onMissingFile: 'warn',
       },
     });
     writeText(path.join(projectRoot, 'SOUL.md'), 'hello');
@@ -108,20 +107,22 @@ describe('buildProjectInstructionsContext', () => {
     });
   });
 
-  it('fails when total bytes exceed the configured limit', async () => {
+  it('reads all files regardless of total size', async () => {
     const projectRoot = createTempProject();
     writeJson(getProjectPiSettingsPath(projectRoot), {
       instructions: {
         enabled: true,
         files: ['a.md', 'b.md'],
-        maxTotalBytes: 10,
       },
     });
     writeText(path.join(projectRoot, 'a.md'), '123456');
     writeText(path.join(projectRoot, 'b.md'), '78901');
 
-    await expect(buildProjectInstructionsContext(projectRoot)).rejects.toMatchObject({
-      code: INSTRUCTIONS_ERROR_CODE.TOTAL_TOO_LARGE,
-    });
+    const result = await buildProjectInstructionsContext(projectRoot);
+
+    expect(result.loadedFiles).toEqual(['a.md', 'b.md']);
+    expect(result.totalBytes).toBe(11);
+    expect(result.content).toContain('123456');
+    expect(result.content).toContain('78901');
   });
 });

@@ -25,7 +25,7 @@ export type ProjectTodoSaveResult =
   | { ok: true; path: string }
   | { ok: false; path: string; message: string };
 
-const TODO_DIRECTORY_NAME = '.work';
+const TODO_DIRECTORY_NAME = '.ridge';
 const TODO_FILENAME = 'todo.json';
 const EMPTY_PROJECT_TODO_DOCUMENT: ProjectTodoDocument = { version: 1, items: [] };
 

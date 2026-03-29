@@ -53,6 +53,10 @@ import {
 import webPush from 'web-push';
 import { createPiProvidersService } from './lib/pi/providers.js';
 import { buildProjectInstructionsContext } from './lib/pi/instructions.js';
+import {
+  overwritePiGlobalAgentDirectory,
+  readPiGlobalTemplateDirectory,
+} from './lib/pi/global-settings-template.js';
 import { createPiSdkHost } from './lib/pi/sdk-host.js';
 import { discoverPrompts, savePrompt, deletePrompt } from './lib/pi/prompts.js';
 import { createWechatBridgeService } from './lib/wechat-bridge/index.js';
@@ -1085,7 +1089,7 @@ const buildTemplateVariables = async (payload, sessionId) => {
 
 const OPENAURORA_DATA_DIR = process.env.OPENAURORA_DATA_DIR
   ? path.resolve(process.env.OPENAURORA_DATA_DIR)
-  : path.join(os.homedir(), '.config', 'openaurora');
+  : path.join(os.homedir(), '.ridge');
 const SETTINGS_FILE_PATH = path.join(OPENAURORA_DATA_DIR, 'settings.json');
 const PUSH_SUBSCRIPTIONS_FILE_PATH = path.join(OPENAURORA_DATA_DIR, 'push-subscriptions.json');
 const CLOUDFLARE_MANAGED_REMOTE_TUNNELS_FILE_PATH = path.join(OPENAURORA_DATA_DIR, 'cloudflare-managed-remote-tunnels.json');
@@ -7645,6 +7649,28 @@ async function main(options = {}) {
     } catch (error) {
       console.error('Failed to load settings:', error);
       res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to load settings' });
+    }
+  });
+
+  app.get('/api/config/pi-global-settings-template', async (_req, res) => {
+    try {
+      res.json(await readPiGlobalTemplateDirectory());
+    } catch (error) {
+      console.error('Failed to load Pi global settings template:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to load Pi global settings template' });
+    }
+  });
+
+  app.post('/api/config/pi-global-settings-template', async (_req, res) => {
+    try {
+      const result = await overwritePiGlobalAgentDirectory();
+      res.json({
+        ok: true,
+        ...result,
+      });
+    } catch (error) {
+      console.error('Failed to overwrite Pi global settings:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to overwrite Pi global settings' });
     }
   });
 

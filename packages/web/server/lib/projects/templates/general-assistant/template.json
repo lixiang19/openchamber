@@ -34,7 +34,7 @@
     "USER.md",
     "MEMORY.md",
     "AGENTS.md",
-    ".ridge/pi-settings.json",
+    ".pi/settings.json",
     "ridge.md"
   ],
   "postCreateMessage": "项目已创建！请先编辑 USER.md 填写你的信息，然后根据需要调整 SOUL.md 中的性格设置。"
