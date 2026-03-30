@@ -13,6 +13,7 @@ import {
     RiShieldUserLine,
     RiGithubLine,
     RiSendPlane2Line,
+    RiMagicLine,
 } from '@remixicon/react';
 import { BrowserVoiceButton } from '@/components/voice';
 import { useSessionStore } from '@/stores/useSessionStore';
@@ -69,6 +70,7 @@ const MAX_VISIBLE_TEXTAREA_LINES = 8;
 const EMPTY_QUEUE: QueuedMessage[] = [];
 const FILE_MENTION_TOKEN = /^@[^\s]+$/;
 const CHAT_DRAFT_PERSIST_DEBOUNCE_MS = 500;
+const QUICK_ACTION_ITEMS = ['继续', '反思计划', '检查实现'] as const;
 
 const extractPiUserMessageText = (message: PiMessageViewState): string => {
     if (message.role !== 'user') {
@@ -1485,6 +1487,26 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
         });
     }, [adjustTextareaHeight, message, setMessage, updateAutocompleteState]);
 
+    const focusTextareaAtEnd = React.useCallback(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) {
+            return;
+        }
+
+        try {
+            textarea.focus({ preventScroll: true });
+        } catch {
+            textarea.focus();
+        }
+
+        const length = textarea.value.length;
+        try {
+            textarea.setSelectionRange(length, length);
+        } catch {
+            // ignored
+        }
+    }, []);
+
     const handleAutocompleteTabSelect = React.useCallback((tab: 'prompts' | 'agents' | 'files') => {
         const textarea = textareaRef.current;
         if (isMobile && textarea) {
@@ -1521,30 +1543,23 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
     }, [applyAutocompletePrefix, isMobile, setAutocompleteTab, setCommandQuery, setMentionQuery, setShowCommandAutocomplete, setShowFileMention, setShowSkillAutocomplete]);
 
     const handleOpenCommandMenu = React.useCallback(() => {
-        if (!isMobile) {
-            return;
-        }
-        const textarea = textareaRef.current;
-        if (textarea) {
-            try {
-                textarea.focus({ preventScroll: true });
-            } catch {
-                textarea.focus();
-            }
-            const len = textarea.value.length;
-            try {
-                textarea.setSelectionRange(len, len);
-            } catch {
-                // ignored
-            }
-        }
+        focusTextareaAtEnd();
         applyAutocompletePrefix('/');
         setCommandQuery('');
         setAutocompleteTab('prompts');
         setShowCommandAutocomplete(true);
         setShowFileMention(false);
         setShowSkillAutocomplete(false);
-    }, [applyAutocompletePrefix, isMobile, setAutocompleteTab, setCommandQuery, setShowCommandAutocomplete, setShowFileMention, setShowSkillAutocomplete]);
+    }, [applyAutocompletePrefix, focusTextareaAtEnd, setAutocompleteTab, setCommandQuery, setShowCommandAutocomplete, setShowFileMention, setShowSkillAutocomplete]);
+
+    const handleQuickActionSelect = React.useCallback((value: (typeof QUICK_ACTION_ITEMS)[number]) => {
+        setMessage(value);
+        requestAnimationFrame(() => {
+            focusTextareaAtEnd();
+            adjustTextareaHeight();
+            updateAutocompleteState(value, value.length);
+        });
+    }, [adjustTextareaHeight, focusTextareaAtEnd, updateAutocompleteState]);
 
     const insertTextAtSelection = React.useCallback((text: string) => {
         if (!text) {
@@ -2695,26 +2710,55 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
 
     const attachmentsControls = (
         <div className="flex items-center gap-x-1.5">
-            {isMobile ? (
-                <button
-                    type="button"
-                    className={cn(
-                        footerIconButtonClass,
-                        'rounded-md',
-                        'hover:bg-interactive-hover/40'
-                    )}
-                    onPointerDownCapture={(event) => {
-                        if (event.pointerType === 'touch') {
-                            event.preventDefault();
-                            event.stopPropagation();
-                        }
-                    }}
-                    onClick={handleOpenCommandMenu}
-                    title="Prompts"
-                    aria-label="Prompts"
-                >
-                    <RiCommandLine className={cn(iconSizeClass)} />
-                </button>
+            <button
+                type="button"
+                className={cn(
+                    footerIconButtonClass,
+                    'rounded-md',
+                    'hover:bg-interactive-hover/40'
+                )}
+                onPointerDownCapture={(event) => {
+                    if (event.pointerType === 'touch') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                }}
+                onClick={handleOpenCommandMenu}
+                title="Prompts"
+                aria-label="Prompts"
+            >
+                <RiCommandLine className={cn(iconSizeClass)} />
+            </button>
+            {!isMobile ? (
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <button
+                            type="button"
+                            className={cn(
+                                footerIconButtonClass,
+                                'rounded-md hover:bg-interactive-hover/40'
+                            )}
+                            title="快捷动作"
+                            aria-label="快捷动作"
+                        >
+                            <RiMagicLine className={cn(iconSizeClass)} />
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                        {QUICK_ACTION_ITEMS.map((item) => (
+                            <DropdownMenuItem
+                                key={item}
+                                onSelect={() => {
+                                    requestAnimationFrame(() => {
+                                        handleQuickActionSelect(item);
+                                    });
+                                }}
+                            >
+                                {item}
+                            </DropdownMenuItem>
+                        ))}
+                    </DropdownMenuContent>
+                </DropdownMenu>
             ) : null}
             {attachmentMenu}
             {settingsButton}
