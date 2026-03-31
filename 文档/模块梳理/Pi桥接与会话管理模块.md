@@ -20,18 +20,29 @@
 - 模式：**分层桥接 + 惰性加载的持久化会话宿主**
 
 ```text
-[UI Components / Stores]
-          |
-          v
+[UI Components]
+      |
+      v
 [packages/ui/src/lib/pi/client.ts]
-          |
-          v
+      |
+      v
 [/api/pi/* + /api/pi/events]
-          |
-          v
+      |
+      v
+[packages/ui/src/lib/pi/stateRuntime.ts]
+      |
+      +--> reducer(upsert/bootstrap/apply_event)
+      |
+      v
+[packages/ui/src/hooks/useEventStream.ts]
+      |
+      v
+[Zustand session/message stores]
+      |
+      v
 [packages/web/server/index.js Routes]
-          |
-          v
+      |
+      v
 [packages/web/server/lib/pi/sdk-host.js]
    |            |             |
    |            |             +--> Agent discovery / permission compile
@@ -42,7 +53,9 @@
                            [Pi SDK AgentSession / JSONL Sessions]
 ```
 
-- 前端层：通过 `piClient` 拉取会话列表、详情并订阅 SSE。
+- 前端接入层：`piClient` 只负责 HTTP/SSE 收发，不直接写 UI store。
+- 前端状态层：`stateRuntime.ts` 持有唯一的 Pi reducer 状态；`getSession()/updateSession()/listSessions()/SSE` 全部先进入这里。
+- 投影层：`useEventStream.ts` 只负责 bootstrap、订阅 SSE，并把 reducer 状态投影到 `sessionStore/useSessionStore/messageStore`。
 - 路由层：`index.js` 仅做 HTTP 参数接入、错误码映射、SSE 分发。
 - 宿主层：`sdk-host.js` 是真正的运行时编排器，管理 session 装载、订阅、事件转发与交互请求。
 - SDK/存储层：Pi SDK 负责 agent 执行；`SessionManager` 负责 JSONL 持久化与会话枚举。
@@ -167,6 +180,10 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
   - 实现：`listSessions()` 先读 `SessionManager.listAll()`，再把 `task-relations.js` 的父子索引合入持久化快照，最后用 `sessions` Map 中已装载 record 覆盖同 id 条目。
   - 原因：列表既要包含历史会话，也要反映当前 streaming / retrying / widget 等运行时状态，还要恢复 task 父子结构。
 
+- **前端单一 Pi 状态源（Single Pi reducer source of truth）**
+  - 实现：`packages/ui/src/lib/pi/stateRuntime.ts` 维护全局 `PiClientState`；`useEventStream.ts` 只接入 SSE 和 bootstrap；`sessionStore.setPiSessionSnapshot()` 改为委托 `upsertPiClientSession()`，不再直接改 `piSessions`。
+  - 原因：避免 `getSession()` 快照、轮询结果和 SSE 分别写不同 store，导致旧快照覆盖新状态、重置 `seenEventIds`，进而制造历史消息重复。
+
 - **产品级 task 关系外置持久化（Product-owned task hierarchy persistence）**
   - 实现：`task-relations.js` 以 Ridge 自己的 JSON 文件保存 `sessionId -> parentID/rootID`，`sdk-host.js` 在创建 task 子会话和恢复历史会话时统一读写。
   - 原因：Pi SDK 原生 session 文件不提供 Ridge 所需的 task 父子会话树语义，必须由产品层补齐。
@@ -249,13 +266,21 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
         |
         v
 [5] buildSessionSnapshot(record)
+        |
+        v
+[6] upsertPiClientSession(snapshot)
+    packages/ui/src/lib/pi/stateRuntime.ts
+        |
+        v
+[7] useEventStream 投影到 stores
 ```
 
 - 输入：sessionId。
 - 关键分支：
   - 已在内存：直接返回快照。
   - 未在内存：从持久化索引找到 path，再惰性装载。
-- 输出：前端拿到完整 `messages`，消息区可正常恢复历史内容。
+- 前端关键约束：`getSession()` 返回的快照不能直接写 `piSessions`，必须先进入 `stateRuntime` reducer，再由统一投影更新 UI store。
+- 输出：前端拿到完整 `messages`，且不会因为旁路快照写入重置事件状态。
 
 ### 3. 创建新会话流程
 
@@ -401,18 +426,18 @@ Disk JSONL Sessions
 
 | File | Lines | Purpose |
 |---|---:|---|
-| `packages/web/server/lib/pi/sdk-host.js` | 1181 | Pi 会话宿主，管理主会话与 task 子会话、父子关系注入、持久化列表、惰性加载、消息发送与事件桥接 |
+| `packages/web/server/lib/pi/sdk-host.js` | 1292 | Pi 会话宿主，管理主会话与 task 子会话、父子关系注入、持久化列表、惰性加载、消息发送与事件桥接 |
 | `packages/web/server/lib/pi/instructions.js` | 322 | Ridge 项目级指令配置读取与安全文件装载 |
 | `packages/web/server/index.js` | 10365 | `/api/pi/*` 路由与 `/api/pi/events` SSE 入口 |
 | `packages/web/server/lib/pi/bridge-schema.js` | 638 | Pi 事件与消息的归一化桥接层 |
 | `packages/web/server/lib/pi/extensions/task.js` | 707 | SDK 化 task 工具实现，创建持久化子会话并回传 task metadata |
 | `packages/web/server/lib/pi/permissions.js` | 256 | agent 权限声明归一化与运行时 gate 编译 |
 | `packages/web/server/lib/pi/agents.js` | 193 | 扫描并合并用户/项目 agent 定义 |
-| `packages/web/server/lib/pi/providers.js` | 154 | 读取可用 provider/model 列表 |
 | `packages/web/server/lib/pi/extensions/question.js` | 149 | Web 支持的原生阻塞式交互工具定义 |
 | `packages/web/server/lib/pi/task-relations.js` | 129 | Ridge 自己维护的 task 父子关系持久化索引 |
-| `packages/ui/src/lib/pi/client.ts` | 118 | 前端 Pi API 客户端 |
-| `packages/ui/src/lib/runtime/client.ts` | 1743 | 运行时 API 总适配层，向上暴露 session/runtime 能力 |
-| `packages/ui/src/stores/sessionStore.ts` | 1185 | 会话列表、当前会话选择、Pi 会话快照同步 |
-| `packages/ui/src/stores/messageStore.ts` | 3136 | 当前会话详情加载与消息投影 |
-| `packages/ui/src/lib/runtime/projections.ts` | 54 | Pi 会话到运行时 Session/Status 的投影函数 |
+| `packages/ui/src/lib/pi/client.ts` | 125 | 前端 Pi API 客户端 |
+| `packages/ui/src/lib/pi/stateRuntime.ts` | 49 | 前端 Pi reducer 单例状态源，统一接收快照与 SSE 事件 |
+| `packages/ui/src/lib/pi/reducer.ts` | 749 | Pi session 状态归并、事件应用与消息渲染态生成 |
+| `packages/ui/src/hooks/useEventStream.ts` | 191 | bootstrap + SSE 接入，并把单一 Pi 状态投影到各 Zustand store |
+| `packages/ui/src/stores/sessionStore.ts` | 1194 | 会话列表、当前会话选择，以及 Pi 快照入口委托 |
+| `packages/ui/src/stores/messageStore.ts` | 3134 | 当前会话详情加载与消息投影 |

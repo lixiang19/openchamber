@@ -3,6 +3,7 @@ import { devtools, persist, createJSONStorage } from "zustand/middleware";
 import type { Session } from "@/lib/runtime/types";
 import { runtimeClient } from "@/lib/runtime/client";
 import { piClient } from "@/lib/pi/client";
+import { upsertPiClientSession } from "@/lib/pi/stateRuntime";
 import type { PiSessionViewState } from '@/lib/pi/types';
 import { projectPiSessionToRuntimeSession } from "@/lib/runtime/projections";
 import { getSafeStorage } from "./utils/safeStorage";
@@ -1106,22 +1107,7 @@ export const useSessionStore = create<SessionStore>()(
                     if (!session?.id) {
                         return;
                     }
-                    set((state) => {
-                        const nextPiSessions = new Map(state.piSessions);
-                        nextPiSessions.set(session.id, session);
-
-                        const projectedSession = projectPiSessionToRuntimeSession(session);
-                        const existingIndex = state.sessions.findIndex((entry) => entry.id === projectedSession.id);
-                        const nextSessions = existingIndex >= 0
-                            ? state.sessions.map((entry, index) => (index === existingIndex ? projectedSession : entry))
-                            : dedupeSessionsById([projectedSession, ...state.sessions]);
-
-                        return {
-                            piSessions: nextPiSessions,
-                            sessions: nextSessions,
-                            sessionsByDirectory: buildSessionsByDirectory(nextSessions),
-                        };
-                    });
+                    upsertPiClientSession(session);
                 },
             }),
             {

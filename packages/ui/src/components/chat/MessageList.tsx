@@ -1048,24 +1048,11 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
             }
         }
 
-        const seenIdsFromTail = new Set<string>();
-        const dedupedMessages: ChatMessageEntry[] = [];
-        for (let index = messages.length - 1; index >= 0; index -= 1) {
-            const message = messages[index];
-            const messageId = message.info?.id;
-            if (typeof messageId === 'string') {
-                if (seenIdsFromTail.has(messageId)) {
-                    continue;
-                }
-                seenIdsFromTail.add(messageId);
-            }
-            dedupedMessages.push(getNormalizedMessageForDisplay(message, currentPiSession));
-        }
-        dedupedMessages.reverse();
+        const normalizedMessages = messages.map((message) => getNormalizedMessageForDisplay(message, currentPiSession));
 
         const output: ChatMessageEntry[] = [];
-        for (let index = 0; index < dedupedMessages.length; index += 1) {
-            const current = dedupedMessages[index];
+        for (let index = 0; index < normalizedMessages.length; index += 1) {
+            const current = normalizedMessages[index];
             const previous = output.length > 0 ? output[output.length - 1] : undefined;
 
             if (isUserShellMarkerMessage(previous, currentPiSession)) {
@@ -1178,6 +1165,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
         });
 
         const orderedEntries: RenderEntry[] = [];
+
         displayMessages.forEach((message, index) => {
             const turnEntry = turnEntryByUserMessageId.get(message.info.id);
             if (turnEntry) {

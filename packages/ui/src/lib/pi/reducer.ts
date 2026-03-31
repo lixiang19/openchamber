@@ -655,7 +655,21 @@ export const piClientReducer = (state: PiClientState, action: PiClientAction): P
       return { sessions, currentSessionId };
     }
     case 'upsert_session': {
-      const session = createSessionState(action.session);
+      const incoming = createSessionState(action.session);
+      const existing = state.sessions[incoming.id];
+      const session = existing
+        ? (existing.sequence > incoming.sequence
+          ? existing
+          : {
+              ...incoming,
+              runtime: {
+                ...incoming.runtime,
+                nextMessageOrdinal: Math.max(existing.runtime.nextMessageOrdinal, incoming.runtime.nextMessageOrdinal),
+                activeAssistantMessageId: incoming.runtime.activeAssistantMessageId ?? (incoming.isStreaming ? existing.runtime.activeAssistantMessageId : null),
+                seenEventIds: new Set(existing.runtime.seenEventIds),
+              },
+            })
+        : incoming;
       return {
         ...state,
         sessions: {

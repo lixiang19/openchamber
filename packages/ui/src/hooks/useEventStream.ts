@@ -1,14 +1,14 @@
 import React from 'react';
 
 import { piClient } from '@/lib/pi/client';
+import type { PiClientState } from '@/lib/pi/reducer';
 import {
-  applyPiServerEventAction,
-  bootstrapSessionsAction,
-  createInitialPiClientState,
-  piClientReducer,
-  upsertSessionAction,
-  type PiClientState,
-} from '@/lib/pi/reducer';
+  applyPiClientServerEvent,
+  bootstrapPiClientSessions,
+  getPiClientState,
+  subscribePiClientState,
+  upsertPiClientSession,
+} from '@/lib/pi/stateRuntime';
 import {
   buildRuntimeSessionsByDirectory,
   projectPiSessionToRuntimeSession,
@@ -119,16 +119,17 @@ export const useEventStream = (options?: { enabled?: boolean }) => {
 
     let active = true;
     let frame: number | null = null;
-    let state = createInitialPiClientState();
+    let projectedState = getPiClientState();
 
-    const scheduleProjection = () => {
+    const scheduleProjection = (nextState: PiClientState) => {
+      projectedState = nextState;
       if (frame !== null) {
         cancelAnimationFrame(frame);
       }
       frame = requestAnimationFrame(() => {
         frame = null;
         if (!active) return;
-        projectPiStateToStores(state);
+        projectPiStateToStores(projectedState);
       });
     };
 
@@ -137,8 +138,7 @@ export const useEventStream = (options?: { enabled?: boolean }) => {
       try {
         const sessions = await piClient.listSessions();
         if (!active) return;
-        state = piClientReducer(state, bootstrapSessionsAction(sessions));
-        scheduleProjection();
+        bootstrapPiClientSessions(sessions);
       } catch (error) {
         if (!active) return;
         useSessionManagementStore.setState({
@@ -148,18 +148,29 @@ export const useEventStream = (options?: { enabled?: boolean }) => {
       }
     };
 
+    const unsubscribeProjection = subscribePiClientState((nextState) => {
+      if (!active) {
+        return;
+      }
+      scheduleProjection(nextState);
+    });
+    if (Object.keys(projectedState.sessions).length > 0) {
+      scheduleProjection(projectedState);
+    }
+
     void bootstrap();
 
     const unsubscribe = piClient.subscribe(null, (event) => {
       if (!active) return;
 
-      if (event.type !== 'heartbeat' && event.type !== 'notification' && !state.sessions[event.sessionId]) {
+      const currentState = getPiClientState();
+
+      if (event.type !== 'heartbeat' && event.type !== 'notification' && !currentState.sessions[event.sessionId]) {
         void piClient.getSession(event.sessionId)
           .then((session) => {
             if (!active) return;
-            state = piClientReducer(state, upsertSessionAction(session));
-            state = piClientReducer(state, applyPiServerEventAction(event));
-            scheduleProjection();
+            upsertPiClientSession(session);
+            applyPiClientServerEvent(event);
           })
           .catch(() => {
             // Ignore late events for sessions that disappeared before hydration.
@@ -167,8 +178,7 @@ export const useEventStream = (options?: { enabled?: boolean }) => {
         return;
       }
 
-      state = piClientReducer(state, applyPiServerEventAction(event));
-      scheduleProjection();
+      applyPiClientServerEvent(event);
     });
 
     return () => {
@@ -176,6 +186,7 @@ export const useEventStream = (options?: { enabled?: boolean }) => {
       if (frame !== null) {
         cancelAnimationFrame(frame);
       }
+      unsubscribeProjection();
       unsubscribe();
     };
   }, [enabled]);

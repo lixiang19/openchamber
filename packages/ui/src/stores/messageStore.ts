@@ -452,6 +452,13 @@ const compareMessageEntriesChronologically = (
     a: { info?: { id?: string; time?: { created?: number } } },
     b: { info?: { id?: string; time?: { created?: number } } },
 ): number => {
+    const aCreated = typeof a?.info?.time?.created === "number" ? a.info.time.created : 0;
+    const bCreated = typeof b?.info?.time?.created === "number" ? b.info.time.created : 0;
+
+    if (aCreated !== bCreated) {
+        return aCreated - bCreated;
+    }
+
     const aId = typeof a?.info?.id === "string" ? a.info.id : "";
     const bId = typeof b?.info?.id === "string" ? b.info.id : "";
 
@@ -466,9 +473,7 @@ const compareMessageEntriesChronologically = (
         }
     }
 
-    const aCreated = typeof a?.info?.time?.created === "number" ? a.info.time.created : 0;
-    const bCreated = typeof b?.info?.time?.created === "number" ? b.info.time.created : 0;
-    return aCreated - bCreated;
+    return 0;
 };
 
 const streamDebugEnabled = (): boolean => {
@@ -572,42 +577,6 @@ const preserveExistingToolPartIdentity = (normalizedPart: Part, existingPart: Pa
 };
 
 const ignoredAssistantMessageIds = new Set<string>();
-
-const mergeDuplicateMessage = (
-    existing: { info: any; parts: Part[] },
-    incoming: { info: any; parts: Part[] }
-): { info: any; parts: Part[] } => {
-    return {
-        ...incoming,
-        info: {
-            ...existing.info,
-            ...incoming.info,
-        },
-        parts: Array.isArray(incoming.parts) ? incoming.parts : [],
-    };
-};
-
-const dedupeMessagesById = (messages: { info: any; parts: Part[] }[]) => {
-    const deduped: { info: any; parts: Part[] }[] = [];
-    const indexById = new Map<string, number>();
-
-    for (const message of messages) {
-        const messageId = typeof message?.info?.id === "string" ? message.info.id : null;
-        if (!messageId) {
-            deduped.push(message);
-            continue;
-        }
-        const existingIndex = indexById.get(messageId);
-        if (existingIndex === undefined) {
-            indexById.set(messageId, deduped.length);
-            deduped.push(message);
-            continue;
-        }
-        deduped[existingIndex] = mergeDuplicateMessage(deduped[existingIndex], message);
-    }
-
-    return deduped;
-};
 
 const setStreamingIdForSession = (source: Map<string, string | null>, sessionId: string, messageId: string | null) => {
     const existing = source.get(sessionId);
@@ -959,7 +928,7 @@ export const useMessageStore = create<MessageStore>()(
                                     return part;
                                 }),
                             }));
-                            const mergedMessages = dedupeMessagesById(normalizedMessages);
+                            const mergedMessages = normalizedMessages;
                             const loadedTurnCount = countLoadedTurns(mergedMessages);
                             const hasMoreAbove = mergedMessages.length < rawMessages.length;
                             const activeAssistant = session.isStreaming
@@ -1885,11 +1854,7 @@ export const useMessageStore = create<MessageStore>()(
 
                                 const updatedMessages = [...messagesArray, newUserMessage];
 
-                                updatedMessages.sort((a, b) => {
-                                    const aTime = (a.info as any)?.time?.created || 0;
-                                    const bTime = (b.info as any)?.time?.created || 0;
-                                    return aTime - bTime;
-                                });
+                                updatedMessages.sort(compareMessageEntriesChronologically);
 
                                 const newMessages = new Map(state.messages);
                                 newMessages.set(sessionId, updatedMessages);
@@ -2535,11 +2500,7 @@ export const useMessageStore = create<MessageStore>()(
 
                                 const appended = [...normalizedSessionMessages, newUserMessage];
 
-                                appended.sort((a, b) => {
-                                    const aTime = (a.info as any)?.time?.created || 0;
-                                    const bTime = (b.info as any)?.time?.created || 0;
-                                    return aTime - bTime;
-                                });
+                                appended.sort(compareMessageEntriesChronologically);
                                 newMessages.set(sessionId, appended);
                                 primeSessionMessagePositionIndex(sessionId, appended);
 
@@ -2833,7 +2794,9 @@ export const useMessageStore = create<MessageStore>()(
 
                     set((state) => {
                         const newMessages = new Map(state.messages);
-                        const previousMessages = getCachedOrProjectedSessionMessages(state, sessionId);
+                        // syncMessages 只能基于已缓存消息合并，不能把 piSession 投影结果当作 merge 基底。
+                        // 否则恢复历史/实时同步会把“投影消息”和“缓存消息”反复叠加，造成 2 次/3 次重复。
+                        const previousMessages = state.messages.get(sessionId) ?? [];
                         const normalizedIncomingMessages = messagesFiltered.map((message) => {
                             const infoWithMarker = {
                                 ...normalizeMessageInfoForProjection(message.info as Message),
@@ -2872,10 +2835,10 @@ export const useMessageStore = create<MessageStore>()(
                                 return typeof id === 'string' && id.length > 0 ? !incomingIds.has(id) : true;
                             });
 
-                        const mergedMessages = dedupeMessagesById([
+                        const mergedMessages = [
                             ...existingOnlyMessages,
                             ...normalizedIncomingMessages,
-                        ]).sort(compareMessageEntriesChronologically);
+                        ].sort(compareMessageEntriesChronologically);
 
                         const previousIds = new Set(previousMessages.map((msg) => msg.info.id));
                         const nextIds = new Set(mergedMessages.map((msg) => msg.info.id));

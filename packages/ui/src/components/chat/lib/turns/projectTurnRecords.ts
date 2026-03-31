@@ -225,21 +225,17 @@ const extractToolPayloadTextAndDetails = (value: unknown): { text: string; detai
 const buildMinimalMessageEntryFromPi = (
     message: PiMessageViewState,
     sessionId: string,
+    fallbackTimestamp: number,
     toolExecutionsById: Map<string, PiToolExecutionViewState>,
     toolResultsByCallId: Map<string, Extract<PiMessageViewState, { role: 'toolResult' }>>,
 ): ChatMessageEntry => {
-    const messageId = message.id || `${sessionId}:msg:${Date.now()}`;
-    const timestamp = message.timestamp ?? Date.now();
+    const messageId = message.id || `${sessionId}:msg:${fallbackTimestamp}`;
+    const timestamp = typeof message.timestamp === 'number' ? message.timestamp : fallbackTimestamp;
     const rawParentId = (message as { parentId?: unknown }).parentId;
     const parentId = typeof rawParentId === 'string' && rawParentId.trim().length > 0
         ? rawParentId.trim()
         : undefined;
 
-    // DEBUG: Log Pi message structure
-    if (message.role === 'assistant' && Array.isArray(message.content)) {
-        console.log('[DEBUG buildMinimalMessageEntryFromPi] Pi message blocks order:', 
-            message.content.map((b, i) => `${i}:${b.type}`).join(', '));
-    }
 
     // 用户消息
     if (message.role === 'user') {
@@ -388,10 +384,6 @@ const buildMinimalMessageEntryFromPi = (
         const finish = message.stopReason === 'stop' || message.stopReason === 'endTurn'
             ? 'stop'
             : message.stopReason === 'toolUse' ? 'tool' : undefined;
-
-        // DEBUG: Log parts order
-        console.log('[DEBUG buildMinimalMessageEntryFromPi] Built parts order:', 
-            parts.map((p, i) => `${i}:${p.type}${p.type === 'tool' ? `(${p.tool})` : ''}`).join(', '));
 
         return {
             info: {
@@ -544,13 +536,20 @@ export const projectPiSessionToTurnRecords = (
     session: PiSessionViewState,
     options?: Partial<ProjectTurnRecordsOptions>,
 ): TurnProjectionResult => {
+    const sourceMessages = session.messages ?? [];
     const toolExecutionsById = new Map((session.toolExecutions ?? []).map(e => [e.toolCallId, e]));
     const toolResultsByCallId = new Map(
-        (session.messages ?? [])
+        sourceMessages
             .filter((message): message is Extract<PiMessageViewState, { role: 'toolResult' }> => message.role === 'toolResult' && typeof message.toolCallId === 'string' && message.toolCallId.length > 0)
             .map((message) => [message.toolCallId, message])
     );
-    const messages = (session.messages ?? []).map(m => buildMinimalMessageEntryFromPi(m, session.id, toolExecutionsById, toolResultsByCallId));
+    const messages = sourceMessages.map((m, index) => buildMinimalMessageEntryFromPi(
+        m,
+        session.id,
+        (typeof session.createdAt === 'number' ? session.createdAt : 0) + index,
+        toolExecutionsById,
+        toolResultsByCallId,
+    ));
 
     const result = projectTurnRecords(messages, {
         ...options,

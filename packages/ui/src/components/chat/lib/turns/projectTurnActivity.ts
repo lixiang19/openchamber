@@ -244,10 +244,6 @@ export const projectTurnActivity = (input: ProjectActivityInput): ProjectActivit
         });
     });
 
-    // DEBUG: Log activity segments
-    console.log('[DEBUG projectTurnActivity] activitySegments:', activitySegments.length, 
-        activitySegments.map(s => ({ id: s.id, parts: s.parts.length, kinds: s.parts.map(p => p.kind).join(',') })));
-
     return {
         activityParts,
         activitySegments,
