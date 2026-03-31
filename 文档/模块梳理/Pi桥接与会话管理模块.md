@@ -9,7 +9,7 @@
 - 负责发现 Pi agents、编译权限策略，并把权限门控注入到实际运行的 session。
 - 负责读取项目内 `.ridge/pi-settings.json`，把用户指定的说明文件安全注入到 Pi system prompt。
 - 负责向设置界面暴露 ridge 预置的 Pi 全局配置目录模板，并支持把模板整体覆盖到 `~/.pi/agent/` 后触发运行时重载。
-- 负责把 Pi 原生消息/事件规整为前端稳定语义，但不继续维护 OpenCode RPC 兼容协议。
+- 负责把 Pi 原生消息/事件规整为前端稳定语义，并把用户侧图片输入/图片消息回显按 Pi 原生 `images` / `image` block 闭环到 Web 聊天界面，但不继续维护 OpenCode RPC 兼容协议。
 - 服务对象包括：浏览器端会话侧边栏、聊天消息区、状态栏、命令自动补全、服务端通知/快捷入口。
 - 不负责前端 UI 渲染细节；不负责 CLI/RPC 模式；不负责旧 OpenCode 会话协议的长期兼容。
 
@@ -266,7 +266,7 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
     index.js
         |
         v
-[2] PI_SDK_HOST.createSession({ cwd, title, thinkingLevel })
+[2] PI_SDK_HOST.createSession({ cwd, title, agent, model, thinkingLevel })
     sdk-host.js
         |
     +--> buildProjectInstructionsContext(cwd)
@@ -275,7 +275,8 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
     +--> createAgentSession(..., sessionManager)
         +--> bind question/task/permission extension
   +--> 若调用方显式提供 title，则 session.setSessionName(title)
-  +--> 若调用方显式提供 thinkingLevel，则 session.setThinkingLevel(...)
+  +--> 若调用方显式提供 agent/model，则创建阶段直接 applySessionAgentSelection(...)
+  +--> 若调用方显式提供 thinkingLevel，则以显式值覆盖 agent/default thinking
         |
         v
 [3] emit session_created
@@ -284,7 +285,8 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
 [4] 返回完整 session snapshot
 ```
 
-- 新建会话允许在会话创建阶段显式写入 thinkingLevel，前端草稿状态不会再丢失到 SDK 默认值。
+- 新建会话允许在会话创建阶段显式写入 `agent`、`model`、`thinkingLevel`，前端草稿状态不会再丢失到 SDK 默认值。
+- 优先级为：显式 `model` > agent frontmatter `model` > 系统默认模型；显式 `thinkingLevel` > agent frontmatter `thinking` > 系统默认 thinking。
 - 新用户默认 thinkingLevel 为 `high`，默认 agent 为 `assistant`（可通过设置覆盖）。
 - 新建会话明确落盘，不再依赖默认行为。
 - 未显式命名的新会话只会先占位创建；真正的人类可读标题在首条用户消息进入时由 Pi host 生成。
@@ -311,14 +313,14 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
         +--> setModel / setThinkingLevel / setActiveToolsByName
         |
         v
-[5] session.prompt(text, { source: 'interactive' })
+[5] session.prompt(text, { source: 'interactive', images? })
         |
         v
 [6] Agent events -> attachSession() -> SSE /api/pi/events
 ```
 
-- 输入：prompt 文本、可选 agent/model/images。
-- 关键分支：若 session 尚未装载，先从持久化文件恢复，再继续对话；若当前标题只是系统生成值，则在真正调用 `session.prompt()` 前先写入首条用户消息标题。
+- 输入：prompt 文本、可选 agent/model/images；当仅有图片没有文本时，前端直接把图片作为 `images` 发给 Pi，宿主允许空文本 prompt 继续执行。
+- 关键分支：若 session 尚未装载，先从持久化文件恢复，再继续对话；若当前标题只是系统生成值且本次 prompt 文本非空，则在真正调用 `session.prompt()` 前先写入首条用户消息标题；图片不会再被降级成 `Attachments: xxx.png` 文字提示；`/api/pi` 路由使用更高 JSON body limit 承载 base64 图片请求体。
 - 输出：前端通过 SSE 收到增量事件，消息区进入 streaming 状态。
 
 ## Integration
@@ -390,8 +392,8 @@ Disk JSONL Sessions
    -> SessionManager.listAll/open/create
    -> sdk-host record / AgentSession
    -> HTTP JSON + SSE events
-   -> piClient
-   -> Zustand stores
+   -> piClient / runtime client（text + images）
+   -> Zustand stores / turn projector（user image block -> file part）
    -> Sidebar / Chat / Header UI
 ```
 

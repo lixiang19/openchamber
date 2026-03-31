@@ -1429,20 +1429,7 @@ export const useConfigStore = create<ConfigStore>()(
                     }
 
                     if (agentName && typeof window !== "undefined") {
-                        const sessionStore = window.__zustand_session_store__;
-                        if (sessionStore?.getState) {
-                            const { currentSessionId, getAgentModelForSession } = sessionStore.getState();
-
-                            if (currentSessionId) {
-                                const existingAgentModel = getAgentModelForSession(currentSessionId, agentName);
-
-                                if (existingAgentModel) {
-
-                                    return;
-                                }
-                            }
-                        }
-
+                        // 注意：不再检查 existingAgentModel，以确保模型跟随 agent 变化
                         // If settings has a default model, use it instead of agent's preferred
                         if (settingsDefaultModel) {
                             const parsed = parseModelString(settingsDefaultModel);

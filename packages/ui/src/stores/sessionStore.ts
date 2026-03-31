@@ -31,7 +31,11 @@ interface SessionState {
 
 interface SessionActions {
     loadSessions: () => Promise<void>;
-    createSession: (title?: string, directoryOverride?: string | null, parentID?: string | null, options?: { thinkingLevel?: string }) => Promise<Session | null>;
+    createSession: (title?: string, directoryOverride?: string | null, parentID?: string | null, options?: {
+        thinkingLevel?: string;
+        agent?: string;
+        model?: { providerID?: string; modelID?: string };
+    }) => Promise<Session | null>;
     deleteSession: (id: string, options?: { archiveWorktree?: boolean; deleteRemoteBranch?: boolean; deleteLocalBranch?: boolean; remoteName?: string }) => Promise<boolean>;
     deleteSessions: (ids: string[], options?: { archiveWorktree?: boolean; deleteRemoteBranch?: boolean; deleteLocalBranch?: boolean; remoteName?: string; silent?: boolean }) => Promise<{ deletedIds: string[]; failedIds: string[] }>;
     archiveSession: (id: string) => Promise<boolean>;
@@ -389,7 +393,11 @@ export const useSessionStore = create<SessionStore>()(
                     }
                 },
 
-                createSession: async (title?: string, directoryOverride?: string | null, parentID?: string | null, options?: { thinkingLevel?: string }) => {
+                createSession: async (title?: string, directoryOverride?: string | null, parentID?: string | null, options?: {
+                    thinkingLevel?: string;
+                    agent?: string;
+                    model?: { providerID?: string; modelID?: string };
+                }) => {
                     set({ error: null });
                     const directoryStore = useDirectoryStore.getState();
                     const fallbackDirectory = normalizePath(directoryStore.currentDirectory);
@@ -473,6 +481,8 @@ export const useSessionStore = create<SessionStore>()(
                             title,
                             parentID: parentID ?? null,
                             thinkingLevel: options?.thinkingLevel,
+                            agent: options?.agent,
+                            model: options?.model,
                         });
                         const session = projectPiSessionToRuntimeSession(snapshot);
                         get().setPiSessionSnapshot(snapshot);

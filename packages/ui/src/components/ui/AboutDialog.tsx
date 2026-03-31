@@ -116,7 +116,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
             <h2 className="text-lg font-semibold">ridge</h2>
             {displayVersion && (
               <p className="typography-meta text-muted-foreground">
-                版本 {displayVersion}
+                版本12 {displayVersion}
               </p>
             )}
           </div>

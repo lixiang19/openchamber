@@ -13,6 +13,7 @@ import {
     RiListCheck3,
     RiMenuSearchLine,
     RiPencilLine,
+    RiPlugLine,
     RiSurveyLine,
     RiTaskLine,
     RiTerminalBoxLine,
@@ -82,6 +83,9 @@ export const getToolIcon = (toolName: string) => {
     }
     if (tool.startsWith('git')) {
         return <RiGitBranchLine className={iconClass} />;
+    }
+    if (tool === 'mcp') {
+        return <RiPlugLine className={iconClass} />;
     }
     return <RiToolsLine className={iconClass} />;
 };

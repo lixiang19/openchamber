@@ -202,6 +202,13 @@ export const TOOL_METADATA: Record<string, ToolMetadata> = {
       category: 'ai',
       outputLanguage: 'json',
       inputFields: []
+    },
+    
+    mcp: {
+      displayName: 'MCP Tool',
+      category: 'ai',
+      outputLanguage: 'text',
+      inputFields: []
     }
   };
 

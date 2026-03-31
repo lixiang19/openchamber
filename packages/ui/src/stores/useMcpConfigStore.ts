@@ -1,11 +1,8 @@
 import { create } from 'zustand';
 import { devtools, persist, createJSONStorage } from 'zustand/middleware';
 import { getSafeStorage } from './utils/safeStorage';
-import {
-  startConfigUpdate,
-  finishConfigUpdate,
-} from '@/lib/configUpdate';
-import { refreshAfterRuntimeRestart } from '@/stores/useAgentsStore';
+import { startConfigUpdate, finishConfigUpdate } from '@/lib/configUpdate';
+import { reloadRuntimeConfiguration } from '@/stores/useAgentsStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { runtimeClient } from '@/lib/runtime/client';
 
@@ -29,59 +26,102 @@ const getConfigDirectory = (): string | null => {
   return null;
 };
 
-// ============== TYPES ==============
-
-export interface McpLocalConfig {
-  type: 'local';
-  command: string[];
-  environment?: Record<string, string>;
-  enabled: boolean;
+export interface McpEnvironmentEntry {
+  key: string;
+  value: string;
 }
 
-export interface McpRemoteConfig {
-  type: 'remote';
-  url: string;
-  environment?: Record<string, string>;
-  enabled: boolean;
-}
-
-export type McpServerConfig = (McpLocalConfig | McpRemoteConfig) & { name: string };
-export type McpServerWithScope = McpServerConfig & { scope?: McpScope | null };
-
-export interface McpDraft {
+export interface McpServerWithScope {
   name: string;
   scope: McpScope;
   type: 'local' | 'remote';
   command: string[];
   url: string;
-  environment: Array<{ key: string; value: string }>;
-  enabled: boolean;
+  environment: McpEnvironmentEntry[];
+  cwd: string;
+  advancedJson: string;
+  sourcePath?: string;
+  cache?: {
+    toolCount: number;
+    resourceCount: number;
+    cachedAt: number | null;
+    isFresh: boolean;
+  } | null;
 }
 
-// ============== HELPERS ==============
+export interface McpDraft extends McpServerWithScope {}
 
-export const envRecordToArray = (env?: Record<string, string>): Array<{ key: string; value: string }> => {
+export const envRecordToArray = (env?: Record<string, string>): McpEnvironmentEntry[] => {
   if (!env) return [];
   return Object.entries(env).map(([key, value]) => ({ key, value }));
 };
 
-export const envArrayToRecord = (arr: Array<{ key: string; value: string }>): Record<string, string> | undefined => {
-  const filtered = arr.filter((e) => e.key.trim());
+export const envArrayToRecord = (arr: McpEnvironmentEntry[]): Record<string, string> | undefined => {
+  const filtered = arr.filter((entry) => entry.key.trim());
   if (filtered.length === 0) return undefined;
-  return Object.fromEntries(filtered.map((e) => [e.key.trim(), e.value]));
+  return Object.fromEntries(filtered.map((entry) => [entry.key.trim(), entry.value]));
 };
 
-const CLIENT_RELOAD_DELAY_MS = 800;
-const MCP_LOAD_CACHE_TTL_MS = 5000;
-const DEFAULT_MCP_CACHE_KEY = '__default__';
-const mcpLastLoadedAt = new Map<string, number>();
-const mcpLoadInFlight = new Map<string, Promise<boolean>>();
+const normalizeServer = (value: unknown): McpServerWithScope | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const candidate = value as Partial<McpServerWithScope> & Record<string, unknown>;
+  const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
+  if (!name) {
+    return null;
+  }
 
-const getMcpCacheKey = (directory: string | null): string => {
-  return directory?.trim() || DEFAULT_MCP_CACHE_KEY;
+  const type = candidate.type === 'remote' ? 'remote' : 'local';
+  const scope: McpScope = candidate.scope === 'project' ? 'project' : 'user';
+  const command = Array.isArray(candidate.command)
+    ? candidate.command.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    : [];
+  const url = typeof candidate.url === 'string' ? candidate.url : '';
+  const environment = Array.isArray(candidate.environment)
+    ? candidate.environment
+        .filter((entry): entry is McpEnvironmentEntry => Boolean(entry) && typeof entry === 'object')
+        .map((entry) => ({
+          key: typeof entry.key === 'string' ? entry.key : '',
+          value: typeof entry.value === 'string' ? entry.value : '',
+        }))
+    : [];
+  const cwd = typeof candidate.cwd === 'string' ? candidate.cwd : '';
+  const advancedJson = typeof candidate.advancedJson === 'string' ? candidate.advancedJson : '';
+  const sourcePath = typeof candidate.sourcePath === 'string' ? candidate.sourcePath : undefined;
+  const cache = candidate.cache && typeof candidate.cache === 'object'
+    ? {
+        toolCount: typeof candidate.cache.toolCount === 'number' ? candidate.cache.toolCount : 0,
+        resourceCount: typeof candidate.cache.resourceCount === 'number' ? candidate.cache.resourceCount : 0,
+        cachedAt: typeof candidate.cache.cachedAt === 'number' ? candidate.cache.cachedAt : null,
+        isFresh: candidate.cache.isFresh === true,
+      }
+    : null;
+
+  return {
+    name,
+    scope,
+    type,
+    command,
+    url,
+    environment,
+    cwd,
+    advancedJson,
+    sourcePath,
+    cache,
+  };
 };
 
-// ============== STORE ==============
+const serializeDraft = (draft: McpDraft): Record<string, unknown> => ({
+  name: draft.name,
+  scope: draft.scope,
+  type: draft.type,
+  command: draft.command,
+  url: draft.url,
+  environment: draft.environment,
+  cwd: draft.cwd,
+  advancedJson: draft.advancedJson,
+});
 
 interface McpConfigStore {
   mcpServers: McpServerWithScope[];
@@ -93,10 +133,21 @@ interface McpConfigStore {
   setMcpDraft: (draft: McpDraft | null) => void;
   loadMcpConfigs: () => Promise<boolean>;
   createMcp: (config: McpDraft) => Promise<boolean>;
-  updateMcp: (name: string, config: Partial<McpDraft>) => Promise<boolean>;
+  updateMcp: (name: string, config: McpDraft) => Promise<boolean>;
   deleteMcp: (name: string) => Promise<boolean>;
   getMcpByName: (name: string) => McpServerWithScope | undefined;
 }
+
+const refreshRuntime = async () => {
+  try {
+    await reloadRuntimeConfiguration({
+      message: 'Reloading Pi MCP configuration…',
+      scopes: ['all'],
+    });
+  } catch (error) {
+    console.warn('[McpConfigStore] Runtime reload failed:', error);
+  }
+};
 
 export const useMcpConfigStore = create<McpConfigStore>()(
   devtools(
@@ -113,54 +164,30 @@ export const useMcpConfigStore = create<McpConfigStore>()(
 
         loadMcpConfigs: async () => {
           const configDirectory = getConfigDirectory();
-          const cacheKey = getMcpCacheKey(configDirectory);
-          const now = Date.now();
-          const loadedAt = mcpLastLoadedAt.get(cacheKey) ?? 0;
-          const hasCachedConfigs = get().mcpServers.length > 0;
+          const queryParams = configDirectory ? `?directory=${encodeURIComponent(configDirectory)}` : '';
 
-          if (hasCachedConfigs && now - loadedAt < MCP_LOAD_CACHE_TTL_MS) {
-            return true;
-          }
-
-          const inFlight = mcpLoadInFlight.get(cacheKey);
-          if (inFlight) {
-            return inFlight;
-          }
-
-          const request = (async () => {
-            set({ isLoading: true });
-            try {
-              const queryParams = configDirectory ? `?directory=${encodeURIComponent(configDirectory)}` : '';
-              const response = await fetch(`/api/config/mcp${queryParams}`, {
-                headers: configDirectory ? { 'x-opencode-directory': configDirectory } : undefined,
-              });
-              if (!response.ok) {
-                throw new Error('Failed to load MCP configs');
-              }
-              const data: McpServerWithScope[] = await response.json();
-              set({ mcpServers: data, isLoading: false });
-              mcpLastLoadedAt.set(cacheKey, Date.now());
-              return true;
-            } catch (error) {
-              console.error('[McpConfigStore] Failed to load MCP configs:', error);
-              set({ isLoading: false });
-              return false;
-            }
-          })();
-
-          mcpLoadInFlight.set(cacheKey, request);
+          set({ isLoading: true });
           try {
-            return await request;
-          } finally {
-            mcpLoadInFlight.delete(cacheKey);
+            const response = await fetch(`/api/config/mcp${queryParams}`, {
+              headers: configDirectory ? { 'x-opencode-directory': configDirectory } : undefined,
+            });
+            if (!response.ok) {
+              throw new Error('Failed to load MCP configs');
+            }
+            const data = await response.json();
+            const servers = Array.isArray(data) ? data.map(normalizeServer).filter(Boolean) as McpServerWithScope[] : [];
+            set({ mcpServers: servers, isLoading: false });
+            return true;
+          } catch (error) {
+            console.error('[McpConfigStore] Failed to load MCP configs:', error);
+            set({ isLoading: false });
+            return false;
           }
         },
 
-        createMcp: async (config: McpDraft) => {
-          startConfigUpdate('Creating MCP server configuration…');
-          let requiresReload = false;
+        createMcp: async (config) => {
+          startConfigUpdate('Creating Pi MCP server configuration…');
           try {
-            const body = buildMcpBody(config);
             const configDirectory = getConfigDirectory();
             const queryParams = configDirectory ? `?directory=${encodeURIComponent(configDirectory)}` : '';
             const response = await fetch(`/api/config/mcp/${encodeURIComponent(config.name)}${queryParams}`, {
@@ -169,7 +196,7 @@ export const useMcpConfigStore = create<McpConfigStore>()(
                 'Content-Type': 'application/json',
                 ...(configDirectory ? { 'x-opencode-directory': configDirectory } : {}),
               },
-              body: JSON.stringify(body),
+              body: JSON.stringify(serializeDraft(config)),
             });
 
             const payload = await response.json().catch(() => null);
@@ -177,31 +204,20 @@ export const useMcpConfigStore = create<McpConfigStore>()(
               throw new Error(payload?.error || 'Failed to create MCP server');
             }
 
-            if (payload?.requiresReload) {
-              requiresReload = true;
-              await refreshAfterRuntimeRestart({
-                message: payload.message,
-                delayMs: payload.reloadDelayMs ?? CLIENT_RELOAD_DELAY_MS,
-                scopes: ['all'],
-              });
-              return true;
-            }
-
             await get().loadMcpConfigs();
+            await refreshRuntime();
             return true;
           } catch (error) {
             console.error('[McpConfigStore] Failed to create MCP:', error);
-            return false;
+            throw error;
           } finally {
-            if (!requiresReload) finishConfigUpdate();
+            finishConfigUpdate();
           }
         },
 
-        updateMcp: async (name: string, config: Partial<McpDraft>) => {
-          startConfigUpdate('Updating MCP server configuration…');
-          let requiresReload = false;
+        updateMcp: async (name, config) => {
+          startConfigUpdate('Updating Pi MCP server configuration…');
           try {
-            const body = buildMcpBody(config);
             const configDirectory = getConfigDirectory();
             const queryParams = configDirectory ? `?directory=${encodeURIComponent(configDirectory)}` : '';
             const response = await fetch(`/api/config/mcp/${encodeURIComponent(name)}${queryParams}`, {
@@ -210,7 +226,7 @@ export const useMcpConfigStore = create<McpConfigStore>()(
                 'Content-Type': 'application/json',
                 ...(configDirectory ? { 'x-opencode-directory': configDirectory } : {}),
               },
-              body: JSON.stringify(body),
+              body: JSON.stringify(serializeDraft(config)),
             });
 
             const payload = await response.json().catch(() => null);
@@ -218,29 +234,19 @@ export const useMcpConfigStore = create<McpConfigStore>()(
               throw new Error(payload?.error || 'Failed to update MCP server');
             }
 
-            if (payload?.requiresReload) {
-              requiresReload = true;
-              await refreshAfterRuntimeRestart({
-                message: payload.message,
-                delayMs: payload.reloadDelayMs ?? CLIENT_RELOAD_DELAY_MS,
-                scopes: ['all'],
-              });
-              return true;
-            }
-
             await get().loadMcpConfigs();
+            await refreshRuntime();
             return true;
           } catch (error) {
             console.error('[McpConfigStore] Failed to update MCP:', error);
             throw error;
           } finally {
-            if (!requiresReload) finishConfigUpdate();
+            finishConfigUpdate();
           }
         },
 
-        deleteMcp: async (name: string) => {
-          startConfigUpdate('Deleting MCP server configuration…');
-          let requiresReload = false;
+        deleteMcp: async (name) => {
+          startConfigUpdate('Deleting Pi MCP server configuration…');
           try {
             const configDirectory = getConfigDirectory();
             const queryParams = configDirectory ? `?directory=${encodeURIComponent(configDirectory)}` : '';
@@ -254,31 +260,22 @@ export const useMcpConfigStore = create<McpConfigStore>()(
               throw new Error(payload?.error || 'Failed to delete MCP server');
             }
 
-            if (payload?.requiresReload) {
-              requiresReload = true;
-              await refreshAfterRuntimeRestart({
-                message: payload.message,
-                delayMs: payload.reloadDelayMs ?? CLIENT_RELOAD_DELAY_MS,
-                scopes: ['all'],
-              });
-              return true;
-            }
-
             if (get().selectedMcpName === name) {
               set({ selectedMcpName: null });
             }
             await get().loadMcpConfigs();
+            await refreshRuntime();
             return true;
           } catch (error) {
             console.error('[McpConfigStore] Failed to delete MCP:', error);
             return false;
           } finally {
-            if (!requiresReload) finishConfigUpdate();
+            finishConfigUpdate();
           }
         },
 
-        getMcpByName: (name: string) => {
-          return get().mcpServers.find((s) => s.name === name);
+        getMcpByName: (name) => {
+          return get().mcpServers.find((server) => server.name === name);
         },
       }),
       {
@@ -290,31 +287,3 @@ export const useMcpConfigStore = create<McpConfigStore>()(
     { name: 'mcp-config-store' },
   ),
 );
-
-// ============== HELPERS ==============
-
-function buildMcpBody(config: Partial<McpDraft>): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
-
-  if (config.scope !== undefined) body.scope = config.scope;
-
-  if (config.type !== undefined) body.type = config.type;
-
-  if (config.type === 'local' || config.command !== undefined) {
-    body.command = (config.command ?? []).filter((s) => s.trim());
-  }
-
-  if (config.type === 'remote' || config.url !== undefined) {
-    body.url = config.url?.trim() ?? '';
-  }
-
-  if (config.environment !== undefined) {
-    body.environment = envArrayToRecord(config.environment) ?? {};
-  }
-
-  if (config.enabled !== undefined) {
-    body.enabled = config.enabled;
-  }
-
-  return body;
-}

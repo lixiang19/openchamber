@@ -100,7 +100,14 @@ const loadAgentsFromDir = async (dirPath, sourceScope) => {
       continue;
     }
 
-    const parsed = parseFrontmatter(rawContent);
+    let parsed;
+    try {
+      parsed = parseFrontmatter(rawContent);
+    } catch (error) {
+      console.warn(`Failed to parse agent definition ${filePath}: ${error?.message || error}`);
+      continue;
+    }
+
     const data = parsed?.frontmatter && typeof parsed.frontmatter === 'object' ? parsed.frontmatter : {};
     const content = typeof parsed?.body === 'string' ? parsed.body : rawContent;
 

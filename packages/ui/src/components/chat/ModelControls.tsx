@@ -308,6 +308,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
         currentModelId,
         currentVariant,
         currentAgentName,
+        settingsDefaultModel,
         settingsDefaultVariant,
         settingsDefaultAgent,
         settingsDefaultThinkingLevel,
@@ -494,7 +495,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
     }, [desktopModelQuery]);
 
     const selectableDesktopAgents = React.useMemo(() => {
-        return agents.filter((agent) => agent.mode !== 'task');
+        return agents.filter((agent) => agent.mode !== 'task' && agent.mode !== 'subagent');
     }, [agents]);
 
     const sortedAndFilteredAgents = React.useMemo(() => {
@@ -1105,6 +1106,28 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
             if (currentSessionId) {
                 saveSessionAgentSelection(currentSessionId, agentName);
             }
+
+            const newAgent = agents.find((a) => a.name === agentName);
+
+            // 强制应用 agent 的 preferred model（覆盖 settingsDefaultModel）
+            const agentModelSelection = newAgent?.model;
+            if (agentModelSelection?.providerID && agentModelSelection?.modelID) {
+                const { providerID, modelID } = agentModelSelection;
+                const agentProvider = providers.find((p) => p.id === providerID);
+                const agentModel = agentProvider?.models.find((m) => m.id === modelID);
+                if (agentModel) {
+                    setProvider(providerID);
+                    setSelectedProvider(providerID);
+                    setModel(modelID);
+                }
+            }
+
+            // 更新 thinking level 为新 agent 的默认值
+            const agentThinkingLevel = newAgent?.thinking;
+            if (agentThinkingLevel) {
+                handleThinkingLevelChange(agentThinkingLevel as typeof THINKING_LEVELS[number]['value']);
+            }
+
             if (isCompact) {
                 closeMobilePanel();
                 const callback = onAgentPanelSelection || onMobilePanelSelection;

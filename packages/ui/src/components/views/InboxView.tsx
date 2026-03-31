@@ -2,7 +2,6 @@ import React from 'react';
 import type { Session } from '@/lib/runtime/types';
 import { RiChat4Line } from '@remixicon/react';
 import { ChatInput } from '@/components/chat/ChatInput';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import type { ProjectEntry } from '@/lib/api/types';
@@ -294,38 +293,6 @@ export const InboxView: React.FC = () => {
     });
   }, [recentSessions, sessionBadges, showPendingOnly]);
 
-  const selectedProjectId = React.useMemo(
-    () => resolveProjectForDraftDirectory(newSessionDraft?.directoryOverride, projects, activeProjectId),
-    [activeProjectId, newSessionDraft?.directoryOverride, projects],
-  );
-
-  const handleProjectChange = React.useCallback(
-    (projectId: string) => {
-      const project = projects.find((item) => item.id === projectId);
-      if (!project) {
-        return;
-      }
-
-      if (project.id !== activeProjectId) {
-        setActiveProjectIdOnly(project.id);
-      }
-
-      if (project.path !== currentDirectory) {
-        setDirectory(project.path, { showOverlay: false });
-      }
-
-      useSessionStore.setState((state) => ({
-        newSessionDraft: {
-          ...state.newSessionDraft,
-          open: true,
-          directoryOverride: project.path,
-          parentID: null,
-        },
-      }));
-    },
-    [activeProjectId, currentDirectory, projects, setActiveProjectIdOnly, setDirectory],
-  );
-
   const handleOpenConversation = React.useCallback(
     async (session: Session) => {
       const project = resolveProjectForSession(session, projects, worktreeMetadata);
@@ -379,23 +346,6 @@ export const InboxView: React.FC = () => {
         {/* ── Input area — no wrapper, ChatInput's own border is the border ── */}
         <div className="shrink-0 mb-2 [&_.chat-column]:px-0 [&_.chat-message-column]:px-0">
           <ChatInput />
-          <div className="mt-2 flex items-center px-1">
-            <Select value={selectedProjectId} onValueChange={handleProjectChange}>
-              <SelectTrigger
-                size="lg"
-                className="h-auto w-auto min-w-0 max-w-[280px] border-0 bg-transparent p-0 text-[12px] text-muted-foreground/50 shadow-none hover:text-muted-foreground focus:ring-0"
-              >
-                <SelectValue placeholder="选择项目" />
-              </SelectTrigger>
-              <SelectContent>
-                {projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.label?.trim() || project.path}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </div>
 
         {/* ── Divider ────────────────────────────────────────────── */}

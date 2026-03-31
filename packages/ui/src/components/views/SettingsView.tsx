@@ -214,7 +214,7 @@ const SettingsHome: React.FC<{ onOpen: (slug: SettingsPageSlug) => void }> = ({ 
             )}
           >
             <div className="typography-ui-label text-foreground">MCP</div>
-            <div className="typography-micro text-muted-foreground/70">配置 MCP 服务器和连接</div>
+            <div className="typography-micro text-muted-foreground/70">配置由 pi-mcp-adapter 提供的服务器</div>
           </button>
 
           <button

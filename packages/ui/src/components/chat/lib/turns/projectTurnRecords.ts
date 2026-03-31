@@ -23,6 +23,93 @@ const isPiToolCallBlock = (block: PiContentBlock): block is Extract<PiContentBlo
     block.type === 'toolCall' && 'id' in block && 'name' in block && 'arguments' in block
 );
 
+const isPiImageBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'image' }> => (
+    block.type === 'image' && 'data' in block
+);
+
+const imageExtensionByMimeType = (mimeType: string): string => {
+    switch (mimeType.toLowerCase()) {
+        case 'image/jpeg':
+            return 'jpg';
+        case 'image/gif':
+            return 'gif';
+        case 'image/webp':
+            return 'webp';
+        case 'image/svg+xml':
+            return 'svg';
+        case 'image/bmp':
+            return 'bmp';
+        case 'image/x-icon':
+            return 'ico';
+        default:
+            return 'png';
+    }
+};
+
+const buildPiUserMessageParts = (
+    content: string | PiContentBlock[],
+    sessionId: string,
+    messageId: string,
+    timestamp: number,
+): Part[] => {
+    if (typeof content === 'string') {
+        if (!content) {
+            return [];
+        }
+        return [{
+            id: `${messageId}:text:0`,
+            type: 'text',
+            text: content,
+            sessionID: sessionId,
+            messageID: messageId,
+            time: { start: timestamp, end: timestamp },
+        } as Part];
+    }
+
+    const parts: Part[] = [];
+    let partIndex = 0;
+    let imageIndex = 0;
+
+    for (const block of content) {
+        if (isPiTextBlock(block)) {
+            if (!block.text) {
+                continue;
+            }
+            parts.push({
+                id: `${messageId}:text:${partIndex++}`,
+                type: 'text',
+                text: block.text,
+                sessionID: sessionId,
+                messageID: messageId,
+                time: { start: timestamp, end: timestamp },
+            } as Part);
+            continue;
+        }
+
+        if (!isPiImageBlock(block) || !block.data) {
+            continue;
+        }
+
+        imageIndex += 1;
+        const mimeType = typeof block.mimeType === 'string' && block.mimeType.trim().length > 0
+            ? block.mimeType.trim()
+            : 'image/png';
+        const extension = imageExtensionByMimeType(mimeType);
+        parts.push({
+            id: `${messageId}:file:${partIndex++}`,
+            type: 'file',
+            mime: mimeType,
+            url: `data:${mimeType};base64,${block.data}`,
+            filename: `image-${imageIndex}.${extension}`,
+            sessionID: sessionId,
+            messageID: messageId,
+            time: { start: timestamp, end: timestamp },
+        } as Part);
+    }
+
+    return parts;
+};
+
 const normalizeTaskSessionId = (value: unknown): string | null => {
     if (typeof value !== 'string') {
         return null;
@@ -93,6 +180,43 @@ const readTaskSessionIdFromExecution = (execution: PiToolExecutionViewState | nu
         ?? readTaskSessionIdFromValue(execution?.partialResult);
 };
 
+const extractTextFromPiContentBlocks = (value: unknown): string[] => {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return value.flatMap((block) => {
+        if (!block || typeof block !== 'object') {
+            return [];
+        }
+        const record = block as Record<string, unknown>;
+        if (record.type === 'text' && typeof record.text === 'string') {
+            return [record.text];
+        }
+        return [];
+    });
+};
+
+const extractToolPayloadTextAndDetails = (value: unknown): { text: string; details?: Record<string, unknown> } => {
+    if (typeof value === 'string') {
+        return { text: value };
+    }
+
+    if (!value || typeof value !== 'object') {
+        return { text: '' };
+    }
+
+    const record = value as Record<string, unknown>;
+    const contentText = extractTextFromPiContentBlocks(record.content).join('\n');
+    const directText = typeof record.text === 'string' ? record.text : '';
+    const text = contentText || directText || JSON.stringify(value, null, 2);
+    const details = record.details && typeof record.details === 'object'
+        ? (record.details as Record<string, unknown>)
+        : undefined;
+
+    return { text, details };
+};
+
 /**
  * 从 Pi-native session 状态直接构建最小化的 ChatMessageEntry
  * 这是推进 Pi-native 化的过渡步骤：不再依赖 uiMessageProjection 的完整投影，
@@ -102,6 +226,7 @@ const buildMinimalMessageEntryFromPi = (
     message: PiMessageViewState,
     sessionId: string,
     toolExecutionsById: Map<string, PiToolExecutionViewState>,
+    toolResultsByCallId: Map<string, Extract<PiMessageViewState, { role: 'toolResult' }>>,
 ): ChatMessageEntry => {
     const messageId = message.id || `${sessionId}:msg:${Date.now()}`;
     const timestamp = message.timestamp ?? Date.now();
@@ -118,9 +243,6 @@ const buildMinimalMessageEntryFromPi = (
 
     // 用户消息
     if (message.role === 'user') {
-        const contentText = typeof message.content === 'string'
-            ? message.content
-            : message.content.filter((b): b is Extract<PiContentBlock, { type: 'text' }> => b.type === 'text').map(b => b.text).join('');
         return {
             info: {
                 id: messageId,
@@ -131,14 +253,7 @@ const buildMinimalMessageEntryFromPi = (
                 ...(parentId ? { parentID: parentId } : {}),
                 time: { created: timestamp, completed: timestamp },
             } as Message,
-            parts: contentText ? [{
-                id: `${messageId}:text:0`,
-                type: 'text',
-                text: contentText,
-                sessionID: sessionId,
-                messageID: messageId,
-                time: { start: timestamp, end: timestamp },
-            } as Part] : [],
+            parts: buildPiUserMessageParts(message.content, sessionId, messageId, timestamp),
         };
     }
 
@@ -189,25 +304,51 @@ const buildMinimalMessageEntryFromPi = (
                     }
                 }
                 const toolName = execution?.toolName || block.name || 'tool';
-                const normalizedToolName = typeof toolName === 'string' ? toolName.trim().toLowerCase() : 'tool';
+                const normalizedToolName = typeof toolName === 'string'
+                    ? (() => {
+                        const trimmed = toolName.trim().toLowerCase();
+                        if (!trimmed) {
+                            return 'tool';
+                        }
+                        if (trimmed.includes('.')) {
+                            const parts = trimmed.split('.').filter(Boolean);
+                            return parts[parts.length - 1] ?? trimmed;
+                        }
+                        return trimmed;
+                    })()
+                    : 'tool';
                 const status = execution?.status === 'running' ? 'running' : execution?.isError ? 'error' : 'completed';
                 const toolArgs = (execution?.args ?? block.arguments ?? {}) as Record<string, unknown>;
 
-                const outputChunks: string[] = [];
-                if (execution?.partialResult !== undefined && execution.partialResult !== null) {
-                    outputChunks.push(typeof execution.partialResult === 'string'
-                        ? execution.partialResult
-                        : JSON.stringify(execution.partialResult, null, 2));
-                }
-                if (execution?.result !== undefined && execution.result !== null) {
-                    outputChunks.push(typeof execution.result === 'string'
-                        ? execution.result
-                        : JSON.stringify(execution.result, null, 2));
-                }
+                const partialPayload = extractToolPayloadTextAndDetails(execution?.partialResult);
+                const resultPayload = extractToolPayloadTextAndDetails(execution?.result);
+                const toolResultMessage = toolResultsByCallId.get(toolCallId);
+                const toolResultPayload = toolResultMessage
+                    ? extractToolPayloadTextAndDetails({
+                        content: toolResultMessage.content,
+                        details: toolResultMessage.details,
+                    })
+                    : { text: '', details: undefined };
+                const outputChunks = [partialPayload.text, resultPayload.text, toolResultPayload.text].filter((value, index, array) => {
+                    if (!value || value.trim().length === 0) {
+                        return false;
+                    }
+                    return array.indexOf(value) === index;
+                });
                 const output = outputChunks.join('\n\n');
                 const taskSessionID = normalizedToolName === 'task'
                     ? readTaskSessionIdFromExecution(execution, toolArgs)
                     : null;
+                const executionDetails = toolResultPayload.details ?? resultPayload.details ?? partialPayload.details;
+                const mcpMetadata = normalizedToolName === 'mcp'
+                    ? {
+                        server: typeof executionDetails?.server === 'string' ? executionDetails.server : undefined,
+                        tool: typeof toolArgs.tool === 'string'
+                            ? toolArgs.tool
+                            : (typeof executionDetails?.tool === 'string' ? executionDetails.tool : undefined),
+                        mode: typeof executionDetails?.mode === 'string' ? executionDetails.mode : undefined,
+                    }
+                    : undefined;
 
                 parts.push({
                     id: toolCallId,
@@ -227,6 +368,8 @@ const buildMinimalMessageEntryFromPi = (
                         },
                         metadata: {
                             ...(taskSessionID ? { sessionId: taskSessionID } : {}),
+                            ...(executionDetails ? { details: executionDetails } : {}),
+                            ...(mcpMetadata ? { mcp: mcpMetadata } : {}),
                             pi: {
                                 toolName,
                                 executionId: execution?.toolCallId,
@@ -267,12 +410,110 @@ const buildMinimalMessageEntryFromPi = (
         };
     }
 
-    // Tool result / bash execution / custom - 简化为文本
-    const contentStr = message.role === 'toolResult'
-        ? (typeof message.content === 'string' ? message.content : JSON.stringify(message.content))
-        : message.role === 'bashExecution'
-            ? message.output
-            : JSON.stringify(message);
+    // Tool result / bash execution / custom - 对于 MCP 工具结果，转换为 tool part 以显示更多信息
+    if (message.role === 'toolResult') {
+        const toolName = message.toolName || 'tool';
+        const isMcpTool = toolName.toLowerCase() === 'mcp';
+        
+        // 提取 MCP 工具的详细信息
+        let mcpServer: string | undefined;
+        let mcpTool: string | undefined;
+        let mcpMode: string | undefined;
+        
+        if (isMcpTool && message.details && typeof message.details === 'object') {
+            const details = message.details as Record<string, unknown>;
+            mcpMode = typeof details.mode === 'string' ? details.mode : undefined;
+            
+            // status 模式: 显示服务器列表
+            if (mcpMode === 'status' && Array.isArray(details.servers)) {
+                const servers = details.servers as Array<{ name: string; toolCount: number; status: string }>;
+                mcpServer = servers.map(s => `${s.name} (${s.toolCount} tools)`).join(', ');
+            }
+            // call 模式: 显示具体调用的服务器和工具
+            else if (mcpMode === 'call') {
+                mcpServer = typeof details.server === 'string' ? details.server : undefined;
+                mcpTool = typeof details.tool === 'string' ? details.tool : undefined;
+            }
+        }
+        
+        // 构建输出文本
+        let outputText: string;
+        if (typeof message.content === 'string') {
+            outputText = message.content;
+        } else if (Array.isArray(message.content)) {
+            // 从 content blocks 提取文本
+            outputText = message.content
+                .filter((block): block is { type: 'text'; text: string } => 
+                    block && typeof block === 'object' && 'type' in block && block.type === 'text' && 'text' in block && typeof block.text === 'string'
+                )
+                .map(block => block.text)
+                .join('\n');
+        } else {
+            outputText = JSON.stringify(message.content);
+        }
+        
+        // 对于 MCP 工具，创建 tool part 以支持更好的渲染
+        if (isMcpTool) {
+            return {
+                info: {
+                    id: messageId,
+                    sessionID: sessionId,
+                    role: 'toolResult',
+                    clientRole: 'toolResult',
+                    ...(parentId ? { parentID: parentId } : {}),
+                    time: { created: timestamp, completed: timestamp },
+                } as Message,
+                parts: [{
+                    id: `${messageId}:tool:0`,
+                    type: 'tool',
+                    tool: 'mcp',
+                    callID: message.toolCallId || messageId,
+                    sessionID: sessionId,
+                    messageID: messageId,
+                    state: {
+                        status: message.isError ? 'error' : 'completed',
+                        input: {},
+                        output: outputText,
+                        time: { start: timestamp, end: timestamp },
+                        metadata: {
+                            mcp: {
+                                server: mcpServer,
+                                tool: mcpTool,
+                                mode: mcpMode,
+                            },
+                            ...(message.details ? { details: message.details } : {}),
+                        },
+                    },
+                    time: { start: timestamp, end: timestamp },
+                } as Part],
+            };
+        }
+        
+        // 非 MCP 工具保持原样作为文本
+        return {
+            info: {
+                id: messageId,
+                sessionID: sessionId,
+                role: 'toolResult',
+                clientRole: 'toolResult',
+                ...(parentId ? { parentID: parentId } : {}),
+                time: { created: timestamp, completed: timestamp },
+            } as Message,
+            parts: outputText ? [{
+                id: `${messageId}:text:0`,
+                type: 'text',
+                text: outputText,
+                sessionID: sessionId,
+                messageID: messageId,
+                time: { start: timestamp, end: timestamp },
+            } as Part] : [],
+        };
+    }
+    
+    // bash execution / custom - 简化为文本
+    const contentStr = message.role === 'bashExecution'
+        ? message.output
+        : JSON.stringify(message);
 
     return {
         info: {
@@ -304,7 +545,12 @@ export const projectPiSessionToTurnRecords = (
     options?: Partial<ProjectTurnRecordsOptions>,
 ): TurnProjectionResult => {
     const toolExecutionsById = new Map((session.toolExecutions ?? []).map(e => [e.toolCallId, e]));
-    const messages = (session.messages ?? []).map(m => buildMinimalMessageEntryFromPi(m, session.id, toolExecutionsById));
+    const toolResultsByCallId = new Map(
+        (session.messages ?? [])
+            .filter((message): message is Extract<PiMessageViewState, { role: 'toolResult' }> => message.role === 'toolResult' && typeof message.toolCallId === 'string' && message.toolCallId.length > 0)
+            .map((message) => [message.toolCallId, message])
+    );
+    const messages = (session.messages ?? []).map(m => buildMinimalMessageEntryFromPi(m, session.id, toolExecutionsById, toolResultsByCallId));
 
     const result = projectTurnRecords(messages, {
         ...options,

@@ -62,9 +62,11 @@ import {
     hasChatInputFileReferenceType,
 } from '@/lib/chatInputDragDrop';
 import { useProjectsStore } from '@/stores/useProjectsStore';
+import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useGitBranches, useGitStore } from '@/stores/useGitStore';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { usePermissionStore } from '@/stores/permissionStore';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const MAX_VISIBLE_TEXTAREA_LINES = 8;
 const EMPTY_QUEUE: QueuedMessage[] = [];
@@ -224,6 +226,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
     const currentManagementSessionId = useSessionManagementStore((state) => state.currentSessionId);
     const projects = useProjectsStore((state) => state.projects);
     const activeProjectId = useProjectsStore((state) => state.activeProjectId);
+    const setActiveProjectIdOnly = useProjectsStore((state) => state.setActiveProjectIdOnly);
+    const currentDirectory = useDirectoryStore((state) => state.currentDirectory);
+    const setDirectory = useDirectoryStore((state) => state.setDirectory);
 
     const { currentProviderId, currentModelId, currentVariant, currentAgentName, setAgent, getVisibleAgents } = useConfigStore();
     const agents = getVisibleAgents();
@@ -1561,6 +1566,21 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
         });
     }, [adjustTextareaHeight, focusTextareaAtEnd, updateAutocompleteState]);
 
+    const handleQuickActionSend = React.useCallback((text: string) => {
+        if (!text.trim() || !currentSessionId) return;
+        void sendMessage(
+            text,
+            currentProviderId,
+            currentModelId,
+            currentAgentName,
+            [],
+            undefined,
+            undefined,
+            currentVariant,
+            'normal'
+        );
+    }, [sendMessage, currentProviderId, currentModelId, currentAgentName, currentVariant, currentSessionId]);
+
     const insertTextAtSelection = React.useCallback((text: string) => {
         if (!text) {
             return;
@@ -2476,6 +2496,26 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
         });
     }, [draftBranchItems, selectedDraftDirectory, selectedDraftProject, setNewSessionDraftTarget, showDraftTargetSelectors]);
 
+    const handleDraftProjectChange = React.useCallback((projectId: string) => {
+        const project = projects.find((entry) => entry.id === projectId);
+        if (!project) {
+            return;
+        }
+
+        if (project.id !== activeProjectId) {
+            setActiveProjectIdOnly(project.id);
+        }
+
+        if (normalizePath(project.path) !== normalizePath(currentDirectory ?? null)) {
+            setDirectory(project.path, { showOverlay: false });
+        }
+
+        setNewSessionDraftTarget({
+            projectId: project.id,
+            directoryOverride: project.path,
+        });
+    }, [activeProjectId, currentDirectory, projects, setActiveProjectIdOnly, setDirectory, setNewSessionDraftTarget]);
+
     const footerPaddingClass = isMobile ? 'px-1.5 py-1.5' : (isVSCode ? 'px-1.5 py-1' : 'px-2.5 py-1.5');
     const buttonSizeClass = isMobile ? 'h-8 w-8' : (isVSCode ? 'h-5 w-5' : 'h-6 w-6');
     const sendIconSizeClass = isMobile ? 'h-4 w-4' : (isVSCode ? 'h-3.5 w-3.5' : 'h-4 w-4');
@@ -2729,37 +2769,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
             >
                 <RiCommandLine className={cn(iconSizeClass)} />
             </button>
-            {!isMobile ? (
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <button
-                            type="button"
-                            className={cn(
-                                footerIconButtonClass,
-                                'rounded-md hover:bg-interactive-hover/40'
-                            )}
-                            title="快捷动作"
-                            aria-label="快捷动作"
-                        >
-                            <RiMagicLine className={cn(iconSizeClass)} />
-                        </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                        {QUICK_ACTION_ITEMS.map((item) => (
-                            <DropdownMenuItem
-                                key={item}
-                                onSelect={() => {
-                                    requestAnimationFrame(() => {
-                                        handleQuickActionSelect(item);
-                                    });
-                                }}
-                            >
-                                {item}
-                            </DropdownMenuItem>
-                        ))}
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            ) : null}
             {attachmentMenu}
             {settingsButton}
         </div>
@@ -2944,6 +2953,47 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onOpenSettings, scrollToBo
                     showAssistantStatus={false}
                     showTodos
                 />
+                {/* Quick Action Buttons */}
+                {currentSessionId && !working.isWorking && (
+                    <div className="flex items-center gap-2 px-1 py-1.5">
+                        {QUICK_ACTION_ITEMS.map((item) => (
+                            <button
+                                key={item}
+                                type="button"
+                                onClick={() => handleQuickActionSend(item)}
+                                className="px-3 py-1 text-xs font-medium rounded-full border transition-colors hover:bg-accent/50"
+                                style={{
+                                    borderColor: 'var(--border)',
+                                    backgroundColor: 'var(--surface-elevated)',
+                                    color: 'var(--foreground)',
+                                }}
+                            >
+                                {item}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                {showDraftTargetSelectors && projects.length > 0 && selectedDraftProject ? (
+                    <div className="pb-2 w-full px-1">
+                        <div className="flex min-w-0 items-center gap-2">
+                            <Select value={selectedDraftProject.id} onValueChange={handleDraftProjectChange}>
+                                <SelectTrigger
+                                    size="lg"
+                                    className="h-auto w-auto min-w-0 max-w-[320px] border-0 bg-transparent p-0 text-[12px] text-muted-foreground/70 shadow-none hover:text-muted-foreground focus:ring-0"
+                                >
+                                    <SelectValue placeholder="选择项目" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {projects.map((project) => (
+                                        <SelectItem key={project.id} value={project.id}>
+                                            {project.label?.trim() || formatDirectoryName(project.path)}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                ) : null}
                 <div
                     className={cn(
                         "flex flex-col relative overflow-visible",

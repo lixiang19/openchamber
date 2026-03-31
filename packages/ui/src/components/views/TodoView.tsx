@@ -25,17 +25,18 @@ import { cn } from '@/lib/utils';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useUIStore } from '@/stores/useUIStore';
 
-type TodoFilter = 'all' | 'active' | 'done';
+type TodoFilter = 'todo' | 'done' | 'all';
 
 const FILTERS: Array<{ id: TodoFilter; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'active', label: 'Active' },
-  { id: 'done', label: 'Done' },
+  { id: 'todo', label: 'todo' },
+  { id: 'done', label: 'done' },
+  { id: 'all', label: 'all' },
 ];
 
 export const TodoView: React.FC = () => {
   const currentDirectory = useEffectiveDirectory() ?? '';
   const currentSessionId = useSessionStore((state) => state.currentSessionId);
+  const openNewSessionDraft = useSessionStore((state) => state.openNewSessionDraft);
   const setPendingInputText = useSessionStore((state) => state.setPendingInputText);
   const setActiveMainTab = useUIStore((state) => state.setActiveMainTab);
   const todoPath = React.useMemo(() => {
@@ -217,15 +218,18 @@ export const TodoView: React.FC = () => {
   }, [persistItems]);
 
   const handleSendToCurrentChat = React.useCallback((item: ProjectTodoItem) => {
-    if (!currentSessionId) {
-      toast.error('No active session', { description: 'Open a chat session first.' });
-      return;
+    if (currentSessionId) {
+      setPendingInputText(item.text, 'append');
+    } else {
+      openNewSessionDraft({
+        directoryOverride: currentDirectory.trim() || undefined,
+        initialPrompt: item.text,
+      });
     }
 
-    setPendingInputText(item.text, 'append');
     setActiveMainTab('chat');
-    toast.success('Todo added to current chat input');
-  }, [currentSessionId, setActiveMainTab, setPendingInputText]);
+    toast.success('Todo added to chat input');
+  }, [currentDirectory, currentSessionId, openNewSessionDraft, setActiveMainTab, setPendingInputText]);
 
   const startEditing = React.useCallback((item: ProjectTodoItem) => {
     setEditingId(item.id);
@@ -265,7 +269,7 @@ export const TodoView: React.FC = () => {
   }, [editingId, editingText, persistItems, stopEditing]);
 
   const filteredItems = React.useMemo(() => {
-    if (filter === 'active') {
+    if (filter === 'todo') {
       return items.filter((item) => !item.done);
     }
     if (filter === 'done') {
@@ -280,35 +284,29 @@ export const TodoView: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--surface-background)]">
-      <div className="border-b border-[var(--interactive-border)] px-4 pb-3 pt-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
-            <div className="flex items-center gap-2">
-              <RiFileList3Line className="h-4 w-4 text-[var(--surface-muted-foreground)]" />
-              <h2 className="typography-ui-header font-medium text-foreground">Todo</h2>
-            </div>
-            <p className="typography-meta text-muted-foreground">
-              {currentDirectory.trim() ? `${activeCount} active · ${doneCount} done` : 'Open a project to manage project todo items'}
-            </p>
-            {todoPath ? (
-              <p className="truncate typography-meta text-muted-foreground/80" title={todoPath}>
-                {formatPathForDisplay(todoPath)}
-              </p>
-            ) : null}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => void loadTodos()}
-            disabled={isLoading || !currentDirectory.trim()}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--interactive-border)] bg-transparent text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="重新加载项目待办文件"
-          >
-            {isLoading ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiRefreshLine className="h-4 w-4" />}
-          </button>
+      {/* Header */}
+      <div className="flex shrink-0 items-center justify-between border-b border-[var(--interactive-border)] px-4 py-3">
+        <div className="flex items-center gap-2">
+          <RiFileList3Line className="h-4 w-4 text-[var(--surface-muted-foreground)]" />
+          <h2 className="font-medium text-[var(--surface-foreground)]">Todo</h2>
+          <span className="ml-2 rounded-full bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium text-[var(--surface-muted-foreground)]">
+            {activeCount} todo
+          </span>
         </div>
+        <button
+          type="button"
+          onClick={() => void loadTodos()}
+          disabled={isLoading || !currentDirectory.trim()}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label="刷新待办事项"
+        >
+          {isLoading ? <RiLoader4Line className="h-3.5 w-3.5 animate-spin" /> : <RiRefreshLine className="h-3.5 w-3.5" />}
+        </button>
+      </div>
 
-        <div className="mt-3 flex items-center gap-2">
+      {/* Input section */}
+      <div className="shrink-0 border-b border-[var(--interactive-border)] bg-[var(--surface-background)] px-4 py-4">
+        <div className="relative flex items-center">
           <Input
             value={draft}
             onChange={(event) => setDraft(event.target.value.slice(0, PROJECT_TODO_TEXT_MAX_LENGTH))}
@@ -318,22 +316,25 @@ export const TodoView: React.FC = () => {
                 void handleAddTodo();
               }
             }}
-            placeholder="添加下一个具体任务"
+            placeholder="添加下一个具体任务..."
             disabled={disableEditing || isSaving}
-            className="h-8 bg-[var(--surface-elevated)]"
+            className="h-9 w-full rounded-md border-[var(--interactive-border)] bg-[var(--surface-elevated)] pr-10 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--interactive-focus-ring)]"
           />
           <button
             type="button"
             onClick={() => void handleAddTodo()}
             disabled={disableEditing || isSaving || draft.trim().length === 0}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--interactive-border)] bg-[var(--surface-elevated)] text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Add todo"
+            className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-sm text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="添加任务"
           >
             <RiAddLine className="h-4 w-4" />
           </button>
         </div>
+      </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-1">
+      {/* Filters */}
+      <div className="flex shrink-0 items-center justify-between border-b border-[var(--interactive-border)] bg-[var(--surface-background)] px-4 py-2">
+        <div className="flex items-center gap-1">
           {FILTERS.map((entry) => {
             const active = filter === entry.id;
             return (
@@ -342,10 +343,10 @@ export const TodoView: React.FC = () => {
                 type="button"
                 onClick={() => setFilter(entry.id)}
                 className={cn(
-                  'inline-flex h-7 items-center rounded-md px-2.5 typography-meta transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)]',
+                  'inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--interactive-focus-ring)]',
                   active
-                    ? 'bg-[var(--interactive-selection)] text-[var(--interactive-selection-foreground)]'
-                    : 'text-[var(--surface-muted-foreground)] hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)]',
+                    ? 'bg-[var(--surface-foreground)] text-[var(--surface-background)]'
+                    : 'text-[var(--surface-muted-foreground)] hover:bg-[var(--surface-elevated)] hover:text-[var(--surface-foreground)]',
                 )}
               >
                 {entry.label}
@@ -353,102 +354,113 @@ export const TodoView: React.FC = () => {
             );
           })}
         </div>
+        {doneCount > 0 && (
+          <button
+            type="button"
+            onClick={() => void handleClearDone()}
+            disabled={isSaving || Boolean(loadError) || !currentDirectory.trim()}
+            className="text-xs text-[var(--surface-muted-foreground)] transition-colors hover:text-[var(--surface-foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            清除已完成
+          </button>
+        )}
       </div>
 
+      {/* Error State */}
       {loadError ? (
-        <div className="mx-4 mt-4 rounded-lg border border-[var(--status-error-border)] bg-[var(--status-error-background)] px-3 py-2">
-          <p className="typography-ui-label text-[var(--status-error-foreground)]">
+        <div className="m-4 shrink-0 rounded-md border border-[var(--status-error-border)] bg-[var(--status-error-background)] px-3 py-2">
+          <p className="text-sm font-medium text-[var(--status-error-foreground)]">
             {loadIssueKind === 'error' ? 'Failed to load todo.json' : 'todo.json is invalid'}
           </p>
-          <p className="mt-1 typography-meta text-[var(--status-error-foreground)]">{loadError}</p>
+          <p className="mt-1 text-xs text-[var(--status-error-foreground)] opacity-90">{loadError}</p>
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      {/* List */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {!currentDirectory.trim() ? (
-          <div className="flex h-full min-h-[180px] items-center justify-center rounded-xl border border-dashed border-[var(--interactive-border)] bg-[var(--surface-muted)] px-6 text-center">
-            <p className="typography-ui-label text-muted-foreground">
-              Open a project or session first. Todo items are stored in `.opencode/todo.json`.
-            </p>
+          <div className="flex h-32 flex-col items-center justify-center rounded-lg border border-dashed border-[var(--interactive-border)] bg-[var(--surface-muted)] px-4 text-center">
+            <p className="text-sm text-[var(--surface-muted-foreground)]">暂未打开项目，请先在资源管理器中选择文件夹以启用待办事项。</p>
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="flex h-full min-h-[180px] items-center justify-center rounded-xl border border-dashed border-[var(--interactive-border)] bg-[var(--surface-muted)] px-6 text-center">
-            <p className="typography-ui-label text-muted-foreground">
+          <div className="flex h-32 flex-col items-center justify-center rounded-lg border border-dashed border-[var(--interactive-border)] bg-[var(--surface-muted)] px-4 text-center">
+            <p className="text-sm text-[var(--surface-muted-foreground)]">
               {items.length === 0
-                ? 'No todos yet. Add the next concrete task for this project.'
-                : 'No todos match the current filter.'}
+                ? '空空如也。添加你的第一个待办任务吧！'
+                : '没有匹配该过滤条件的任务。'}
             </p>
           </div>
         ) : (
-          <ul className="space-y-1.5">
+          <ul className="space-y-2">
             {filteredItems.map((item) => {
               const isEditing = editingId === item.id;
               return (
                 <li
                   key={item.id}
-                  className="group rounded-lg border border-[var(--interactive-border)] bg-[var(--surface-elevated)] px-2.5 py-2"
+                  className="group relative flex items-start gap-3 rounded-md border border-transparent px-2 py-2 transition-colors hover:border-[var(--interactive-border)] hover:bg-[var(--surface-elevated)]"
                 >
-                  <div className="flex items-start gap-2">
-                    <div className="pt-0.5">
-                      <Checkbox
-                        checked={item.done}
-                        onChange={(checked) => void handleToggleTodo(item.id, checked)}
-                        ariaLabel={`Mark ${item.text} complete`}
+                  <div className="mt-0.5 shrink-0">
+                    <Checkbox
+                      checked={item.done}
+                      onChange={(checked) => void handleToggleTodo(item.id, checked)}
+                      ariaLabel={`标记 ${item.text} 为完成`}
+                    />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    {isEditing ? (
+                      <Input
+                        value={editingText}
+                        onChange={(event) => setEditingText(event.target.value.slice(0, PROJECT_TODO_TEXT_MAX_LENGTH))}
+                        onBlur={() => void handleSaveEdit()}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            void handleSaveEdit();
+                          }
+                          if (event.key === 'Escape') {
+                            event.preventDefault();
+                            stopEditing();
+                          }
+                        }}
+                        autoFocus
+                        className="h-7 w-full border-[var(--interactive-border)] bg-[var(--surface-background)] px-2 py-1 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-[var(--interactive-focus-ring)]"
                       />
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      {isEditing ? (
-                        <Input
-                          value={editingText}
-                          onChange={(event) => setEditingText(event.target.value.slice(0, PROJECT_TODO_TEXT_MAX_LENGTH))}
-                          onBlur={() => void handleSaveEdit()}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              event.preventDefault();
-                              void handleSaveEdit();
-                            }
-                            if (event.key === 'Escape') {
-                              event.preventDefault();
-                              stopEditing();
-                            }
-                          }}
-                          autoFocus
-                          className="h-8 bg-[var(--surface-background)]"
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => startEditing(item)}
-                          className="w-full rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)]"
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startEditing(item)}
+                        title="点击编辑任务"
+                        className="block w-full text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--interactive-focus-ring)]"
+                      >
+                        <span
+                          className={cn(
+                            'block whitespace-pre-wrap break-words text-sm transition-colors',
+                            item.done
+                              ? 'text-[var(--surface-muted-foreground)] line-through'
+                              : 'text-[var(--surface-foreground)]',
+                          )}
                         >
-                          <span
-                            className={cn(
-                              'block whitespace-pre-wrap break-words typography-ui-label text-[var(--surface-foreground)]',
-                              item.done && 'text-[var(--surface-muted-foreground)] line-through',
-                            )}
-                          >
-                            {item.text}
-                          </span>
-                        </button>
-                      )}
-                    </div>
+                          {item.text}
+                        </span>
+                      </button>
+                    )}
+                  </div>
 
+                  <div className="flex shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                     <button
                       type="button"
                       onClick={() => handleSendToCurrentChat(item)}
-                      disabled={!currentSessionId}
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
-                      aria-label={`发送 ${item.text} 到当前聊天`}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--interactive-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
+                      title="发送到当前对话"
                     >
                       <RiSendPlaneLine className="h-3.5 w-3.5" />
                     </button>
-
                     <button
                       type="button"
                       onClick={() => void handleDeleteTodo(item.id)}
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)]"
-                      aria-label={`删除 ${item.text}`}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--status-error-background)] hover:text-[var(--status-error-foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--interactive-focus-ring)]"
+                      title="删除任务"
                     >
                       <RiDeleteBinLine className="h-3.5 w-3.5" />
                     </button>
@@ -460,20 +472,11 @@ export const TodoView: React.FC = () => {
         )}
       </div>
 
-      <div className="border-t border-[var(--interactive-border)] px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="typography-meta text-muted-foreground">
-            {isSaving ? 'Saving to .opencode/todo.json…' : 'Tracked in Git with the project'}
-          </p>
-          <button
-            type="button"
-            onClick={() => void handleClearDone()}
-            disabled={isSaving || doneCount === 0 || Boolean(loadError) || !currentDirectory.trim()}
-            className="inline-flex h-7 items-center rounded-md px-2.5 typography-meta text-[var(--surface-muted-foreground)] transition-colors hover:bg-[var(--interactive-hover)] hover:text-[var(--surface-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Clear done
-          </button>
-        </div>
+      {/* Footer */}
+      <div className="shrink-0 border-t border-[var(--interactive-border)] bg-[var(--surface-background)] px-4 py-2">
+        <p className="text-xs text-[var(--surface-muted-foreground)]">
+          {isSaving ? '正在保存到 .opencode/todo.json…' : '数据与项目一起在 Git 中跟踪'}
+        </p>
       </div>
     </div>
   );

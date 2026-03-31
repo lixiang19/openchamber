@@ -114,7 +114,8 @@ export const SETTINGS_PAGE_METADATA: readonly SettingsPageMeta[] = [
     title: 'MCP',
     group: 'opencode',
     kind: 'split',
-    keywords: ['mcp', 'model context protocol', 'servers', 'tools', 'remote', 'stdio'],
+    description: '配置由 pi-mcp-adapter 提供的 MCP 服务器与连接状态。',
+    keywords: ['mcp', 'model context protocol', 'servers', 'tools', 'remote', 'stdio', 'pi-mcp-adapter'],
   },
   {
     slug: 'skills.installed',

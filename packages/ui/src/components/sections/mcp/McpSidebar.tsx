@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { RiAddLine, RiDeleteBinLine, RiMore2Line, RiPlugLine } from '@remixicon/react';
-import { useMcpConfigStore, type McpDraft, type McpServerConfig } from '@/stores/useMcpConfigStore';
+import { useMcpConfigStore, type McpDraft, type McpServerWithScope } from '@/stores/useMcpConfigStore';
 import { useMcpStore } from '@/stores/useMcpStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { isMobileDeviceViaCSS } from '@/lib/device';
@@ -67,7 +67,7 @@ export const McpSidebar: React.FC<McpSidebarProps> = ({ onItemSelect }) => {
   const currentDirectory = useDirectoryStore((state) => state.currentDirectory);
   const mcpStatus = useMcpStore((state) => state.getStatusForDirectory(currentDirectory ?? null));
 
-  const [deleteTarget, setDeleteTarget] = React.useState<McpServerConfig | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<McpServerWithScope | null>(null);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [openMenuMcp, setOpenMenuMcp] = React.useState<string | null>(null);
 
@@ -100,7 +100,10 @@ export const McpSidebar: React.FC<McpSidebarProps> = ({ onItemSelect }) => {
       command: [],
       url: '',
       environment: [],
-      enabled: true,
+      cwd: '',
+      advancedJson: '',
+      sourcePath: undefined,
+      cache: null,
     };
     setMcpDraft(draft);
     setSelectedMcp(newName);
@@ -133,7 +136,7 @@ export const McpSidebar: React.FC<McpSidebarProps> = ({ onItemSelect }) => {
             variant="ghost"
             className="h-7 w-7 px-0 -my-1 text-muted-foreground"
             onClick={handleCreateNew}
-            title="添加 MCP 服务器"
+            title="添加 Pi MCP 服务器"
           >
             <RiAddLine className="h-3.5 w-3.5" />
           </Button>
@@ -145,8 +148,8 @@ export const McpSidebar: React.FC<McpSidebarProps> = ({ onItemSelect }) => {
         {mcpServers.length === 0 ? (
           <div className="py-12 px-4 text-center text-muted-foreground">
             <RiPlugLine className="mx-auto mb-3 h-10 w-10 opacity-50" />
-            <p className="typography-ui-label font-medium">No MCP servers configured</p>
-            <p className="typography-meta mt-1 opacity-75">Use the + button above to add one</p>
+            <p className="typography-ui-label font-medium">No Pi MCP servers configured</p>
+            <p className="typography-meta mt-1 opacity-75">Use the + button above to create one</p>
           </div>
         ) : (
           <>
@@ -182,16 +185,21 @@ export const McpSidebar: React.FC<McpSidebarProps> = ({ onItemSelect }) => {
                         className="flex min-w-0 flex-1 flex-col gap-0 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                       >
                         <div className="flex items-center gap-2">
-                          <StatusDot tone={tone} enabled={server.enabled} />
+                          <StatusDot tone={tone} enabled={true} />
                           <span className="typography-ui-label font-normal truncate text-foreground">{server.name}</span>
                           <span className="typography-micro text-muted-foreground bg-muted px-1 rounded flex-shrink-0 leading-none pb-px border border-border/50">
                             {server.type}
                           </span>
+                          {server.cache?.isFresh && (
+                            <span className="typography-micro text-muted-foreground/70 flex-shrink-0">
+                              {server.cache.toolCount} tools
+                            </span>
+                          )}
                         </div>
                         <div className="typography-micro text-muted-foreground/60 truncate leading-tight pl-4">
                           {server.type === 'local'
-                            ? (server as { command?: string[] }).command?.join(' ') ?? ''
-                            : (server as { url?: string }).url ?? ''}
+                            ? (server.command?.join(' ') ?? '')
+                            : (server.url ?? '')}
                         </div>
                       </button>
 
@@ -252,16 +260,21 @@ export const McpSidebar: React.FC<McpSidebarProps> = ({ onItemSelect }) => {
                         className="flex min-w-0 flex-1 flex-col gap-0 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                       >
                         <div className="flex items-center gap-2">
-                          <StatusDot tone={tone} enabled={server.enabled} />
+                          <StatusDot tone={tone} enabled={true} />
                           <span className="typography-ui-label font-normal truncate text-foreground">{server.name}</span>
                           <span className="typography-micro text-muted-foreground bg-muted px-1 rounded flex-shrink-0 leading-none pb-px border border-border/50">
                             {server.type}
                           </span>
+                          {server.cache?.isFresh && (
+                            <span className="typography-micro text-muted-foreground/70 flex-shrink-0">
+                              {server.cache.toolCount} tools
+                            </span>
+                          )}
                         </div>
                         <div className="typography-micro text-muted-foreground/60 truncate leading-tight pl-4">
                           {server.type === 'local'
-                            ? (server as { command?: string[] }).command?.join(' ') ?? ''
-                            : (server as { url?: string }).url ?? ''}
+                            ? (server.command?.join(' ') ?? '')
+                            : (server.url ?? '')}
                         </div>
                       </button>
 
@@ -303,7 +316,7 @@ export const McpSidebar: React.FC<McpSidebarProps> = ({ onItemSelect }) => {
             <DialogTitle>删除 MCP 服务器</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete "{deleteTarget?.name}"? This will remove it from{' '}
-              <code className="text-foreground">opencode.json</code>.
+              <code className="text-foreground">~/.pi/agent/mcp.json</code> or <code className="text-foreground">.pi/mcp.json</code>.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

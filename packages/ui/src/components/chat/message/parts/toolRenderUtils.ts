@@ -3,6 +3,7 @@ const EXPANDABLE_TOOL_NAMES = new Set<string>([
     'bash', 'shell', 'cmd', 'terminal',
     'write', 'create', 'file_write',
     'question', 'task',
+    'mcp', // MCP 工具需要展开显示详细信息
 ]);
 
 const STANDALONE_TOOL_NAMES = new Set<string>(['task']);

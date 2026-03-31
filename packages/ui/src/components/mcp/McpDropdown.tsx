@@ -31,6 +31,12 @@ const statusTooltip = (status: McpStatus | undefined): string => {
       return 'Needs authentication';
     case 'needs_client_registration':
       return `Needs registration: ${(status as { error?: string }).error || ''}`;
+    case 'cached':
+      return 'Cached metadata';
+    case 'configured':
+      return 'Configured';
+    case 'idle':
+      return 'Idle';
     default:
       return status.status;
   }
@@ -45,6 +51,10 @@ const statusTone = (status: McpStatus | undefined): 'default' | 'success' | 'war
     case 'needs_auth':
     case 'needs_client_registration':
       return 'warning';
+    case 'cached':
+    case 'configured':
+    case 'idle':
+      return 'default';
     default:
       return 'default';
   }
@@ -175,7 +185,7 @@ export const McpDropdownContent: React.FC<McpDropdownContentProps> = ({ active, 
 
         {sortedNames.length === 0 && (
           <div className="px-4 py-5 typography-ui-label text-muted-foreground text-center">
-            Configure MCP servers in Opencode config.
+            在 ~/.pi/agent/mcp.json 或 .pi/mcp.json 中配置 MCP 服务器。
           </div>
         )}
       </div>
@@ -316,7 +326,7 @@ export const McpDropdown: React.FC<McpDropdownProps> = ({ headerIconButtonClass 
 
       {sortedNames.length === 0 && (
         <div className="px-2 py-3 typography-ui-label text-muted-foreground text-center">
-          Configure MCP servers in Opencode config.
+          在 ~/.pi/agent/mcp.json 或 .pi/mcp.json 中配置 MCP 服务器。
         </div>
       )}
     </>

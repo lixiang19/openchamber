@@ -126,4 +126,36 @@ Plan prompt
       systemPrompt: 'Plan prompt',
     });
   });
+
+  it('skips malformed agent frontmatter instead of failing discovery', async () => {
+    const rootDir = createTempDir();
+    const userAgentsDir = path.join(rootDir, 'user-agents');
+    const cwd = path.join(rootDir, 'workspace');
+
+    fs.mkdirSync(cwd, { recursive: true });
+    writeAgent(userAgentsDir, 'broken.md', `---
+description: broken agent
+model: juhe/gpt-5.4
+thinking: medium
+thinking: high
+---
+Broken prompt
+`);
+    writeAgent(userAgentsDir, 'healthy.md', `---
+description: healthy agent
+mode: primary
+---
+Healthy prompt
+`);
+
+    const agents = await discoverAgents(cwd, { userAgentsDir });
+
+    expect(agents).toHaveLength(1);
+    expect(agents[0]).toMatchObject({
+      name: 'healthy',
+      description: 'healthy agent',
+      sourceScope: 'user',
+      systemPrompt: 'Healthy prompt',
+    });
+  });
 });

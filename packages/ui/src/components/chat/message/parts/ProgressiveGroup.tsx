@@ -369,6 +369,22 @@ const getToolShortDescription = (activity: TurnActivityPart): string | null => {
         return getTodoSummaryFromActivity(activity);
     }
 
+    // For MCP tools, show server and tool info
+    if (toolName === 'mcp') {
+        const part = activity.part as ToolPartType;
+        const metadata = (part.state as { metadata?: Record<string, unknown> } | undefined)?.metadata;
+        // 从 metadata.mcp 读取（由 projectTurnRecords.ts 存储）
+        const mcpMeta = metadata?.mcp as { server?: string; tool?: string; mode?: string } | undefined;
+        
+        if (mcpMeta?.server && mcpMeta?.tool) {
+            return `${mcpMeta.server} › ${mcpMeta.tool}`;
+        }
+        if (mcpMeta?.server) {
+            return mcpMeta.server;
+        }
+        return 'MCP';
+    }
+
     // Fallback: try filename
     return getToolFileName(activity);
 };

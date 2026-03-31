@@ -450,8 +450,13 @@ export const useSessionStore = create<SessionStore>()(
                     const targetFolderId = draft.targetFolderId;
                     get().closeNewSessionDraft();
 
+                    const configState = useConfigStore.getState();
                     const result = await useSessionManagementStore.getState().createSession(title, directoryOverride, parentID, {
                         thinkingLevel: resolveDraftThinkingLevel(draft.thinkingLevel),
+                        agent: configState.currentAgentName,
+                        model: configState.currentProviderId && configState.currentModelId
+                            ? { providerID: configState.currentProviderId, modelID: configState.currentModelId }
+                            : undefined,
                     });
 
                     if (result?.id) {
@@ -626,10 +631,15 @@ export const useSessionStore = create<SessionStore>()(
                         const draftDirectoryOverride = draft.directoryOverride ?? null;
                         const draftProjectId = draft.selectedProjectId ?? null;
 
+                        const configState = useConfigStore.getState();
                         const created = await useSessionManagementStore
                             .getState()
                             .createSession(draft.title, draftDirectoryOverride, draft.parentID ?? null, {
                                 thinkingLevel: resolveDraftThinkingLevel(draft.thinkingLevel),
+                                agent: trimmedAgent ?? configState.currentAgentName,
+                                model: configState.currentProviderId && configState.currentModelId
+                                    ? { providerID: configState.currentProviderId, modelID: configState.currentModelId }
+                                    : undefined,
                             });
 
                         if (!created?.id) {
@@ -641,7 +651,6 @@ export const useSessionStore = create<SessionStore>()(
                             directory: normalizePath(draftDirectoryOverride ?? created.directory ?? null),
                         });
 
-                        const configState = useConfigStore.getState();
                         const draftAgentName = configState.currentAgentName;
                         const effectiveDraftAgent = trimmedAgent ?? draftAgentName;
                         const draftProviderId = configState.currentProviderId;

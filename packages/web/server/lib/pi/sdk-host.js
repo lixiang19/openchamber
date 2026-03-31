@@ -1080,7 +1080,7 @@ export const createPiSdkHost = () => {
       subscribers.add(listener);
       return () => subscribers.delete(listener);
     },
-    async createSession({ cwd, title, parentID, thinkingLevel } = {}) {
+    async createSession({ cwd, title, parentID, thinkingLevel, agent, model } = {}) {
       const normalizedCwd = normalizeString(cwd) || process.cwd();
       const record = await createManagedSessionRecord({
         cwd: normalizedCwd,
@@ -1092,6 +1092,9 @@ export const createPiSdkHost = () => {
         updatedAt: Date.now(),
         persistTitle: true,
       });
+      if (agent !== undefined || model !== undefined) {
+        await applySessionAgentSelection(record, agent, model);
+      }
       if (thinkingLevel !== undefined) {
         updateRecordThinkingLevel(record, thinkingLevel);
       }
@@ -1180,14 +1183,14 @@ export const createPiSdkHost = () => {
               mimeType: image.mimeType,
             }))
         : [];
-      if (!promptText) {
-        throw new Error('Prompt text is required');
+      if (!promptText && promptImages.length === 0) {
+        throw new Error('Prompt text or images are required');
       }
       record.lastError = null;
       record.status = 'streaming';
       emitSystemStatus(record, 'streaming');
       try {
-        if (record.titleSource === 'generated' && record.session.messages.length === 0) {
+        if (promptText && record.titleSource === 'generated' && record.session.messages.length === 0) {
           const derivedTitle = deriveSessionTitleFromPrompt(promptText);
           if (derivedTitle) {
             updateRecordSessionName(record, derivedTitle, 'derived');

@@ -440,6 +440,27 @@ const getToolDescription = (part: ToolPartType, state: ToolStateUnion, currentDi
     const metadata = stateWithData.metadata;
     const input = stateWithData.input;
 
+    // MCP 工具折叠态：优先显示真实内部工具名
+    if (normalizeToolName(part.tool) === 'mcp') {
+        const mcpMeta = metadata?.mcp as { server?: string; tool?: string; mode?: string } | undefined;
+        const inputTool = typeof input?.tool === 'string' ? input.tool.trim() : '';
+
+        if (inputTool.length > 0) {
+            return inputTool;
+        }
+        if (typeof mcpMeta?.tool === 'string' && mcpMeta.tool.trim().length > 0) {
+            return mcpMeta.tool.trim();
+        }
+        if (typeof mcpMeta?.server === 'string' && mcpMeta.server.trim().length > 0) {
+            return mcpMeta.server.trim();
+        }
+        if (typeof mcpMeta?.mode === 'string' && mcpMeta.mode.trim().length > 0) {
+            return mcpMeta.mode.trim();
+        }
+
+        return 'MCP';
+    }
+
     const filePathLabel = getToolDescriptionPath(part, state, currentDirectory);
     if (filePathLabel) {
         return filePathLabel;
@@ -1452,6 +1473,81 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
             return renderScrollableBlock(
                 <div className="w-full min-w-0">
                     <SimpleMarkdownRenderer content={outputString} variant="tool" onShowPopup={onShowPopup} />
+                </div>
+            );
+        }
+
+        // MCP 工具调试面板
+        if (normalizeToolName(part.tool) === 'mcp') {
+            // 从 metadata.mcp / input.tool 提取 MCP 调用信息
+            const mcpMeta = metadata?.mcp as { server?: string; tool?: string; mode?: string } | undefined;
+            const inputTool = typeof input?.tool === 'string' ? input.tool.trim() : '';
+            
+            // 构建干净的调试信息（过滤掉 pi 字段）
+            const cleanMetadata = metadata ? Object.fromEntries(
+                Object.entries(metadata).filter(([key]) => key !== 'pi')
+            ) : undefined;
+            
+            // 提取关键信息用于显示
+            const serverName = mcpMeta?.server || 'N/A';
+            const toolName = inputTool || mcpMeta?.tool || 'N/A';
+            const mode = mcpMeta?.mode || 'N/A';
+            
+            const mcpDebugInfo = {
+                part: {
+                    id: part.id,
+                    tool: part.tool,
+                    type: part.type,
+                    callID: part.callID,
+                },
+                mcpInfo: {
+                    server: serverName,
+                    tool: toolName,
+                    mode: mode,
+                },
+                state: {
+                    status: state.status,
+                    time: stateWithData.time,
+                },
+                metadata: cleanMetadata,
+                output: outputString?.slice(0, 500), // 限制输出长度
+            };
+            
+            return renderScrollableBlock(
+                <div className="w-full min-w-0 space-y-3">
+                    {/* MCP 关键信息显示 */}
+                    <div className="bg-primary/5 border border-primary/20 p-3 rounded-lg">
+                        <div className="typography-meta font-semibold text-foreground mb-2">MCP Call Info:</div>
+                        <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                                <span className="typography-micro text-muted-foreground">Server:</span>
+                                <span className="typography-meta font-medium text-foreground">{serverName}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="typography-micro text-muted-foreground">Tool:</span>
+                                <span className="typography-meta font-medium text-foreground">{toolName}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="typography-micro text-muted-foreground">Mode:</span>
+                                <span className="typography-meta text-muted-foreground">{mode}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* 完整调试信息 */}
+                    <div className="bg-muted/30 p-2 rounded-lg">
+                        <div className="typography-micro font-medium text-muted-foreground mb-2">Debug Info:</div>
+                        <pre className="typography-code text-xs whitespace-pre-wrap break-all text-muted-foreground/80">
+                            {JSON.stringify(mcpDebugInfo, null, 2)}
+                        </pre>
+                    </div>
+                    
+                    {hasStringOutput && (
+                        <div>
+                            <div className="typography-meta font-medium text-foreground mb-1">Output:</div>
+                            <SimpleMarkdownRenderer content={outputString} variant="tool" onShowPopup={onShowPopup} />
+                        </div>
+                    )}
                 </div>
             );
         }

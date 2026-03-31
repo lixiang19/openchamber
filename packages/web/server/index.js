@@ -57,6 +57,11 @@ import {
   overwritePiGlobalAgentDirectory,
   readPiGlobalTemplateDirectory,
 } from './lib/pi/global-settings-template.js';
+import {
+  deleteServerConfig,
+  persistServerConfig,
+  readConfigBundle,
+} from './lib/pi/mcp-config.js';
 import { createPiSdkHost } from './lib/pi/sdk-host.js';
 import { discoverPrompts, savePrompt, deletePrompt } from './lib/pi/prompts.js';
 import { createWechatBridgeService } from './lib/wechat-bridge/index.js';
@@ -6207,6 +6212,7 @@ async function main(options = {}) {
   expressApp = app;
   server = http.createServer(app);
 
+  app.use('/api/pi', express.json({ limit: '80mb' }));
   app.use('/api', express.json({ limit: '10mb' }));
 
   app.get('/api/system/info', (req, res) => {
@@ -6240,6 +6246,8 @@ async function main(options = {}) {
         title: req.body?.title,
         parentID: req.body?.parentID,
         thinkingLevel: req.body?.thinkingLevel,
+        agent: req.body?.agent,
+        model: req.body?.model,
       });
       res.json(session);
     } catch (error) {
@@ -7649,6 +7657,79 @@ async function main(options = {}) {
     } catch (error) {
       console.error('Failed to load settings:', error);
       res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to load settings' });
+    }
+  });
+
+  const resolveMcpDirectoryFromRequest = (req) => {
+    if (typeof req.query?.directory === 'string' && req.query.directory.trim()) {
+      return req.query.directory.trim();
+    }
+    if (typeof req.body?.directory === 'string' && req.body.directory.trim()) {
+      return req.body.directory.trim();
+    }
+    const headerDirectory = typeof req.get === 'function' ? req.get('x-opencode-directory') : null;
+    if (typeof headerDirectory === 'string' && headerDirectory.trim()) {
+      return headerDirectory.trim();
+    }
+    return process.cwd();
+  };
+
+  app.get('/api/config/mcp', async (req, res) => {
+    try {
+      const directory = resolveMcpDirectoryFromRequest(req);
+      const bundle = await readConfigBundle(directory);
+      res.json(bundle.mcpServers);
+    } catch (error) {
+      console.error('Failed to load MCP config:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to load MCP config' });
+    }
+  });
+
+  app.post('/api/config/mcp/:name', async (req, res) => {
+    try {
+      const name = typeof req.params.name === 'string' ? req.params.name.trim() : '';
+      if (!name) {
+        return res.status(400).json({ error: 'Server name is required' });
+      }
+      const directory = resolveMcpDirectoryFromRequest(req);
+      await persistServerConfig(directory, name, req.body ?? {});
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Failed to create MCP config:', error);
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to create MCP config' });
+    }
+  });
+
+  app.patch('/api/config/mcp/:name', async (req, res) => {
+    try {
+      const name = typeof req.params.name === 'string' ? req.params.name.trim() : '';
+      if (!name) {
+        return res.status(400).json({ error: 'Server name is required' });
+      }
+      const directory = resolveMcpDirectoryFromRequest(req);
+      await persistServerConfig(directory, name, req.body ?? {});
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Failed to update MCP config:', error);
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to update MCP config' });
+    }
+  });
+
+  app.delete('/api/config/mcp/:name', async (req, res) => {
+    try {
+      const name = typeof req.params.name === 'string' ? req.params.name.trim() : '';
+      if (!name) {
+        return res.status(400).json({ error: 'Server name is required' });
+      }
+      const directory = resolveMcpDirectoryFromRequest(req);
+      const success = await deleteServerConfig(directory, name);
+      if (!success) {
+        return res.status(404).json({ error: 'Server not found' });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Failed to delete MCP config:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to delete MCP config' });
     }
   });
 

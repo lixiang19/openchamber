@@ -114,6 +114,12 @@ type FileInputLite = {
   url: string;
 };
 
+type PromptImageInputLite = {
+  type: 'image';
+  data: string;
+  mimeType: string;
+};
+
 export type DirectorySwitchResult = {
   success: boolean;
   restarted: boolean;
@@ -486,14 +492,65 @@ class RuntimeService {
     return null;
   }
 
-  private buildPromptText(params: {
+  private toPromptImageInput(file: FilePartInput): PromptImageInputLite | null {
+    const mime = typeof file.mime === 'string' ? file.mime.trim().toLowerCase() : '';
+    if (!mime.startsWith('image/')) {
+      return null;
+    }
+
+    if (typeof file.url !== 'string' || !file.url.startsWith('data:')) {
+      return null;
+    }
+
+    const commaIndex = file.url.indexOf(',');
+    if (commaIndex === -1) {
+      return null;
+    }
+
+    const meta = file.url.substring(5, commaIndex);
+    const data = file.url.substring(commaIndex + 1).trim();
+    if (!/;base64(?:;|$)/i.test(meta) || !data) {
+      return null;
+    }
+
+    const mimeType = meta.split(';')[0]?.trim() || mime || 'image/png';
+    return {
+      type: 'image',
+      data,
+      mimeType,
+    };
+  }
+
+  private async splitPromptFiles(files?: Array<FileInputLite>): Promise<{ attachmentLabels: string[]; images: PromptImageInputLite[] }> {
+    const normalizedFiles = await Promise.all((files || []).map((file) => this.toNormalizedFilePartInput(file)));
+    const attachmentLabels: string[] = [];
+    const images: PromptImageInputLite[] = [];
+
+    for (const file of normalizedFiles) {
+      const imageInput = this.toPromptImageInput(file);
+      if (imageInput) {
+        images.push(imageInput);
+        continue;
+      }
+
+      const label = file.filename || file.url;
+      if (label) {
+        attachmentLabels.push(label);
+      }
+    }
+
+    return { attachmentLabels, images };
+  }
+
+  private async buildPromptPayload(params: {
     text: string;
     prefaceText?: string;
-    files?: Array<{ filename?: string; url: string }>;
-    additionalParts?: Array<{ text: string; synthetic?: boolean; files?: Array<{ filename?: string; url: string }> }>;
+    files?: Array<FileInputLite>;
+    additionalParts?: Array<{ text: string; synthetic?: boolean; files?: Array<FileInputLite> }>;
     agentMentions?: Array<{ name: string }>;
-  }): string {
+  }): Promise<{ text: string; images: PromptImageInputLite[] }> {
     const sections: string[] = [];
+    const images: PromptImageInputLite[] = [];
 
     if (params.prefaceText && params.prefaceText.trim()) {
       sections.push(params.prefaceText.trim());
@@ -507,15 +564,18 @@ class RuntimeService {
       if (part.text && part.text.trim()) {
         sections.push(part.text.trim());
       }
-      const fileLabels = (part.files || []).map((file) => file.filename || file.url).filter(Boolean);
-      if (fileLabels.length > 0) {
-        sections.push(`Attachments: ${fileLabels.join(', ')}`);
+
+      const { attachmentLabels, images: partImages } = await this.splitPromptFiles(part.files);
+      images.push(...partImages);
+      if (attachmentLabels.length > 0) {
+        sections.push(`Attachments: ${attachmentLabels.join(', ')}`);
       }
     }
 
-    const fileLabels = (params.files || []).map((file) => file.filename || file.url).filter(Boolean);
-    if (fileLabels.length > 0) {
-      sections.push(`Attachments: ${fileLabels.join(', ')}`);
+    const { attachmentLabels, images: primaryImages } = await this.splitPromptFiles(params.files);
+    images.push(...primaryImages);
+    if (attachmentLabels.length > 0) {
+      sections.push(`Attachments: ${attachmentLabels.join(', ')}`);
     }
 
     const agentLabels = (params.agentMentions || []).map((entry) => entry.name).filter(Boolean);
@@ -523,7 +583,10 @@ class RuntimeService {
       sections.push(`Mentions: ${agentLabels.map((name) => `@${name}`).join(' ')}`);
     }
 
-    return sections.filter(Boolean).join('\n\n');
+    return {
+      text: sections.filter(Boolean).join('\n\n'),
+      images,
+    };
   }
 
   private createRuntimeApiClient(directory?: string | null): OpencodeClient {
@@ -969,7 +1032,7 @@ class RuntimeService {
     const baseTimestamp = Date.now();
     const tempMessageId = params.messageId ?? `temp_${baseTimestamp}_${Math.random().toString(36).substring(2, 9)}`;
 
-    const promptText = this.buildPromptText({
+    const { text: promptText, images } = await this.buildPromptPayload({
       text: params.text,
       prefaceText: params.prefaceText,
       files: params.files,
@@ -977,7 +1040,7 @@ class RuntimeService {
       agentMentions: params.agentMentions,
     });
 
-    if (!promptText.trim()) {
+    if (!promptText.trim() && images.length === 0) {
       throw new Error('Message must have at least one part (text or file)');
     }
 
@@ -990,6 +1053,7 @@ class RuntimeService {
           modelID: params.modelID,
         },
         agent: params.agent,
+        ...(images.length > 0 ? { images } : {}),
       }),
     });
 
