@@ -14,7 +14,7 @@ import { Text } from '@/components/ui/text';
 import { FadeInOnReveal } from '../FadeInOnReveal';
 import { getToolIcon } from './toolPresentation';
 import { getToolMetadata } from '@/lib/toolHelpers';
-import { isExpandableTool, isStandaloneTool, isStaticTool } from './toolRenderUtils';
+import { isExpandableTool, isStaticTool } from './toolRenderUtils';
 import { RuntimeAPIContext } from '@/contexts/runtimeAPIContext';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useUIStore } from '@/stores/useUIStore';
@@ -425,12 +425,6 @@ const aggregateRows = (parts: TurnActivityPart[]): AggregatedRow[] => {
         // Tool part
         const toolPart = activity.part as ToolPartType;
         const toolName = toolPart.tool?.toLowerCase() ?? '';
-
-        if (isStandaloneTool(toolName)) {
-            // Standalone tools are rendered separately, skip
-            i++;
-            continue;
-        }
 
         if (isExpandableTool(toolName)) {
             rows.push({ type: 'tool-expandable', activity });

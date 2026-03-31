@@ -1255,13 +1255,13 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
                 const toolPart = part as ToolPartType;
                 const toolName = toolPart.tool?.toLowerCase() ?? '';
 
-                if (toolName === 'task' && hasRenderedSubtaskCard) {
+                if (toolName === 'task' && hasRenderedSubtaskCard && !isSortedRenderMode) {
                     i++;
                     continue;
                 }
 
                 const activity = activityByPart.get(part);
-                if (activity?.kind === 'tool' && !isStandaloneTool(toolName)) {
+                if (activity?.kind === 'tool' && (!isStandaloneTool(toolName) || shouldRenderActivityGroup)) {
                     i += 1;
                     continue;
                 }
@@ -1272,9 +1272,11 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
                 }
 
                 // Expandable tools: bash, edit, write, task, question — individual rows
-                // In sorted render mode, these are already rendered via TurnActivity, so skip
+                // Sorted 模式默认交给 TurnActivity；若当前消息没有 Activity 分组，则内联渲染 task
                 if (isExpandableTool(toolName)) {
-                    if (!isSortedRenderMode) {
+                    const shouldRenderInlineExpandableTool = !isSortedRenderMode
+                        || (isStandaloneTool(toolName) && !shouldRenderActivityGroup);
+                    if (shouldRenderInlineExpandableTool) {
                         rendered.push(
                             <FadeInOnReveal key={`tool-${toolPart.id}`}>
                                 <ToolRevealOnMount animate={animatedToolIdsLookup.has(toolPart.id)} wipe>
@@ -1336,6 +1338,7 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
         chatRenderMode,
         collapsedPreviewCount,
         expandedTools,
+        hasRenderedSubtaskCard,
         hasStopFinish,
         isMobile,
         isSortedRenderMode,

@@ -4,6 +4,7 @@ import type { RuntimeAPIs } from '@/lib/api/types';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useGitHubAuthStore } from '@/stores/useGitHubAuthStore';
 import { useGitHubPrStatusStore } from '@/stores/useGitHubPrStatusStore';
+import { useGitStore } from '@/stores/useGitStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 
@@ -78,6 +79,29 @@ const toPrTargets = (cache: Map<string, BranchCacheEntry>, directories: string[]
   return result;
 };
 
+const areDirectoryListsEqual = (previous: string[], next: string[]): boolean => {
+  if (previous === next) {
+    return true;
+  }
+  if (previous.length !== next.length) {
+    return false;
+  }
+  for (let index = 0; index < previous.length; index += 1) {
+    if (previous[index] !== next[index]) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const useStableDirectoryList = (directories: string[]): string[] => {
+  const stableDirectoriesRef = React.useRef<string[]>(directories);
+  if (!areDirectoryListsEqual(stableDirectoriesRef.current, directories)) {
+    stableDirectoriesRef.current = directories;
+  }
+  return stableDirectoriesRef.current;
+};
+
 export const useGitHubPrBackgroundTracking = (
   github: RuntimeAPIs['github'] | undefined,
   git: RuntimeAPIs['git'],
@@ -142,7 +166,7 @@ export const useGitHubPrBackgroundTracking = (
     void refreshGitHubAuthStatus(github);
   }, [github, githubAuthChecked, refreshGitHubAuthStatus]);
 
-  const candidateDirectories = React.useMemo(() => {
+  const computedCandidateDirectories = React.useMemo(() => {
     const ordered = new Map<string, string>();
     const add = (value?: string | null) => {
       const normalized = normalizePath(value);
@@ -175,6 +199,7 @@ export const useGitHubPrBackgroundTracking = (
 
     return Array.from(ordered.values()).slice(0, MAX_BACKGROUND_PR_DIRECTORIES);
   }, [archivedSessions, availableWorktreesByProject, currentDirectory, projects, sessions, worktreeMetadata]);
+  const candidateDirectories = useStableDirectoryList(computedCandidateDirectories);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -199,14 +224,16 @@ export const useGitHubPrBackgroundTracking = (
       const results = await Promise.all(
         directoriesToFetch.map(async (directory) => {
           try {
-            const status = await git.getGitStatus(directory);
-            const branch = typeof status.current === 'string' ? status.current.trim() : '';
+            const gitStore = useGitStore.getState();
+            await gitStore.fetchStatus(directory, git, { silent: true });
+            const status = useGitStore.getState().directories.get(directory)?.status ?? null;
+            const branch = typeof status?.current === 'string' ? status.current.trim() : '';
             return {
               directory,
               branch: branch && branch !== 'HEAD' ? branch : null,
-              tracking: typeof status.tracking === 'string' ? status.tracking : null,
-              ahead: typeof status.ahead === 'number' ? status.ahead : 0,
-              behind: typeof status.behind === 'number' ? status.behind : 0,
+              tracking: typeof status?.tracking === 'string' ? status.tracking : null,
+              ahead: typeof status?.ahead === 'number' ? status.ahead : 0,
+              behind: typeof status?.behind === 'number' ? status.behind : 0,
             };
           } catch {
             return { directory, branch: null, tracking: null, ahead: 0, behind: 0 };

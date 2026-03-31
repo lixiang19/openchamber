@@ -122,15 +122,12 @@ export const projectTurnActivity = (input: ProjectActivityInput): ProjectActivit
     input.assistantMessages.forEach((message) => {
         const messageCompleted = isAssistantMessageCompleted(message, input.piAssistantById);
         const finish = getMessageFinish(message, input.piAssistantById);
-        const messageHasSubtask = message.parts.some((part) => part.type === 'subtask');
 
         message.parts.forEach((part, partIndex) => {
             const isTool = part.type === 'tool';
             const toolName = isTool
                 ? (part as { tool?: unknown }).tool
                 : undefined;
-            const normalizedToolName = typeof toolName === 'string' ? toolName.trim().toLowerCase() : '';
-            const hidesStandaloneTaskTool = messageHasSubtask && normalizedToolName === 'task';
             if (isTool) {
                 hasTools = true;
             }
@@ -155,9 +152,7 @@ export const projectTurnActivity = (input: ProjectActivityInput): ProjectActivit
 
             let kind: TurnActivityRecord['kind'] | null = null;
             if (isTool) {
-                if (!hidesStandaloneTaskTool) {
-                    kind = 'tool';
-                }
+                kind = 'tool';
             } else if (part.type === 'reasoning') {
                 if (text) {
                     kind = 'reasoning';
@@ -184,6 +179,10 @@ export const projectTurnActivity = (input: ProjectActivityInput): ProjectActivit
             activityParts.push(activity);
 
             if (kind === 'tool' && standaloneTool) {
+                const standaloneToolPartId = activity.id;
+                const standaloneList = partsByAfterTool.get(standaloneToolPartId) ?? [];
+                standaloneList.push(activity);
+                partsByAfterTool.set(standaloneToolPartId, standaloneList);
                 return;
             }
 
