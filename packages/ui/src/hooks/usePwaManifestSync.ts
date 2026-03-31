@@ -75,6 +75,11 @@ export const usePwaManifestSync = () => {
     }
 
     try {
+      const previousSignature = localStorage.getItem(PWA_RECENT_SESSIONS_STORAGE_KEY);
+      if (previousSignature === signature) {
+        return;
+      }
+
       if (recentShortcuts.length === 0) {
         localStorage.removeItem(PWA_RECENT_SESSIONS_STORAGE_KEY);
       } else {
@@ -86,5 +91,5 @@ export const usePwaManifestSync = () => {
 
     const win = window as ManifestSyncWindow;
     win.__RIDGE_UPDATE_PWA_MANIFEST__?.();
-  }, [recentShortcuts, signature]);
+  }, [recentShortcuts.length, signature]);
 };

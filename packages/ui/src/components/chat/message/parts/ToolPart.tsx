@@ -24,7 +24,6 @@ import type { ToolPopupContent } from '../types';
 import { ensurePierreThemeRegistered } from '@/lib/shiki/appThemeRegistry';
 import { getDefaultTheme } from '@/lib/theme/themes';
 import type { MessageRecord } from '@/lib/messageCompletion';
-import { useSessionActivity } from '@/hooks/useSessionActivity';
 
 import {
     formatEditOutput,
@@ -155,11 +154,6 @@ const normalizeToolName = (toolName: string | undefined | null): string => {
 };
 
 const MAX_DURATION_MS = 5 * 60 * 1000; // 5 minutes cap
-const TASK_TOOL_POLL_FAST_MS = 1200;
-const TASK_TOOL_POLL_IDLE_MS = 3200;
-const TASK_TOOL_POLL_HIDDEN_MS = 6000;
-const TASK_TOOL_NO_CHANGE_BACKOFF_AFTER_POLLS = 3;
-const TASK_TOOL_SETTLE_GRACE_MS = 2500;
 
 const formatDuration = (start: number, end?: number, now: number = Date.now()) => {
     const duration = Math.min(Math.max(0, (end ?? now) - start), MAX_DURATION_MS);
@@ -1994,76 +1988,7 @@ const ToolPart: React.FC<ToolPartProps> = ({
         return buildTaskSummaryEntriesFromPiSession(childPiSession);
     }, [childPiSession, isTaskTool, taskSessionId]);
 
-    const childSessionHasInFlightTools = React.useMemo(() => {
-        if (!isTaskTool || !taskSessionId || !childPiSession) {
-            return false;
-        }
-
-        return childPiSession.toolExecutions.some((execution) => execution.status === 'running');
-    }, [childPiSession, isTaskTool, taskSessionId]);
-
-    const childSessionActivity = useSessionActivity(taskSessionId);
-    const [taskChildSeenActive, setTaskChildSeenActive] = React.useState(false);
-    const [taskChildPollingStopped, setTaskChildPollingStopped] = React.useState(false);
-
-    const taskPollNoChangeCountRef = React.useRef(0);
-    const taskPollLastSignatureRef = React.useRef<string>('');
-
-    React.useEffect(() => {
-        setTaskChildSeenActive(false);
-        setTaskChildPollingStopped(false);
-        taskPollNoChangeCountRef.current = 0;
-        taskPollLastSignatureRef.current = '';
-    }, [taskSessionId]);
-
-    React.useEffect(() => {
-        if (!isTaskTool || !taskSessionId) {
-            return;
-        }
-
-        const childSessionIsActive =
-            childSessionActivity.phase === 'busy'
-            || childSessionActivity.phase === 'retry'
-            || childSessionHasInFlightTools
-            || (!isFinalized && activeLatched);
-
-        if (childSessionIsActive) {
-            if (!taskChildSeenActive) {
-                setTaskChildSeenActive(true);
-            }
-            if (taskChildPollingStopped) {
-                setTaskChildPollingStopped(false);
-            }
-            return;
-        }
-
-        if (!taskChildSeenActive || taskChildPollingStopped || childSessionTaskSummaryEntries.length === 0) {
-            return;
-        }
-
-        if (typeof window === 'undefined') {
-            setTaskChildPollingStopped(true);
-            return;
-        }
-
-        const timer = window.setTimeout(() => {
-            setTaskChildPollingStopped(true);
-        }, TASK_TOOL_SETTLE_GRACE_MS);
-
-        return () => {
-            window.clearTimeout(timer);
-        };
-    }, [
-        childSessionActivity.phase,
-        childSessionHasInFlightTools,
-        childSessionTaskSummaryEntries.length,
-        activeLatched,
-        isFinalized,
-        isTaskTool,
-        taskChildPollingStopped,
-        taskChildSeenActive,
-        taskSessionId,
-    ]);
+    const hydratedTaskSessionIdsRef = React.useRef<Set<string>>(new Set());
 
     React.useEffect(() => {
         if (typeof time?.end === 'number' || typeof pinnedTime.end === 'number') {
@@ -2103,74 +2028,38 @@ const ToolPart: React.FC<ToolPartProps> = ({
             return;
         }
 
-        const childSessionActive = childSessionActivity.phase === 'busy' || childSessionActivity.phase === 'retry';
-        const shouldPoll =
-            !taskChildPollingStopped
-            && (isActive || childSessionHasInFlightTools || childSessionActive || childSessionTaskSummaryEntries.length === 0);
-        const shouldFetchSnapshot = childSessionTaskSummaryEntries.length === 0 || shouldPoll;
+        const shouldFetchSnapshot = !childPiSession || childSessionTaskSummaryEntries.length === 0;
         if (!shouldFetchSnapshot) {
+            hydratedTaskSessionIdsRef.current.add(taskSessionId);
             return;
         }
 
+        if (hydratedTaskSessionIdsRef.current.has(taskSessionId)) {
+            return;
+        }
+
+        hydratedTaskSessionIdsRef.current.add(taskSessionId);
+
         let cancelled = false;
-        let pollTimer: number | undefined;
 
-        const isVisible = () => {
-            if (typeof document === 'undefined') {
-                return true;
-            }
-            return document.visibilityState === 'visible';
-        };
-
-        const resolvePollDelay = () => {
-            if (!isVisible()) {
-                return TASK_TOOL_POLL_HIDDEN_MS;
-            }
-            if (taskPollNoChangeCountRef.current >= TASK_TOOL_NO_CHANGE_BACKOFF_AFTER_POLLS) {
-                return TASK_TOOL_POLL_IDLE_MS;
-            }
-            return TASK_TOOL_POLL_FAST_MS;
-        };
-
-        const scheduleNextPoll = () => {
-            if (!shouldPoll || typeof window === 'undefined' || cancelled) {
-                return;
-            }
-            pollTimer = window.setTimeout(() => {
-                pollTimer = undefined;
-                void fetchSessionMessages();
-            }, resolvePollDelay());
-        };
-
-        const fetchSessionMessages = async () => {
-            try {
-                const session = await piClient.getSession(taskSessionId);
-                useSessionManagementStore.getState().setPiSessionSnapshot(session);
+        void piClient.getSession(taskSessionId)
+            .then((session) => {
                 if (cancelled) {
                     return;
                 }
-            } catch {
-                // Ignore transient subagent fetch errors.
-            } finally {
-                scheduleNextPoll();
-            }
-        };
-
-        void fetchSessionMessages();
+                useSessionManagementStore.getState().setPiSessionSnapshot(session);
+            })
+            .catch(() => {
+                hydratedTaskSessionIdsRef.current.delete(taskSessionId);
+            });
 
         return () => {
             cancelled = true;
-            if (typeof pollTimer === 'number') {
-                window.clearTimeout(pollTimer);
-            }
         };
     }, [
-        childSessionActivity.phase,
-        childSessionHasInFlightTools,
+        childPiSession,
         childSessionTaskSummaryEntries.length,
-        isActive,
         isTaskTool,
-        taskChildPollingStopped,
         taskSessionId,
     ]);
 
