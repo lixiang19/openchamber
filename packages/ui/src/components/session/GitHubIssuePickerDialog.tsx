@@ -19,6 +19,7 @@ import {
   RiSearchLine,
 } from '@remixicon/react';
 import { cn } from '@/lib/utils';
+import { parseProviderModelSpec } from '@/lib/modelSpec';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useSessionStore } from '@/stores/useSessionStore';
@@ -226,15 +227,12 @@ export function GitHubIssuePickerDialog({
       return null;
     }
 
-    const parts = settingsDefaultModel.split('/');
-    if (parts.length !== 2) {
-      return null;
-    }
-    const [providerID, modelID] = parts;
-    if (!providerID || !modelID) {
+    const parsed = parseProviderModelSpec(settingsDefaultModel);
+    if (!parsed) {
       return null;
     }
 
+    const { providerID, modelID } = parsed;
     const modelMetadata = configState.getModelMetadata(providerID, modelID);
     if (!modelMetadata) {
       return null;

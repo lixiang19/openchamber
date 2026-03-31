@@ -20,6 +20,7 @@ import {
   projectPiSessionStatusToRuntimeStatus,
   projectPiSessionToRuntimeSession,
 } from "@/lib/runtime/projections";
+import { parseProviderModelSpec } from "@/lib/modelSpec";
 export type RoutedOpencodeEvent = {
   directory: string;
   payload: Event;
@@ -431,17 +432,12 @@ class RuntimeService {
   }
 
   private toPiAgentModel(agent: PiAgentInfo): Agent['model'] | undefined {
-    const candidate = typeof agent.model === 'string' ? agent.model.trim() : '';
-    if (!candidate || !candidate.includes('/')) {
+    const parsed = parseProviderModelSpec(agent.model);
+    if (!parsed) {
       return undefined;
     }
 
-    const [providerID, modelID, ...rest] = candidate.split('/');
-    if (!providerID || !modelID || rest.length > 0) {
-      return undefined;
-    }
-
-    return { providerID, modelID } as Agent['model'];
+    return parsed as Agent['model'];
   }
 
   private toPiUiAgent(agent: PiAgentInfo): Agent {

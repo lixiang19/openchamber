@@ -27,6 +27,7 @@ import {
   createWriteTool,
 } from '@mariozechner/pi-coding-agent';
 
+import { parseProviderModelSpec } from '../model-spec.js';
 import { compileAgentPermission, createPermissionGateExtension } from '../permissions.js';
 
 const MAX_PARALLEL_TASKS = 8;
@@ -201,11 +202,11 @@ const resolveTaskAgentModel = async (modelRegistry, modelSpec) => {
   const availableModels = await Promise.resolve(modelRegistry.getAvailable());
 
   if (normalizedSpec.includes('/')) {
-    const [providerID, modelID, ...rest] = normalizedSpec.split('/');
-    if (!providerID || !modelID || rest.length > 0) {
+    const parsed = parseProviderModelSpec(normalizedSpec);
+    if (!parsed) {
       throw new Error(`Invalid task agent model: ${normalizedSpec}`);
     }
-    const exact = availableModels.find((model) => model.provider === providerID && model.id === modelID);
+    const exact = availableModels.find((model) => model.provider === parsed.providerID && model.id === parsed.modelID);
     if (!exact) {
       throw new Error(`Task agent model not available: ${normalizedSpec}`);
     }

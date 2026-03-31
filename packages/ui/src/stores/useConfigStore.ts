@@ -10,6 +10,7 @@ import type { SessionStore } from "./types/sessionTypes";
 import { filterVisibleAgents } from "./useAgentsStore";
 import { getRegisteredRuntimeAPIs } from "@/contexts/runtimeAPIRegistry";
 import { updateDesktopSettings } from "@/lib/persistence";
+import { parseProviderModelSpec } from "@/lib/modelSpec";
 import { useDirectoryStore } from "@/stores/useDirectoryStore";
 import { streamDebugEnabled } from "@/stores/utils/streamDebug";
 
@@ -99,14 +100,11 @@ const fetchOpenChamberDefaults = async (): Promise<OpenChamberDefaults> => {
 };
 
 const parseModelString = (modelString: string): { providerId: string; modelId: string } | null => {
-    if (!modelString || typeof modelString !== 'string') {
+    const parsed = parseProviderModelSpec(modelString);
+    if (!parsed) {
         return null;
     }
-    const parts = modelString.split('/');
-    if (parts.length !== 2 || !parts[0] || !parts[1]) {
-        return null;
-    }
-    return { providerId: parts[0], modelId: parts[1] };
+    return { providerId: parsed.providerID, modelId: parsed.modelID };
 };
 
 const normalizeProviderId = (value: string) => value?.toLowerCase?.() ?? '';

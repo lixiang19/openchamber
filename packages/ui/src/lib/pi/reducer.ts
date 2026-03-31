@@ -246,12 +246,45 @@ const updateToolExecution = (
   });
 };
 
-const getActiveAssistantMessage = (session: PiClientSessionState) => {
-  const activeId = session.runtime.activeAssistantMessageId;
-  if (!activeId) {
+const getAssistantMessageById = (
+  session: PiClientSessionState,
+  messageId: string | null | undefined,
+) => {
+  if (!messageId) {
     return null;
   }
-  return session.messages.find((message) => message.id === activeId && message.role === 'assistant') || null;
+  return session.messages.find((message) => message.id === messageId && message.role === 'assistant') || null;
+};
+
+const getLatestAssistantMessage = (session: PiClientSessionState) => {
+  for (let index = session.messages.length - 1; index >= 0; index -= 1) {
+    const message = session.messages[index];
+    if (message.role === 'assistant') {
+      return message;
+    }
+  }
+  return null;
+};
+
+const assistantMessageMatchesNormalized = (
+  message: PiMessageViewState & { id: string },
+  normalized: Extract<PiNormalizedMessage, { messageKind: 'assistant-message' }>,
+): boolean => {
+  if (message.role !== 'assistant') {
+    return false;
+  }
+
+  if (normalized.responseId && message.responseId && normalized.responseId === message.responseId) {
+    return true;
+  }
+
+  return message.timestamp === asTimestamp(normalized.timestamp)
+    && (normalized.provider ?? undefined) === (message.provider ?? undefined)
+    && (normalized.model ?? undefined) === (message.model ?? undefined);
+};
+
+const getActiveAssistantMessage = (session: PiClientSessionState) => {
+  return getAssistantMessageById(session, session.runtime.activeAssistantMessageId);
 };
 
 const upsertRenderableMessage = (
@@ -287,8 +320,22 @@ const replaceAssistantFromNormalized = (
   session: PiClientSessionState,
   normalized: Extract<PiNormalizedMessage, { messageKind: 'assistant-message' }>,
   status: PiSessionViewState['status'],
+  options?: { preferredMessageId?: string | null },
 ) => {
-  const existing = ensureActiveAssistantMessage(session);
+  let existing = getAssistantMessageById(session, options?.preferredMessageId ?? null);
+  if (!existing) {
+    existing = getActiveAssistantMessage(session);
+  }
+  if (!existing) {
+    const latest = getLatestAssistantMessage(session);
+    if (latest && assistantMessageMatchesNormalized(latest, normalized)) {
+      existing = latest;
+      session.runtime.activeAssistantMessageId = latest.id;
+    }
+  }
+  if (!existing) {
+    existing = ensureActiveAssistantMessage(session);
+  }
   const next: PiMessageViewState & { id: string } = {
     ...existing,
     role: 'assistant',
@@ -316,6 +363,48 @@ const replaceAssistantFromNormalized = (
   return next;
 };
 
+const findLastBlockIndex = (
+  blocks: PiContentBlock[],
+  predicate: (block: PiContentBlock) => boolean,
+): number => {
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    if (predicate(blocks[index])) {
+      return index;
+    }
+  }
+  return -1;
+};
+
+const resolveStreamContentIndex = (
+  blocks: PiContentBlock[],
+  stream: PiAssistantStreamEvent,
+): number => {
+  if (typeof stream.contentIndex === 'number' && Number.isFinite(stream.contentIndex)) {
+    return stream.contentIndex;
+  }
+
+  if (stream.type === 'text_start' || stream.type === 'thinking_start' || stream.type === 'toolcall_start') {
+    return blocks.length;
+  }
+
+  if (stream.type === 'text_delta' || stream.type === 'text_end') {
+    const existingIndex = findLastBlockIndex(blocks, isTextBlock);
+    return existingIndex >= 0 ? existingIndex : blocks.length;
+  }
+
+  if (stream.type === 'thinking_delta' || stream.type === 'thinking_end') {
+    const existingIndex = findLastBlockIndex(blocks, isThinkingBlock);
+    return existingIndex >= 0 ? existingIndex : blocks.length;
+  }
+
+  if (stream.type === 'toolcall_delta' || stream.type === 'toolcall_end') {
+    const existingIndex = findLastBlockIndex(blocks, (block) => block.type === 'toolCall');
+    return existingIndex >= 0 ? existingIndex : blocks.length;
+  }
+
+  return blocks.length;
+};
+
 const applyStreamDelta = (
   message: PiMessageViewState & { id: string },
   stream: PiAssistantStreamEvent,
@@ -325,7 +414,7 @@ const applyStreamDelta = (
   }
 
   const nextBlocks = [...message.content];
-  const contentIndex = stream.contentIndex ?? nextBlocks.length;
+  const contentIndex = resolveStreamContentIndex(nextBlocks, stream);
   const existingBlock = nextBlocks[contentIndex];
 
   if (stream.type === 'text_delta' || stream.type === 'text_start' || stream.type === 'text_end') {
@@ -400,6 +489,7 @@ const applyMessageEvent = (
   payload: Extract<PiAgentEventPayload, { channel: 'message' }>,
 ) => {
   if (payload.message?.messageKind === 'user-message') {
+    session.runtime.activeAssistantMessageId = null;
     appendMessageIfMissing(session, payload.message);
     if (payload.phase === 'end') {
       session.status = session.lastError ? 'error' : 'idle';
@@ -467,7 +557,10 @@ const applyTurnEndEvent = (
   payload: Extract<PiAgentEventPayload, { eventType: 'turn_end' }>,
 ) => {
   if (payload.message && payload.message.messageKind === 'assistant-message') {
-    replaceAssistantFromNormalized(session, payload.message, 'idle');
+    const latestAssistant = getLatestAssistantMessage(session);
+    replaceAssistantFromNormalized(session, payload.message, 'idle', {
+      preferredMessageId: latestAssistant?.id ?? null,
+    });
     session.runtime.activeAssistantMessageId = null;
   }
 
@@ -634,14 +727,30 @@ export const createInitialPiClientState = (): PiClientState => ({
   currentSessionId: null,
 });
 
+const shouldPreserveExistingSnapshot = (
+  existing: PiClientSessionState | undefined,
+  incoming: PiClientSessionState,
+): boolean => {
+  if (!existing) {
+    return false;
+  }
+
+  const incomingHasNoMessages = incoming.messages.length === 0;
+  const existingHasMessages = existing.messages.length > 0;
+  if (incomingHasNoMessages && existingHasMessages) {
+    return true;
+  }
+
+  return existing.sequence >= incoming.sequence;
+};
+
 export const piClientReducer = (state: PiClientState, action: PiClientAction): PiClientState => {
   switch (action.type) {
     case 'bootstrap_sessions': {
       const sessions = action.sessions.reduce<Record<string, PiClientSessionState>>((acc, snapshot) => {
         const hydrated = createSessionState(snapshot);
         const existing = state.sessions[snapshot.id];
-        // Bootstrap runs concurrently with live SSE hydration, so keep whichever copy is newer.
-        acc[snapshot.id] = existing && existing.sequence > hydrated.sequence ? existing : hydrated;
+        acc[snapshot.id] = shouldPreserveExistingSnapshot(existing, hydrated) ? existing : hydrated;
         return acc;
       }, {});
 
@@ -658,17 +767,39 @@ export const piClientReducer = (state: PiClientState, action: PiClientAction): P
       const incoming = createSessionState(action.session);
       const existing = state.sessions[incoming.id];
       const session = existing
-        ? (existing.sequence > incoming.sequence
-          ? existing
-          : {
-              ...incoming,
+        ? (() => {
+            const preserveExisting = shouldPreserveExistingSnapshot(existing, incoming);
+            const preserveLiveRuntime = preserveExisting || existing.sequence > incoming.sequence;
+            return {
+              ...(preserveExisting ? existing : incoming),
+              ...(preserveExisting ? {
+                title: incoming.title,
+                cwd: incoming.cwd,
+                parentID: incoming.parentID,
+                createdAt: incoming.createdAt,
+                model: incoming.model,
+                thinkingLevel: incoming.thinkingLevel,
+              } : {}),
+              sequence: Math.max(existing.sequence, incoming.sequence),
+              updatedAt: Math.max(existing.updatedAt, incoming.updatedAt),
+              status: preserveLiveRuntime ? existing.status : incoming.status,
+              isStreaming: preserveLiveRuntime ? existing.isStreaming : incoming.isStreaming,
+              lastError: preserveLiveRuntime ? existing.lastError : incoming.lastError,
+              toolExecutions: preserveLiveRuntime ? existing.toolExecutions : incoming.toolExecutions,
+              interactiveRequests: preserveLiveRuntime ? existing.interactiveRequests : incoming.interactiveRequests,
+              statusEntries: preserveLiveRuntime ? existing.statusEntries : incoming.statusEntries,
+              widgets: preserveLiveRuntime ? existing.widgets : incoming.widgets,
+              workingMessage: preserveLiveRuntime ? existing.workingMessage : incoming.workingMessage,
               runtime: {
-                ...incoming.runtime,
+                ...(preserveExisting ? existing.runtime : incoming.runtime),
                 nextMessageOrdinal: Math.max(existing.runtime.nextMessageOrdinal, incoming.runtime.nextMessageOrdinal),
-                activeAssistantMessageId: incoming.runtime.activeAssistantMessageId ?? (incoming.isStreaming ? existing.runtime.activeAssistantMessageId : null),
+                activeAssistantMessageId: preserveLiveRuntime
+                  ? ((existing.isStreaming || existing.status === 'streaming') ? existing.runtime.activeAssistantMessageId : null)
+                  : (incoming.runtime.activeAssistantMessageId ?? (incoming.isStreaming ? existing.runtime.activeAssistantMessageId : null)),
                 seenEventIds: new Set(existing.runtime.seenEventIds),
               },
-            })
+            };
+          })()
         : incoming;
       return {
         ...state,

@@ -9,6 +9,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui';
+import { parseProviderModelSpec } from '@/lib/modelSpec';
 import {
   Select,
   SelectContent,
@@ -313,11 +314,10 @@ export function NewWorktreeDialog({
     const settingsDefaultModel = configState.settingsDefaultModel;
     if (!settingsDefaultModel) return null;
 
-    const parts = settingsDefaultModel.split('/');
-    if (parts.length !== 2) return null;
-    const [providerID, modelID] = parts;
-    if (!providerID || !modelID) return null;
+    const parsed = parseProviderModelSpec(settingsDefaultModel);
+    if (!parsed) return null;
 
+    const { providerID, modelID } = parsed;
     const modelMetadata = configState.getModelMetadata(providerID, modelID);
     if (!modelMetadata) return null;
     return { providerID, modelID };

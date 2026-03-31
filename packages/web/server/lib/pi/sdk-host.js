@@ -6,6 +6,7 @@ import { discoverAgents } from './agents.js';
 import { normalizePiRpcEnvelope } from './bridge-schema.js';
 import { createTaskToolDefinition } from './extensions/task.js';
 import { buildProjectInstructionsContext } from './instructions.js';
+import { parseProviderModelSpec } from './model-spec.js';
 import { createQuestionToolDefinition } from './extensions/question.js';
 import { compileAgentPermission, createPermissionGateExtension, normalizeAgentPermission } from './permissions.js';
 import { listTaskRelations, setTaskRelation } from './task-relations.js';
@@ -563,11 +564,11 @@ export const createPiSdkHost = () => {
     const availableModels = await Promise.resolve(session.modelRegistry.getAvailable());
 
     if (normalizedSpec.includes('/')) {
-      const [providerID, modelID, ...rest] = normalizedSpec.split('/');
-      if (!providerID || !modelID || rest.length > 0) {
+      const parsed = parseProviderModelSpec(normalizedSpec);
+      if (!parsed) {
         throw new Error(`Invalid Pi agent model: ${normalizedSpec}`);
       }
-      const exact = availableModels.find((model) => model.provider === providerID && model.id === modelID);
+      const exact = availableModels.find((model) => model.provider === parsed.providerID && model.id === parsed.modelID);
       if (!exact) {
         throw new Error(`Pi agent model not available: ${normalizedSpec}`);
       }

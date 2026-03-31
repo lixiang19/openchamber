@@ -192,6 +192,10 @@ record.session.setActiveToolsByName(permissionPolicy.activeToolNames);
   - 实现：`sdk-host.js` 在 `appendSystemPromptOverride` 中把当前可调用 task agents 列表渲染成 `<available_task_agents>...</available_task_agents>`，并在 agent 列表变化时触发 session reload。
   - 原因：task 工具是否能被正确使用，依赖模型事先知道有哪些 task agents 可调用、它们的 mode/description/model/steps 等约束。
 
+- **首段 provider + 剩余 modelID 解析（First-slash model spec parsing）**
+  - 实现：`packages/web/server/lib/pi/model-spec.js` 与 `packages/ui/src/lib/modelSpec.ts` 统一按第一个 `/` 解析模型字符串；`task.js`、`sdk-host.js`、`runtime/client.ts`、`useConfigStore.ts`、新建会话/Issue 对话框都复用该规则。
+  - 原因：Fireworks/OpenRouter 等 provider 下，真实 `modelID` 可能自带多级路径；若强制两段式 `provider/model`，task 子会话、agent frontmatter 与默认模型设置会在全链路解析失败。
+
 - **项目级指令安全注入（Project-scoped instructions injection）**
   - 实现：`instructions.js` 读取 `.ridge/pi-settings.json`，按白名单扩展名、realpath 沙箱、字节上限和 UTF-8 校验读取文件；`sdk-host.js` 把拼接结果追加进 `DefaultResourceLoader.appendSystemPromptOverride`。
   - 原因：人格/工作流说明属于项目事实，必须跟项目走，同时不能绕开 Pi 默认 prompt 和工具说明。
@@ -426,18 +430,18 @@ Disk JSONL Sessions
 
 | File | Lines | Purpose |
 |---|---:|---|
-| `packages/web/server/lib/pi/sdk-host.js` | 1292 | Pi 会话宿主，管理主会话与 task 子会话、父子关系注入、持久化列表、惰性加载、消息发送与事件桥接 |
-| `packages/web/server/lib/pi/instructions.js` | 322 | Ridge 项目级指令配置读取与安全文件装载 |
-| `packages/web/server/index.js` | 10365 | `/api/pi/*` 路由与 `/api/pi/events` SSE 入口 |
+| `packages/web/server/lib/pi/sdk-host.js` | 1293 | Pi 会话宿主，管理主会话与 task 子会话、父子关系注入、持久化列表、惰性加载、消息发送与事件桥接 |
+| `packages/web/server/lib/pi/instructions.js` | 269 | Ridge 项目级指令配置读取与安全文件装载 |
+| `packages/web/server/index.js` | 10698 | `/api/pi/*` 路由与 `/api/pi/events` SSE 入口 |
 | `packages/web/server/lib/pi/bridge-schema.js` | 638 | Pi 事件与消息的归一化桥接层 |
-| `packages/web/server/lib/pi/extensions/task.js` | 707 | SDK 化 task 工具实现，创建持久化子会话并回传 task metadata |
+| `packages/web/server/lib/pi/extensions/task.js` | 735 | SDK 化 task 工具实现，创建持久化子会话并回传 task metadata |
+| `packages/web/server/lib/pi/model-spec.js` | 23 | 统一按第一个 `/` 解析 provider/model 字符串，避免多级 modelID 在 task 与 agent 解析链路失真 |
 | `packages/web/server/lib/pi/permissions.js` | 256 | agent 权限声明归一化与运行时 gate 编译 |
-| `packages/web/server/lib/pi/agents.js` | 193 | 扫描并合并用户/项目 agent 定义 |
-| `packages/web/server/lib/pi/extensions/question.js` | 149 | Web 支持的原生阻塞式交互工具定义 |
+| `packages/web/server/lib/pi/agents.js` | 200 | 扫描并合并用户/项目 agent 定义 |
 | `packages/web/server/lib/pi/task-relations.js` | 129 | Ridge 自己维护的 task 父子关系持久化索引 |
 | `packages/ui/src/lib/pi/client.ts` | 125 | 前端 Pi API 客户端 |
 | `packages/ui/src/lib/pi/stateRuntime.ts` | 49 | 前端 Pi reducer 单例状态源，统一接收快照与 SSE 事件 |
-| `packages/ui/src/lib/pi/reducer.ts` | 749 | Pi session 状态归并、事件应用与消息渲染态生成 |
-| `packages/ui/src/hooks/useEventStream.ts` | 191 | bootstrap + SSE 接入，并把单一 Pi 状态投影到各 Zustand store |
+| `packages/ui/src/lib/pi/reducer.ts` | 788 | Pi session 状态归并、事件应用与消息渲染态生成 |
+| `packages/ui/src/hooks/useEventStream.ts` | 193 | bootstrap + SSE 接入，并把单一 Pi 状态投影到各 Zustand store |
 | `packages/ui/src/stores/sessionStore.ts` | 1194 | 会话列表、当前会话选择，以及 Pi 快照入口委托 |
-| `packages/ui/src/stores/messageStore.ts` | 3134 | 当前会话详情加载与消息投影 |
+| `packages/ui/src/stores/messageStore.ts` | 3098 | 当前会话详情加载与消息投影 |
