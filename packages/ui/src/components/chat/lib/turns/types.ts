@@ -75,6 +75,11 @@ export interface TurnRecord {
     startedAt?: number;
     completedAt?: number;
     durationMs?: number;
+    /**
+     * 用于增量复用的签名，保存当前轮的完整状态签名
+     * 下一轮通过比较此签名判断是否可复用 computed 数据
+     */
+    signature?: string;
 }
 
 export interface TurnMessageMeta {

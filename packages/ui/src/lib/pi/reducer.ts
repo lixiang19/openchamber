@@ -638,7 +638,10 @@ const applySystemEvent = (session: PiClientSessionState, event: Extract<PiServer
   if (payload.kind === 'status') {
     session.status = payload.status;
     session.isStreaming = payload.status === 'streaming' || payload.status === 'retrying' || payload.status === 'compacting';
-    if (payload.status !== 'streaming') {
+    // 只有在流真正结束时才清空 activeAssistantMessageId
+    // retrying/compacting 期间流尚未真正结束，不能清空，否则后续 delta 会接到新 assistant 上
+    const isStreamingFinished = payload.status === 'idle' || payload.status === 'completed' || payload.status === 'error';
+    if (isStreamingFinished) {
       session.runtime.activeAssistantMessageId = payload.status === 'error' ? session.runtime.activeAssistantMessageId : null;
     }
   }

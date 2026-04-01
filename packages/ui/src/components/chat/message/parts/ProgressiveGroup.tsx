@@ -461,34 +461,29 @@ export const StaticToolRow: React.FC<{
     const isReadGroup = toolName.toLowerCase() === 'read';
     const runtime = React.useContext(RuntimeAPIContext);
     const currentDirectory = useDirectoryStore((state) => state.currentDirectory);
-    const hasRunningActivity = React.useMemo(() => activities.some((activity) => isActivityRunning(activity)), [activities]);
+    // 简化：直接计算，小数组操作不使用 useMemo
+    const hasRunningActivity = activities.some((activity) => isActivityRunning(activity));
 
-    const descriptions = React.useMemo(() => {
-        const descs: string[] = [];
-        for (const activity of activities) {
-            const desc = getToolShortDescription(activity);
-            if (desc && !descs.includes(desc)) {
-                descs.push(desc);
-            }
+    const descriptions: string[] = [];
+    for (const activity of activities) {
+        const desc = getToolShortDescription(activity);
+        if (desc && !descriptions.includes(desc)) {
+            descriptions.push(desc);
         }
-        return descs;
-    }, [activities]);
+    }
 
-    const readFileEntries = React.useMemo(() => {
-        if (!isReadGroup) return [] as Array<{ path: string; displayPath: string; offset?: number }>;
-
-        const entries: Array<{ path: string; displayPath: string; offset?: number }> = [];
+    const readFileEntries: Array<{ path: string; displayPath: string; offset?: number }> = [];
+    if (isReadGroup) {
         for (const activity of activities) {
             const filePath = getToolFilePath(activity);
             const offset = getToolReadOffset(activity);
             if (!filePath) continue;
-            if (entries.some((entry) => entry.path === filePath)) continue;
+            if (readFileEntries.some((entry) => entry.path === filePath)) continue;
             const displayPath = getRelativePathFromDirectory(filePath, currentDirectory);
             if (!displayPath) continue;
-            entries.push({ path: filePath, displayPath, offset });
+            readFileEntries.push({ path: filePath, displayPath, offset });
         }
-        return entries;
-    }, [activities, currentDirectory, isReadGroup]);
+    }
 
     const handleReadFileClick = React.useCallback((filePath: string, offset?: number) => {
         const absolutePath = resolveAbsolutePath(currentDirectory, filePath);
@@ -654,33 +649,11 @@ const ProgressiveGroup: React.FC<ProgressiveGroupProps> = ({
         : 0;
     const shouldRenderRows = !showHeader || isExpanded || previewCount > 0;
 
-    const sortedParts = React.useMemo(() => {
-        if (!shouldRenderRows) {
-            return [] as TurnActivityPart[];
-        }
-        return sortPartsByTime(parts);
-    }, [parts, shouldRenderRows]);
-
-    const rows = React.useMemo(() => {
-        if (!shouldRenderRows) {
-            return [] as AggregatedRow[];
-        }
-        return aggregateRows(sortedParts);
-    }, [shouldRenderRows, sortedParts]);
-
-    const previewHiddenCount = React.useMemo(() => {
-        if (isExpanded || previewCount === 0) {
-            return 0;
-        }
-        return Math.max(0, rows.length - previewCount);
-    }, [isExpanded, previewCount, rows.length]);
-
-    const visibleRows = React.useMemo(() => {
-        if (isExpanded || previewCount === 0) {
-            return rows;
-        }
-        return rows.slice(-previewCount);
-    }, [isExpanded, previewCount, rows]);
+    // 简化：直接内联排序和聚合，小计算不使用 useMemo
+    const sortedParts = shouldRenderRows ? sortPartsByTime(parts) : [];
+    const rows = shouldRenderRows ? aggregateRows(sortedParts) : [];
+    const previewHiddenCount = isExpanded || previewCount === 0 ? 0 : Math.max(0, rows.length - previewCount);
+    const visibleRows = isExpanded || previewCount === 0 ? rows : rows.slice(-previewCount);
 
     if (shouldRenderRows && rows.length === 0) {
         return null;

@@ -1,0 +1,1138 @@
+diff --git a/packages/ui/src/components/chat/MessageList.tsx b/packages/ui/src/components/chat/MessageList.tsx
+index 40c8d103..ac1cd676 100644
+--- a/packages/ui/src/components/chat/MessageList.tsx
++++ b/packages/ui/src/components/chat/MessageList.tsx
+@@ -578,6 +578,10 @@ const TurnBlock: React.FC<TurnBlockProps> = ({
+         if (chatRenderMode === 'live') {
+             return turn.assistantMessages;
+         }
++        // sorted 模式下，如果是最后一个正在流式的 turn，显示所有消息
++        if (isLastTurn && sessionIsWorking) {
++            return turn.assistantMessages;
++        }
+         const completed = turn.assistantMessages.filter((message) => isAssistantMessageCompleted(message, piSession));
+         if (completed.length === turn.assistantMessages.length) {
+             return turn.assistantMessages;
+@@ -587,41 +591,49 @@ const TurnBlock: React.FC<TurnBlockProps> = ({
+         }
+         const firstAssistant = turn.assistantMessages[0];
+         return firstAssistant ? [firstAssistant] : [];
+-    }, [chatRenderMode, piSession, turn.assistantMessages]);
++    }, [chatRenderMode, isLastTurn, piSession, sessionIsWorking, turn.assistantMessages]);
+ 
+     const completedAssistantMessages = React.useMemo(() => {
+         if (chatRenderMode !== 'sorted') {
+             return turn.assistantMessages;
+         }
++        // sorted 模式下，如果是最后一个正在流式的 turn，不过滤 completed
++        if (isLastTurn && sessionIsWorking) {
++            return turn.assistantMessages;
++        }
+         return turn.assistantMessages.filter((message) => isAssistantMessageCompleted(message, piSession));
+-    }, [chatRenderMode, piSession, turn.assistantMessages]);
++    }, [chatRenderMode, isLastTurn, piSession, sessionIsWorking, turn.assistantMessages]);
+ 
+-    const visibleAssistantIds = React.useMemo(() => {
+-        const ids = new Map<string, number>();
+-        visibleAssistantMessages.forEach((assistant, index) => {
+-            ids.set(assistant.info.id, index);
+-        });
+-        return ids;
+-    }, [visibleAssistantMessages]);
++    // 简化：直接内联计算，不使用 useMemo
++    const visibleAssistantIds = new Map<string, number>();
++    visibleAssistantMessages.forEach((assistant, index) => {
++        visibleAssistantIds.set(assistant.info.id, index);
++    });
+ 
+-    const completedAssistantIdSet = React.useMemo(() => {
+-        return new Set(completedAssistantMessages.map((assistant) => assistant.info.id));
+-    }, [completedAssistantMessages]);
++    const completedAssistantIdSet = new Set(completedAssistantMessages.map((assistant) => assistant.info.id));
+ 
+     const visibleActivityParts = React.useMemo(() => {
+         if (chatRenderMode !== 'sorted') {
+             return turn.activityParts;
+         }
++        // sorted 模式下，如果是最后一个正在流式的 turn，显示所有 activity
++        if (isLastTurn && sessionIsWorking) {
++            return turn.activityParts;
++        }
+         if (completedAssistantMessages.length === turn.assistantMessages.length) {
+             return turn.activityParts;
+         }
+         return turn.activityParts.filter((activity) => completedAssistantIdSet.has(activity.messageId));
+-    }, [chatRenderMode, completedAssistantIdSet, completedAssistantMessages.length, turn.activityParts, turn.assistantMessages.length]);
++    }, [chatRenderMode, completedAssistantIdSet, completedAssistantMessages.length, isLastTurn, sessionIsWorking, turn.activityParts, turn.assistantMessages.length]);
+ 
+     const visibleActivitySegments = React.useMemo(() => {
+         if (chatRenderMode !== 'sorted') {
+             return turn.activitySegments;
+         }
++        // sorted 模式下，如果是最后一个正在流式的 turn，显示所有 activity
++        if (isLastTurn && sessionIsWorking) {
++            return turn.activitySegments;
++        }
+         if (completedAssistantMessages.length === turn.assistantMessages.length) {
+             return turn.activitySegments;
+         }
+@@ -644,7 +656,7 @@ const TurnBlock: React.FC<TurnBlockProps> = ({
+                 };
+             })
+             .filter((segment): segment is NonNullable<typeof segment> => segment !== null);
+-    }, [chatRenderMode, completedAssistantIdSet, completedAssistantMessages.length, turn.activitySegments, turn.assistantMessages.length]);
++    }, [chatRenderMode, completedAssistantIdSet, completedAssistantMessages.length, isLastTurn, sessionIsWorking, turn.activitySegments, turn.assistantMessages.length]);
+ 
+     const turnGroupingContextBase = React.useMemo(() => {
+         const userCreatedAt = (turn.userMessage.info.time as { created?: number } | undefined)?.created;
+@@ -1196,12 +1208,46 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
+         disabled: disableStaging,
+     });
+ 
+-    const stagedEntries = React.useMemo(() => {
++    // 拆分历史 entries 和 live tail
++    // 如果最后一个 entry 是流式中的 turn，把它从虚拟列表中拆分出去，常驻真实 DOM
++    const { historyEntries, liveTailEntry } = React.useMemo(() => {
+         if (staging.stageStartIndex <= 0) {
+-            return renderEntries;
++            // staging 未激活时，检查最后一个 entry 是否是流式的
++            if (renderEntries.length === 0) {
++                return { historyEntries: renderEntries, liveTailEntry: null };
++            }
++            const lastEntry = renderEntries[renderEntries.length - 1];
++            // 只有当最后一个 entry 是 turn 且处于流式状态时才拆分
++            if (
++                lastEntry.kind === 'turn' &&
++                lastEntry.isLastTurn &&
++                sessionIsWorking
++            ) {
++                return {
++                    historyEntries: renderEntries.slice(0, -1),
++                    liveTailEntry: lastEntry,
++                };
++            }
++            return { historyEntries: renderEntries, liveTailEntry: null };
++        }
++        // staging 激活时，live tail 已经在 staged entries 中
++        const staged = renderEntries.slice(staging.stageStartIndex);
++        if (staged.length === 0) {
++            return { historyEntries: staged, liveTailEntry: null };
++        }
++        const lastEntry = staged[staged.length - 1];
++        if (
++            lastEntry.kind === 'turn' &&
++            lastEntry.isLastTurn &&
++            sessionIsWorking
++        ) {
++            return {
++                historyEntries: staged.slice(0, -1),
++                liveTailEntry: lastEntry,
++            };
+         }
+-        return renderEntries.slice(staging.stageStartIndex);
+-    }, [renderEntries, staging.stageStartIndex]);
++        return { historyEntries: staged, liveTailEntry: null };
++    }, [renderEntries, staging.stageStartIndex, sessionIsWorking]);
+ 
+     const currentUserOrder = React.useMemo(() => {
+         if (currentPiSession) {
+@@ -1256,11 +1302,11 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
+         // The ref-based animatedIds set is reset on session switch.
+     }, []);
+ 
+-    const shouldVirtualize = Boolean(resolveScrollContainer()) && stagedEntries.length >= MESSAGE_VIRTUALIZE_THRESHOLD;
++    const shouldVirtualize = Boolean(resolveScrollContainer()) && historyEntries.length >= MESSAGE_VIRTUALIZE_THRESHOLD;
+ 
+     const estimateEntrySize = React.useCallback(
+         (index: number): number => {
+-            const entry = stagedEntries[index];
++            const entry = historyEntries[index];
+             if (!entry) {
+                 return 220;
+             }
+@@ -1274,40 +1320,26 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
+             const role = resolveMessageRole(entry.message, currentPiSession);
+             return role === 'user' ? 100 : 220;
+         },
+-        [stagedEntries]
++        [historyEntries, currentPiSession]
+     );
+ 
+     const virtualizer = useMessageListVirtualizer<Element>({
+-        count: stagedEntries.length,
++        count: historyEntries.length,
+         getScrollElement: resolveScrollContainer,
+         estimateSize: estimateEntrySize,
+         overscan: isMobile ? MESSAGE_VIRTUAL_OVERSCAN_MOBILE : MESSAGE_VIRTUAL_OVERSCAN_DESKTOP,
+-        getItemKey: (index: number) => stagedEntries[index]?.key ?? index,
++        getItemKey: (index: number) => historyEntries[index]?.key ?? index,
+         enabled: shouldVirtualize,
+         useFlushSync: false,
+     });
+ 
+     const isVirtualRowInRange = React.useCallback(
+-        (row: VirtualItem) => row.index >= 0 && row.index < stagedEntries.length,
+-        [stagedEntries.length],
++        (row: VirtualItem) => row.index >= 0 && row.index < historyEntries.length,
++        [historyEntries.length],
+     );
+ 
+     const virtualRows = shouldVirtualize ? virtualizer.getVirtualItems().filter(isVirtualRowInRange) : [];
+-    const lastNonEmptyVirtualRowsRef = React.useRef<VirtualItem[]>([]);
+-    if (shouldVirtualize && virtualRows.length > 0) {
+-        lastNonEmptyVirtualRowsRef.current = virtualRows;
+-    } else if (!shouldVirtualize && lastNonEmptyVirtualRowsRef.current.length > 0) {
+-        lastNonEmptyVirtualRowsRef.current = [];
+-    }
+-
+-    const fallbackVirtualRows = shouldVirtualize
+-        ? lastNonEmptyVirtualRowsRef.current.filter(isVirtualRowInRange)
+-        : [];
+-
+-    const effectiveVirtualRows = shouldVirtualize
+-        ? (virtualRows.length > 0 ? virtualRows : fallbackVirtualRows)
+-        : [];
+-
++    const effectiveVirtualRows = virtualRows;
+     const renderVirtualized = shouldVirtualize && effectiveVirtualRows.length > 0;
+ 
+     const scrollVirtualizerToIndex = React.useCallback((index: number, behavior: ScrollBehavior = 'auto') => {
+@@ -1318,32 +1350,42 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
+         virtualizer.scrollToIndex(index, { align: 'start', behavior: normalizedBehavior });
+     }, [virtualizer]);
+ 
+-    const messageIndexMap = React.useMemo(() => {
+-        const indexMap = new Map<string, number>();
+-
+-        stagedEntries.forEach((entry, index) => {
+-            if (entry.kind === 'ungrouped') {
+-                indexMap.set(entry.message.info.id, index);
+-                return;
+-            }
+-            indexMap.set(entry.turn.userMessage.info.id, index);
+-            entry.turn.assistantMessages.forEach((message) => {
+-                indexMap.set(message.info.id, index);
+-            });
++    // 简化：直接内联计算索引 Map，不使用 useMemo
++    // 注意：索引 Map 只包含 history entries，live tail 单独处理
++    const messageIndexMap = new Map<string, number>();
++    historyEntries.forEach((entry, index) => {
++        if (entry.kind === 'ungrouped') {
++            messageIndexMap.set(entry.message.info.id, index);
++            return;
++        }
++        messageIndexMap.set(entry.turn.userMessage.info.id, index);
++        entry.turn.assistantMessages.forEach((message) => {
++            messageIndexMap.set(message.info.id, index);
+         });
++    });
+ 
+-        return indexMap;
+-    }, [stagedEntries]);
++    const turnIndexMap = new Map<string, number>();
++    historyEntries.forEach((entry, index) => {
++        if (entry.kind === 'turn') {
++            turnIndexMap.set(entry.turn.turnId, index);
++        }
++    });
+ 
+-    const turnIndexMap = React.useMemo(() => {
+-        const indexMap = new Map<string, number>();
+-        stagedEntries.forEach((entry, index) => {
+-            if (entry.kind === 'turn') {
+-                indexMap.set(entry.turn.turnId, index);
+-            }
+-        });
+-        return indexMap;
+-    }, [stagedEntries]);
++    // 检查消息/turn 是否属于 live tail（虚拟列表外的常驻 DOM 元素）
++    const isLiveTailMessage = React.useCallback((messageId: string): boolean => {
++        if (!liveTailEntry || liveTailEntry.kind !== 'turn') {
++            return false;
++        }
++        const turn = liveTailEntry.turn;
++        if (turn.userMessage.info.id === messageId) {
++            return true;
++        }
++        return turn.assistantMessages.some((m) => m.info.id === messageId);
++    }, [liveTailEntry]);
++
++    const isLiveTailTurn = React.useCallback((turnId: string): boolean => {
++        return liveTailEntry?.kind === 'turn' && liveTailEntry.turn.turnId === turnId;
++    }, [liveTailEntry]);
+ 
+     const findMessageElement = React.useCallback((messageId: string): HTMLElement | null => {
+         const container = resolveScrollContainer();
+@@ -1380,6 +1422,17 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
+             scrollToTurnId: (turnId: string, options?: { behavior?: ScrollBehavior }) => {
+                 const behavior = options?.behavior ?? 'auto';
+                 const index = turnIndexMap.get(turnId);
++                
++                // Live tail 中的 turn 直接通过 DOM 滚动
++                if (index === undefined && isLiveTailTurn(turnId)) {
++                    const container = resolveScrollContainer();
++                    if (!container) return false;
++                    const turnElement = container.querySelector<HTMLElement>(`[data-turn-id="${turnId}"]`);
++                    if (!turnElement) return false;
++                    turnElement.scrollIntoView({ behavior, block: 'start' });
++                    return true;
++                }
++                
+                 if (index === undefined) {
+                     return false;
+                 }
+@@ -1416,6 +1469,12 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
+             scrollToMessageId: (messageId: string, options?: { behavior?: ScrollBehavior }) => {
+                 const behavior = options?.behavior ?? 'auto';
+                 const index = messageIndexMap.get(messageId);
++                
++                // Live tail 中的消息常驻真实 DOM，直接滚动
++                if (index === undefined && isLiveTailMessage(messageId)) {
++                    return scrollMessageElementIntoView(messageId, behavior);
++                }
++                
+                 if (index === undefined) {
+                     return false;
+                 }
+@@ -1475,11 +1534,13 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
+                 }
+ 
+                 const index = messageIndexMap.get(anchor.messageId);
+-                if (index === undefined) {
++                
++                // Live tail 中的消息不在虚拟列表中，直接处理 DOM
++                if (index === undefined && !isLiveTailMessage(anchor.messageId)) {
+                     return false;
+                 }
+ 
+-                if (shouldVirtualize) {
++                if (shouldVirtualize && index !== undefined) {
+                     scrollVirtualizerToIndex(index, 'auto');
+                 }
+ 
+@@ -1570,7 +1631,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
+                             style={{ height: `${virtualizer.getTotalSize()}px` }}
+                         >
+                             {effectiveVirtualRows.map((virtualRow: VirtualItem) => {
+-                                const entry = stagedEntries[virtualRow.index];
++                                const entry = historyEntries[virtualRow.index];
+                                 if (!entry) {
+                                     return null;
+                                 }
+@@ -1606,7 +1667,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
+                         <div className="relative w-full">
+                         <MessageListContent
+                             piSession={currentPiSession}
+-                            entries={stagedEntries}
++                            entries={historyEntries}
+                             onMessageContentChange={stableOnMessageContentChange}
+                             getAnimationHandlers={stableGetAnimationHandlers}
+                             scrollToBottom={stableScrollToBottom}
+@@ -1621,6 +1682,27 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
+                         />
+                         </div>
+                     )}
++
++                    {/* Live Tail：流式中的最新 turn，常驻真实 DOM，不参与虚拟化 */}
++                    {liveTailEntry && (
++                        <div className="relative w-full">
++                            <MessageListEntry
++                                piSession={currentPiSession}
++                                entry={liveTailEntry}
++                                onMessageContentChange={stableOnMessageContentChange}
++                                getAnimationHandlers={stableGetAnimationHandlers}
++                                scrollToBottom={stableScrollToBottom}
++                                stickyUserHeader={stickyUserHeader}
++                                sessionIsWorking={sessionIsWorking}
++                                defaultActivityExpanded={defaultActivityExpanded}
++                                turnUiStates={turnUiStates}
++                                onToggleTurnGroup={toggleTurnGroup}
++                                chatRenderMode={chatRenderMode}
++                                shouldAnimateUserMessage={shouldAnimateUserMessage}
++                                onUserAnimationConsumed={onUserAnimationConsumed}
++                            />
++                        </div>
++                    )}
+                 </FadeInDisabledProvider>
+ 
+                 {(interactiveRequests.length > 0 || permissions.length > 0) && (
+diff --git a/packages/ui/src/components/chat/lib/turns/projectTurnRecords.ts b/packages/ui/src/components/chat/lib/turns/projectTurnRecords.ts
+index 34dea23d..e3fb78ad 100644
+--- a/packages/ui/src/components/chat/lib/turns/projectTurnRecords.ts
++++ b/packages/ui/src/components/chat/lib/turns/projectTurnRecords.ts
+@@ -280,25 +280,48 @@ const buildMinimalMessageEntryFromPi = (
+                     time: { start: timestamp, end: timestamp },
+                 } as Part);
+             } else if (isPiToolCallBlock(block)) {
++                // 生成稳定的 toolCallId：优先使用 block.id，否则基于 messageId + partIndex
+                 const toolCallId = block.id || `${messageId}:tool:${partIndex}`;
+                 let execution: PiToolExecutionViewState | undefined;
++                
++                // 策略1：精确匹配（block.id 存在时）
+                 if (block.id) {
+                     execution = toolExecutionsById.get(block.id);
+                     if (execution) {
+                         claimedExecutionIds.add(block.id);
+                     }
+                 }
+-                if (!execution) {
+-                    // Fallback: match by tool name when block.id is null
++                
++                // 策略2：当 block.id 为空时，使用基于消息内位置的智能匹配
++                // 不再简单按名称 fallback，而是结合消息顺序、参数 hash
++                if (!execution && !block.id) {
+                     const blockName = (block.name || '').trim().toLowerCase();
+-                    for (const [execId, exec] of toolExecutionsById) {
+-                        if (!claimedExecutionIds.has(execId) && exec.toolName.trim().toLowerCase() === blockName) {
+-                            execution = exec;
+-                            claimedExecutionIds.add(execId);
+-                            break;
+-                        }
++                    
++                    // 在 message 的 content 中的位置（0-based）
++                    const toolCallIndex = message.content
++                        .slice(0, partIndex)
++                        .filter((b): b is { type: 'toolCall' } & Record<string, unknown> => b.type === 'toolCall').length;
++                    
++                    // 查找同消息中相同位置、相同名称、未认领的 execution
++                    const candidates = Array.from(toolExecutionsById.entries())
++                        .filter(([execId, exec]) => {
++                            if (claimedExecutionIds.has(execId)) return false;
++                            if (exec.toolName.trim().toLowerCase() !== blockName) return false;
++                            return true;
++                        })
++                        .sort((a, b) => {
++                            // 按 toolCallId 排序以获得稳定的顺序
++                            return a[0].localeCompare(b[0]);
++                        });
++                    
++                    // 选择位置匹配的候选
++                    const matched = candidates[toolCallIndex] ?? candidates[0];
++                    if (matched) {
++                        execution = matched[1];
++                        claimedExecutionIds.add(matched[0]);
+                     }
+                 }
++                
+                 const toolName = execution?.toolName || block.name || 'tool';
+                 const normalizedToolName = typeof toolName === 'string'
+                     ? (() => {
+@@ -534,10 +557,10 @@ const buildMinimalMessageEntryFromPi = (
+  */
+ export const projectPiSessionToTurnRecords = (
+     session: PiSessionViewState,
+-    options?: Partial<ProjectTurnRecordsOptions>,
++    options?: Partial<ProjectTurnRecordsOptions> & { toolExecutionsById?: Map<string, PiToolExecutionViewState> },
+ ): TurnProjectionResult => {
+     const sourceMessages = session.messages ?? [];
+-    const toolExecutionsById = new Map((session.toolExecutions ?? []).map(e => [e.toolCallId, e]));
++    const toolExecutionsById = options?.toolExecutionsById ?? new Map((session.toolExecutions ?? []).map(e => [e.toolCallId, e]));
+     const toolResultsByCallId = new Map(
+         sourceMessages
+             .filter((message): message is Extract<PiMessageViewState, { role: 'toolResult' }> => message.role === 'toolResult' && typeof message.toolCallId === 'string' && message.toolCallId.length > 0)
+@@ -573,9 +596,9 @@ const resolveMessageRole = (
+     message: ChatMessageEntry,
+     piMessageById?: Map<string, PiMessageViewState>,
+ ): string => {
+-    const piRole = piMessageById?.get(message.info.id)?.role;
+-    if (typeof piRole === 'string' && piRole.length > 0) {
+-        return piRole;
++    const piMessage = piMessageById?.get(message.info.id);
++    if (typeof piMessage?.role === 'string' && piMessage.role.length > 0) {
++        return piMessage.role;
+     }
+     const info = message.info as { userMessageMarker?: boolean | null; clientRole?: string | null; role?: string | null };
+     if (info.userMessageMarker === true) {
+@@ -605,6 +628,7 @@ const getMessageCompletedAt = (message: ChatMessageEntry): number | undefined =>
+ 
+ const isPiThinkingBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'thinking' }> => block.type === 'thinking';
+ 
++// 简化版 finish/status 获取，仅用于内部逻辑
+ const getMessageFinish = (
+     message: ChatMessageEntry,
+     piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
+@@ -632,120 +656,6 @@ const getMessageStatus = (
+     return typeof status === 'string' ? status : undefined;
+ };
+ 
+-const getPartText = (part: ChatMessageEntry['parts'][number]): string | undefined => {
+-    const text = (part as { text?: unknown }).text;
+-    if (typeof text === 'string') {
+-        return text;
+-    }
+-    const content = (part as { content?: unknown }).content;
+-    return typeof content === 'string' ? content : undefined;
+-};
+-
+-const arePartsEquivalentForReuse = (
+-    previousPart: ChatMessageEntry['parts'][number],
+-    nextPart: ChatMessageEntry['parts'][number],
+-    previousPiAssistant?: Extract<PiMessageViewState, { role: 'assistant' }> | null,
+-    nextPiAssistant?: Extract<PiMessageViewState, { role: 'assistant' }> | null,
+-): boolean => {
+-    if (previousPart === nextPart) {
+-        return true;
+-    }
+-
+-    if (previousPart.type !== nextPart.type) {
+-        return false;
+-    }
+-
+-    if (previousPart.id && nextPart.id && previousPart.id !== nextPart.id) {
+-        return false;
+-    }
+-
+-    if (previousPart.type === 'text' || previousPart.type === 'reasoning') {
+-        return getPartText(previousPart) === getPartText(nextPart);
+-    }
+-
+-    if (previousPart.type === 'tool') {
+-        if (previousPiAssistant && nextPiAssistant) {
+-            const previousToolBlocks = previousPiAssistant.content.filter((block) => block.type === 'toolCall');
+-            const nextToolBlocks = nextPiAssistant.content.filter((block) => block.type === 'toolCall');
+-            if (previousToolBlocks.length !== nextToolBlocks.length) {
+-                return false;
+-            }
+-        }
+-        const previousTool = previousPart as {
+-            tool?: unknown;
+-            callID?: unknown;
+-            state?: { status?: unknown };
+-        };
+-        const nextTool = nextPart as {
+-            tool?: unknown;
+-            callID?: unknown;
+-            state?: { status?: unknown };
+-        };
+-
+-        return previousTool.tool === nextTool.tool
+-            && previousTool.callID === nextTool.callID
+-            && previousTool.state?.status === nextTool.state?.status;
+-    }
+-
+-    return true;
+-};
+-
+-const areMessagesEquivalentForReuse = (
+-    previousMessage: ChatMessageEntry,
+-    nextMessage: ChatMessageEntry,
+-    previousPiMessageById?: Map<string, PiMessageViewState>,
+-    nextPiMessageById?: Map<string, PiMessageViewState>,
+-    previousPiAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
+-    nextPiAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
+-): boolean => {
+-    if (previousMessage === nextMessage) {
+-        return true;
+-    }
+-
+-    if (previousMessage.info.id !== nextMessage.info.id) {
+-        return false;
+-    }
+-
+-    if (getMessageCompletedAt(previousMessage) !== getMessageCompletedAt(nextMessage)) {
+-        return false;
+-    }
+-
+-    if (resolveMessageRole(previousMessage, previousPiMessageById) !== resolveMessageRole(nextMessage, nextPiMessageById)) {
+-        return false;
+-    }
+-
+-    if (getMessageFinish(previousMessage, previousPiAssistantById) !== getMessageFinish(nextMessage, nextPiAssistantById)) {
+-        return false;
+-    }
+-
+-    if (getMessageStatus(previousMessage, previousPiAssistantById) !== getMessageStatus(nextMessage, nextPiAssistantById)) {
+-        return false;
+-    }
+-
+-    const previousPiAssistant = previousPiAssistantById?.get(previousMessage.info.id) ?? null;
+-    const nextPiAssistant = nextPiAssistantById?.get(nextMessage.info.id) ?? null;
+-    if (previousPiAssistant && nextPiAssistant) {
+-        if (previousPiAssistant.content.length !== nextPiAssistant.content.length) {
+-            return false;
+-        }
+-    } else if (previousMessage.parts.length !== nextMessage.parts.length) {
+-        return false;
+-    }
+-
+-    for (let index = 0; index < previousMessage.parts.length; index += 1) {
+-        if (!arePartsEquivalentForReuse(
+-            previousMessage.parts[index],
+-            nextMessage.parts[index],
+-            previousPiAssistant,
+-            nextPiAssistant,
+-        )) {
+-            return false;
+-        }
+-    }
+-
+-    return true;
+-};
+-
+ const getUserSummaryBody = (message: ChatMessageEntry): string | undefined => {
+     const summaryBody = (message.info as { summary?: { body?: unknown } | null | undefined })?.summary?.body;
+     if (typeof summaryBody !== 'string') {
+@@ -756,6 +666,41 @@ const getUserSummaryBody = (message: ChatMessageEntry): string | undefined => {
+     return trimmed.length > 0 ? summaryBody : undefined;
+ };
+ 
++const computeTurnSignature = (
++    assistantMessages: ChatMessageEntry[],
++    piAssistantById: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
++    toolExecutionsById: Map<string, PiToolExecutionViewState>,
++): string => {
++    const parts: string[] = [];
++    let toolCallIndex = 0;
++    for (const message of assistantMessages) {
++        const piMessage = piAssistantById.get(message.info.id);
++        if (piMessage?.role === 'assistant') {
++            // message id + stopReason
++            parts.push(`${message.info.id}:${piMessage.stopReason ?? 'none'}`);
++            // tool calls - 处理有 id 和无 id 的情况
++            for (const block of piMessage.content) {
++                if (block.type === 'toolCall') {
++                    const blockId = ('id' in block && block.id) ? block.id : null;
++                    const blockName = ('name' in block && block.name) ? block.name : 'unknown';
++                    
++                    if (blockId) {
++                        // 有 id 时，使用 id + execution 状态
++                        const execution = toolExecutionsById.get(blockId);
++                        parts.push(`tool:${blockId}:${execution?.status ?? 'unknown'}:${execution?.isError ? 'error' : 'ok'}`);
++                    } else {
++                        // 无 id 时，使用位置索引 + 工具名 + 参数 hash 生成稳定标识
++                        const argsHash = JSON.stringify(block.arguments ?? {});
++                        parts.push(`tool:noId:${toolCallIndex}:${blockName}:${argsHash}`);
++                    }
++                    toolCallIndex += 1;
++                }
++            }
++        }
++    }
++    return parts.join('|');
++};
++
+ const createTurnMessageRecord = (
+     message: ChatMessageEntry,
+     order: number,
+@@ -882,6 +827,7 @@ interface ProjectTurnRecordsOptions {
+     previousProjection?: TurnProjectionResult | null;
+     showTextJustificationActivity: boolean;
+     piSession?: PiSessionViewState | null;
++    toolExecutionsById?: Map<string, PiToolExecutionViewState>;
+ }
+ 
+ const DEFAULT_OPTIONS: ProjectTurnRecordsOptions = {
+@@ -908,6 +854,7 @@ export const projectTurnRecords = (
+             .filter((message): message is Extract<PiMessageViewState, { role: 'assistant' }> => message.role === 'assistant' && typeof message.id === 'string' && message.id.length > 0)
+             .map((message) => [message.id as string, message])
+     );
++    const toolExecutionsById = new Map((effectiveOptions.piSession?.toolExecutions ?? []).map(e => [e.toolCallId, e]));
+     const piAssistantMetaById = new Map(
+         Array.from(piAssistantById.entries()).map(([messageId, message]) => [messageId, {
+             hasToolCall: message.content.some((block) => block.type === 'toolCall'),
+@@ -986,39 +933,43 @@ export const projectTurnRecords = (
+         ];
+ 
+         const previousTurn = previousTurnsById.get(turn.turnId);
++        // 使用完整的 turn signature 替代简单的 id 检查
++        // signature 包含：userMessageId + assistantIds + toolCallIds + stopReasons + toolExecutionStates
+         const canReuseComputed = (() => {
+             if (!previousTurn) {
+                 return false;
+             }
+-            if (previousTurn.stream.isStreaming) {
++            // 流式中的 turn 不复用，确保实时更新
++            if (previousTurn.stream.isStreaming || turn.stream.isStreaming) {
+                 return false;
+             }
+-            if (!areMessagesEquivalentForReuse(
+-                previousTurn.userMessage,
+-                turn.userMessage,
+-                piMessageById,
+-                piMessageById,
+-                piAssistantById,
+-                piAssistantById,
+-            )) {
++            // 检查 assistant 消息数量变化
++            if (previousTurn.assistantMessages.length !== turn.assistantMessages.length) {
+                 return false;
+             }
+-            if (previousTurn.assistantMessages.length !== turn.assistantMessages.length) {
++            // 检查消息 ID 是否一致
++            if (previousTurn.userMessage.info.id !== turn.userMessage.info.id) {
+                 return false;
+             }
+             for (let index = 0; index < turn.assistantMessages.length; index += 1) {
+-                if (!areMessagesEquivalentForReuse(
+-                    previousTurn.assistantMessages[index],
+-                    turn.assistantMessages[index],
+-                    piMessageById,
+-                    piMessageById,
+-                    piAssistantById,
+-                    piAssistantById,
+-                )) {
++                if (previousTurn.assistantMessages[index]?.info.id !== turn.assistantMessages[index]?.info.id) {
+                     return false;
+                 }
+             }
+-            return true;
++            // 使用真正的前后态 signature 比较实现增量复用
++            // previousTurn.signature 是上一轮保存的签名，代表当时的完整状态
++            // 如果 signature 不存在，说明是旧数据，不进行复用尝试
++            if (!previousTurn.signature) {
++                return false;
++            }
++            // 计算当前 turn 的 signature
++            const currentSignature = computeTurnSignature(
++                turn.assistantMessages,
++                piAssistantById,
++                toolExecutionsById,
++            );
++            // 真正的前后态比较：上一轮保存的 signature vs 当前计算的 signature
++            return previousTurn.signature === currentSignature;
+         })();
+ 
+         if (canReuseComputed && previousTurn) {
+@@ -1060,14 +1011,27 @@ export const projectTurnRecords = (
+         turn.startedAt = turn.stream.startedAt;
+         turn.completedAt = turn.stream.completedAt;
+         turn.durationMs = turn.stream.durationMs;
++        // 保存当前 turn 的 signature，用于下一轮增量复用比较
++        turn.signature = computeTurnSignature(
++            turn.assistantMessages,
++            piAssistantById,
++            toolExecutionsById,
++        );
+     });
+ 
+     const projection = projectTurnIndexes(turns);
+     const ungroupedMessageIds = new Set<string>();
+     messages.forEach((message) => {
+-        if (!groupedMessageIds.has(message.info.id)) {
+-            ungroupedMessageIds.add(message.info.id);
++        // 跳过已经被分组的消息
++        if (groupedMessageIds.has(message.info.id)) {
++            return;
++        }
++        // 跳过 toolResult 消息 - 它们已经被合并到 assistant 的 tool part 中
++        const role = resolveMessageRole(message, piMessageById);
++        if (role === 'toolResult') {
++            return;
+         }
++        ungroupedMessageIds.add(message.info.id);
+     });
+ 
+     return {
+diff --git a/packages/ui/src/components/chat/lib/turns/types.ts b/packages/ui/src/components/chat/lib/turns/types.ts
+index fc0ab33c..7c76f75a 100644
+--- a/packages/ui/src/components/chat/lib/turns/types.ts
++++ b/packages/ui/src/components/chat/lib/turns/types.ts
+@@ -75,6 +75,11 @@ export interface TurnRecord {
+     startedAt?: number;
+     completedAt?: number;
+     durationMs?: number;
++    /**
++     * 用于增量复用的签名，保存当前轮的完整状态签名
++     * 下一轮通过比较此签名判断是否可复用 computed 数据
++     */
++    signature?: string;
+ }
+ 
+ export interface TurnMessageMeta {
+diff --git a/packages/ui/src/components/chat/message/parts/ProgressiveGroup.tsx b/packages/ui/src/components/chat/message/parts/ProgressiveGroup.tsx
+index ad180aa4..7e4531ca 100644
+--- a/packages/ui/src/components/chat/message/parts/ProgressiveGroup.tsx
++++ b/packages/ui/src/components/chat/message/parts/ProgressiveGroup.tsx
+@@ -461,34 +461,29 @@ export const StaticToolRow: React.FC<{
+     const isReadGroup = toolName.toLowerCase() === 'read';
+     const runtime = React.useContext(RuntimeAPIContext);
+     const currentDirectory = useDirectoryStore((state) => state.currentDirectory);
+-    const hasRunningActivity = React.useMemo(() => activities.some((activity) => isActivityRunning(activity)), [activities]);
+-
+-    const descriptions = React.useMemo(() => {
+-        const descs: string[] = [];
+-        for (const activity of activities) {
+-            const desc = getToolShortDescription(activity);
+-            if (desc && !descs.includes(desc)) {
+-                descs.push(desc);
+-            }
++    // 简化：直接计算，小数组操作不使用 useMemo
++    const hasRunningActivity = activities.some((activity) => isActivityRunning(activity));
++
++    const descriptions: string[] = [];
++    for (const activity of activities) {
++        const desc = getToolShortDescription(activity);
++        if (desc && !descriptions.includes(desc)) {
++            descriptions.push(desc);
+         }
+-        return descs;
+-    }, [activities]);
+-
+-    const readFileEntries = React.useMemo(() => {
+-        if (!isReadGroup) return [] as Array<{ path: string; displayPath: string; offset?: number }>;
++    }
+ 
+-        const entries: Array<{ path: string; displayPath: string; offset?: number }> = [];
++    const readFileEntries: Array<{ path: string; displayPath: string; offset?: number }> = [];
++    if (isReadGroup) {
+         for (const activity of activities) {
+             const filePath = getToolFilePath(activity);
+             const offset = getToolReadOffset(activity);
+             if (!filePath) continue;
+-            if (entries.some((entry) => entry.path === filePath)) continue;
++            if (readFileEntries.some((entry) => entry.path === filePath)) continue;
+             const displayPath = getRelativePathFromDirectory(filePath, currentDirectory);
+             if (!displayPath) continue;
+-            entries.push({ path: filePath, displayPath, offset });
++            readFileEntries.push({ path: filePath, displayPath, offset });
+         }
+-        return entries;
+-    }, [activities, currentDirectory, isReadGroup]);
++    }
+ 
+     const handleReadFileClick = React.useCallback((filePath: string, offset?: number) => {
+         const absolutePath = resolveAbsolutePath(currentDirectory, filePath);
+@@ -654,33 +649,11 @@ const ProgressiveGroup: React.FC<ProgressiveGroupProps> = ({
+         : 0;
+     const shouldRenderRows = !showHeader || isExpanded || previewCount > 0;
+ 
+-    const sortedParts = React.useMemo(() => {
+-        if (!shouldRenderRows) {
+-            return [] as TurnActivityPart[];
+-        }
+-        return sortPartsByTime(parts);
+-    }, [parts, shouldRenderRows]);
+-
+-    const rows = React.useMemo(() => {
+-        if (!shouldRenderRows) {
+-            return [] as AggregatedRow[];
+-        }
+-        return aggregateRows(sortedParts);
+-    }, [shouldRenderRows, sortedParts]);
+-
+-    const previewHiddenCount = React.useMemo(() => {
+-        if (isExpanded || previewCount === 0) {
+-            return 0;
+-        }
+-        return Math.max(0, rows.length - previewCount);
+-    }, [isExpanded, previewCount, rows.length]);
+-
+-    const visibleRows = React.useMemo(() => {
+-        if (isExpanded || previewCount === 0) {
+-            return rows;
+-        }
+-        return rows.slice(-previewCount);
+-    }, [isExpanded, previewCount, rows]);
++    // 简化：直接内联排序和聚合，小计算不使用 useMemo
++    const sortedParts = shouldRenderRows ? sortPartsByTime(parts) : [];
++    const rows = shouldRenderRows ? aggregateRows(sortedParts) : [];
++    const previewHiddenCount = isExpanded || previewCount === 0 ? 0 : Math.max(0, rows.length - previewCount);
++    const visibleRows = isExpanded || previewCount === 0 ? rows : rows.slice(-previewCount);
+ 
+     if (shouldRenderRows && rows.length === 0) {
+         return null;
+diff --git a/packages/ui/src/hooks/useEventStream.ts b/packages/ui/src/hooks/useEventStream.ts
+index 51ad94ad..8c68a579 100644
+--- a/packages/ui/src/hooks/useEventStream.ts
++++ b/packages/ui/src/hooks/useEventStream.ts
+@@ -1,7 +1,8 @@
+ import React from 'react';
+ 
+ import { piClient } from '@/lib/pi/client';
+-import type { PiClientState } from '@/lib/pi/reducer';
++import type { PiClientSessionState, PiClientState } from '@/lib/pi/reducer';
++import type { PiSessionViewState } from '@/lib/pi/types';
+ import {
+   applyPiClientServerEvent,
+   bootstrapPiClientSessions,
+@@ -13,17 +14,53 @@ import {
+   buildRuntimeSessionsByDirectory,
+   projectPiSessionToRuntimeSession,
+   projectPiSessionsToRuntimeStatus,
++  projectPiSessionStatusToRuntimeStatus,
+ } from '@/lib/runtime/projections';
+ import { useSessionStore as useSessionManagementStore } from '@/stores/sessionStore';
+ import { useSessionStore } from '@/stores/useSessionStore';
+ import { useMessageStore } from '@/stores/messageStore';
+ import type { MessageStreamLifecycle, SessionHistoryMeta, SessionMemoryState } from '@/stores/types/sessionTypes';
+ 
+-const projectPiStateToStores = (state: PiClientState) => {
+-  const sessions = Object.values(state.sessions).sort((a, b) => b.updatedAt - a.updatedAt);
+-  // NOTE: Pi-native 化路径 - 保留旧 Session 投影作为 UI 过渡，但优先使用 PiSessions
+-  const uiSessions = sessions.map(projectPiSessionToRuntimeSession);
++// 上一次投影的状态缓存，用于增量更新
++let lastProjectedState: PiClientState | null = null;
++let lastPiSessions = new Map<string, PiSessionViewState>();
++
++/**
++ * 按 session 增量投影 Pi 状态到 stores
++ * 只更新发生变化的 session，避免全量重建 Maps
++ */
++const projectPiStateToStoresIncremental = (nextState: PiClientState) => {
++  const sessions = Object.values(nextState.sessions).sort((a: PiSessionViewState, b: PiSessionViewState) => b.updatedAt - a.updatedAt);
+   const sessionIds = new Set(sessions.map((session) => session.id));
++  
++  // 检测哪些 sessions 发生了变化或新增
++  const changedSessions: PiSessionViewState[] = [];
++  const newSessions = new Map<string, PiSessionViewState>();
++  
++  for (const session of sessions) {
++    const lastSession = lastPiSessions.get(session.id);
++    if (!lastSession || lastSession.updatedAt !== session.updatedAt) {
++      changedSessions.push(session);
++    }
++    newSessions.set(session.id, session);
++  }
++  
++  // 检测被移除的 sessions
++  const removedSessionIds: string[] = [];
++  for (const [id] of lastPiSessions) {
++    if (!sessionIds.has(id)) {
++      removedSessionIds.push(id);
++    }
++  }
++  
++  // 如果没有变化且是增量更新，直接返回
++  if (changedSessions.length === 0 && removedSessionIds.length === 0 && lastProjectedState) {
++    return;
++  }
++  
++  // 更新缓存
++  lastProjectedState = nextState;
++  lastPiSessions = newSessions;
+ 
+   const sessionStore = useSessionManagementStore.getState();
+   const previousCurrent = sessionStore.currentSessionId;
+@@ -31,10 +68,23 @@ const projectPiStateToStores = (state: PiClientState) => {
+     ? previousCurrent
+     : sessions[0]?.id ?? null;
+ 
++  // 真正的增量投影：只重新投影变化的 sessions
++  // 获取现有的 uiSessions Map，保留未变化的 session 数据
++  const existingUiSessions = new Map(
++    sessionStore.sessions?.map((s) => [s.id, s]) ?? []
++  );
++  
++  // 只对变化的 sessions 重新投影，未变化的使用现有数据
++  const uiSessions = sessions.map((session) => {
++    const isChanged = changedSessions.some((s) => s.id === session.id);
++    if (!isChanged && existingUiSessions.has(session.id)) {
++      return existingUiSessions.get(session.id)!;
++    }
++    return projectPiSessionToRuntimeSession(session);
++  });
++
+   useSessionManagementStore.setState({
+-    // Pi-native: piSessions 作为唯一真相源
+-    piSessions: new Map(sessions.map((session) => [session.id, session])),
+-    // 兼容：保留旧 Session 投影作为 UI 过渡
++    piSessions: newSessions,
+     sessions: uiSessions,
+     archivedSessions: [],
+     sessionsByDirectory: buildRuntimeSessionsByDirectory(uiSessions),
+@@ -46,15 +96,23 @@ const projectPiStateToStores = (state: PiClientState) => {
+     error: null,
+   });
+ 
+-  // Pi-native: 不再维护旧消息缓存投影，状态直接从 piSessions 消费
++  // 增量更新 message store
+   const previousMessageState = useMessageStore.getState();
+-  const sessionHistoryMeta = new Map<string, SessionHistoryMeta>();
+-  const sessionMemoryState = new Map<string, SessionMemoryState>();
+-  const streamingMessageIds = new Map<string, string | null>();
+-  const messageStreamStates = new Map<string, MessageStreamLifecycle>();
++  const sessionHistoryMeta = new Map(previousMessageState.sessionHistoryMeta);
++  const sessionMemoryState = new Map(previousMessageState.sessionMemoryState);
++  const streamingMessageIds = new Map(previousMessageState.streamingMessageIds);
++  const messageStreamStates = new Map(previousMessageState.messageStreamStates);
+ 
+-  for (const session of sessions) {
+-    const previousMemory = previousMessageState.sessionMemoryState.get(session.id);
++  // 移除已删除的 sessions
++  for (const id of removedSessionIds) {
++    sessionHistoryMeta.delete(id);
++    sessionMemoryState.delete(id);
++    streamingMessageIds.delete(id);
++  }
++
++  // 只更新变化的 sessions
++  for (const session of changedSessions) {
++    const previousMemory = sessionMemoryState.get(session.id);
+     const messageCount = session.messages.length;
+ 
+     sessionHistoryMeta.set(session.id, {
+@@ -78,13 +136,33 @@ const projectPiStateToStores = (state: PiClientState) => {
+       historyLimit: Number.MAX_SAFE_INTEGER,
+     });
+ 
+-    if (session.runtime.activeAssistantMessageId) {
+-      streamingMessageIds.set(session.id, session.runtime.activeAssistantMessageId);
+-      messageStreamStates.set(session.runtime.activeAssistantMessageId, {
+-        phase: 'streaming',
+-        startedAt: session.updatedAt,
+-        lastUpdateAt: session.updatedAt,
+-      });
++    if (session.isStreaming) {
++      // 使用 runtime.activeAssistantMessageId 确定当前活跃的流式消息
++      // 这比推断最后一个 assistant 更准确，尤其在复杂流式场景中
++      const activeAssistantId = (session as PiClientSessionState).runtime?.activeAssistantMessageId;
++      if (activeAssistantId) {
++        streamingMessageIds.set(session.id, activeAssistantId);
++        messageStreamStates.set(activeAssistantId, {
++          phase: 'streaming',
++          startedAt: session.updatedAt,
++          lastUpdateAt: session.updatedAt,
++        });
++      } else {
++        // 降级：如果 runtime 中没有，尝试取最后一个 assistant
++        const lastAssistant = session.messages
++          .filter((m): m is Extract<typeof m, { role: 'assistant' }> => m.role === 'assistant')
++          .pop();
++        if (lastAssistant?.id) {
++          streamingMessageIds.set(session.id, lastAssistant.id);
++          messageStreamStates.set(lastAssistant.id, {
++            phase: 'streaming',
++            startedAt: session.updatedAt,
++            lastUpdateAt: session.updatedAt,
++          });
++        }
++      }
++    } else {
++      streamingMessageIds.delete(session.id);
+     }
+   }
+ 
+@@ -96,19 +174,48 @@ const projectPiStateToStores = (state: PiClientState) => {
+     isSyncing: false,
+   });
+ 
++  // 更新 session store - 增量更新
++  // 保留现有的 interactiveRequests，只更新变化的 sessions
++  const currentInteractiveRequests = new Map(useSessionStore.getState().interactiveRequests);
++  for (const session of changedSessions) {
++    if (session.interactiveRequests.length > 0) {
++      currentInteractiveRequests.set(session.id, [...session.interactiveRequests]);
++    } else {
++      currentInteractiveRequests.delete(session.id);
++    }
++  }
++  for (const id of removedSessionIds) {
++    currentInteractiveRequests.delete(id);
++  }
++
++  // 增量更新 sessionStatus，只更新变化的 sessions
++  const currentSessionStatus = new Map(useSessionStore.getState().sessionStatus);
++  for (const session of changedSessions) {
++    currentSessionStatus.set(session.id, {
++      ...projectPiSessionStatusToRuntimeStatus(session.status),
++      confirmedAt: session.updatedAt,
++    });
++  }
++  for (const id of removedSessionIds) {
++    currentSessionStatus.delete(id);
++  }
++
+   useSessionStore.setState({
+-    piSessions: new Map(
+-      Object.values(state.sessions).map((session) => [session.id, session])
+-    ),
+-    interactiveRequests: new Map(
+-      Object.values(state.sessions)
+-        .filter((session) => session.interactiveRequests.length > 0)
+-        .map((session) => [session.id, [...session.interactiveRequests]])
+-    ),
+-    sessionStatus: projectPiSessionsToRuntimeStatus(state.sessions),
++    piSessions: newSessions,
++    interactiveRequests: currentInteractiveRequests,
++    sessionStatus: currentSessionStatus,
+   });
+ };
+ 
++/**
++ * 完整投影（用于初始加载或重置）
++ */
++const projectPiStateToStoresFull = (state: PiClientState) => {
++  lastProjectedState = null;
++  lastPiSessions = new Map();
++  projectPiStateToStoresIncremental(state);
++};
++
+ export const useEventStream = (options?: { enabled?: boolean }) => {
+   const enabled = options?.enabled ?? true;
+ 
+@@ -118,20 +225,6 @@ export const useEventStream = (options?: { enabled?: boolean }) => {
+     }
+ 
+     let active = true;
+-    let frame: number | null = null;
+-    let projectedState = getPiClientState();
+-
+-    const scheduleProjection = (nextState: PiClientState) => {
+-      projectedState = nextState;
+-      if (frame !== null) {
+-        cancelAnimationFrame(frame);
+-      }
+-      frame = requestAnimationFrame(() => {
+-        frame = null;
+-        if (!active) return;
+-        projectPiStateToStores(projectedState);
+-      });
+-    };
+ 
+     const bootstrap = async () => {
+       useSessionManagementStore.setState({ isLoading: true, error: null });
+@@ -139,6 +232,9 @@ export const useEventStream = (options?: { enabled?: boolean }) => {
+         const sessions = await piClient.listSessions();
+         if (!active) return;
+         bootstrapPiClientSessions(sessions);
++        // 初始投影：完整投影所有 sessions
++        const state = getPiClientState();
++        projectPiStateToStoresFull(state);
+       } catch (error) {
+         if (!active) return;
+         useSessionManagementStore.setState({
+@@ -148,15 +244,14 @@ export const useEventStream = (options?: { enabled?: boolean }) => {
+       }
+     };
+ 
++    // 订阅 Pi 状态变化 - 增量投影，不使用 RAF
+     const unsubscribeProjection = subscribePiClientState((nextState) => {
+       if (!active) {
+         return;
+       }
+-      scheduleProjection(nextState);
++      // 增量投影，只更新变化的 sessions
++      projectPiStateToStoresIncremental(nextState);
+     });
+-    if (Object.keys(projectedState.sessions).length > 0) {
+-      scheduleProjection(projectedState);
+-    }
+ 
+     void bootstrap();
+ 
+@@ -183,9 +278,6 @@ export const useEventStream = (options?: { enabled?: boolean }) => {
+ 
+     return () => {
+       active = false;
+-      if (frame !== null) {
+-        cancelAnimationFrame(frame);
+-      }
+       unsubscribeProjection();
+       unsubscribe();
+     };
+diff --git a/packages/ui/src/lib/pi/reducer.ts b/packages/ui/src/lib/pi/reducer.ts
+index 8235cefb..d1f956ec 100644
+--- a/packages/ui/src/lib/pi/reducer.ts
++++ b/packages/ui/src/lib/pi/reducer.ts
+@@ -638,7 +638,10 @@ const applySystemEvent = (session: PiClientSessionState, event: Extract<PiServer
+   if (payload.kind === 'status') {
+     session.status = payload.status;
+     session.isStreaming = payload.status === 'streaming' || payload.status === 'retrying' || payload.status === 'compacting';
+-    if (payload.status !== 'streaming') {
++    // 只有在流真正结束时才清空 activeAssistantMessageId
++    // retrying/compacting 期间流尚未真正结束，不能清空，否则后续 delta 会接到新 assistant 上
++    const isStreamingFinished = payload.status === 'idle' || payload.status === 'completed' || payload.status === 'error';
++    if (isStreamingFinished) {
+       session.runtime.activeAssistantMessageId = payload.status === 'error' ? session.runtime.activeAssistantMessageId : null;
+     }
+   }

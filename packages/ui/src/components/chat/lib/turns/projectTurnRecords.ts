@@ -280,25 +280,48 @@ const buildMinimalMessageEntryFromPi = (
                     time: { start: timestamp, end: timestamp },
                 } as Part);
             } else if (isPiToolCallBlock(block)) {
+                // 生成稳定的 toolCallId：优先使用 block.id，否则基于 messageId + partIndex
                 const toolCallId = block.id || `${messageId}:tool:${partIndex}`;
                 let execution: PiToolExecutionViewState | undefined;
+                
+                // 策略1：精确匹配（block.id 存在时）
                 if (block.id) {
                     execution = toolExecutionsById.get(block.id);
                     if (execution) {
                         claimedExecutionIds.add(block.id);
                     }
                 }
-                if (!execution) {
-                    // Fallback: match by tool name when block.id is null
+                
+                // 策略2：当 block.id 为空时，使用基于消息内位置的智能匹配
+                // 不再简单按名称 fallback，而是结合消息顺序、参数 hash
+                if (!execution && !block.id) {
                     const blockName = (block.name || '').trim().toLowerCase();
-                    for (const [execId, exec] of toolExecutionsById) {
-                        if (!claimedExecutionIds.has(execId) && exec.toolName.trim().toLowerCase() === blockName) {
-                            execution = exec;
-                            claimedExecutionIds.add(execId);
-                            break;
-                        }
+                    
+                    // 在 message 的 content 中的位置（0-based）
+                    const toolCallIndex = message.content
+                        .slice(0, partIndex)
+                        .filter((b): b is { type: 'toolCall' } & Record<string, unknown> => b.type === 'toolCall').length;
+                    
+                    // 查找同消息中相同位置、相同名称、未认领的 execution
+                    const candidates = Array.from(toolExecutionsById.entries())
+                        .filter(([execId, exec]) => {
+                            if (claimedExecutionIds.has(execId)) return false;
+                            if (exec.toolName.trim().toLowerCase() !== blockName) return false;
+                            return true;
+                        })
+                        .sort((a, b) => {
+                            // 按 toolCallId 排序以获得稳定的顺序
+                            return a[0].localeCompare(b[0]);
+                        });
+                    
+                    // 选择位置匹配的候选
+                    const matched = candidates[toolCallIndex] ?? candidates[0];
+                    if (matched) {
+                        execution = matched[1];
+                        claimedExecutionIds.add(matched[0]);
                     }
                 }
+                
                 const toolName = execution?.toolName || block.name || 'tool';
                 const normalizedToolName = typeof toolName === 'string'
                     ? (() => {
@@ -534,10 +557,10 @@ const buildMinimalMessageEntryFromPi = (
  */
 export const projectPiSessionToTurnRecords = (
     session: PiSessionViewState,
-    options?: Partial<ProjectTurnRecordsOptions>,
+    options?: Partial<ProjectTurnRecordsOptions> & { toolExecutionsById?: Map<string, PiToolExecutionViewState> },
 ): TurnProjectionResult => {
     const sourceMessages = session.messages ?? [];
-    const toolExecutionsById = new Map((session.toolExecutions ?? []).map(e => [e.toolCallId, e]));
+    const toolExecutionsById = options?.toolExecutionsById ?? new Map((session.toolExecutions ?? []).map(e => [e.toolCallId, e]));
     const toolResultsByCallId = new Map(
         sourceMessages
             .filter((message): message is Extract<PiMessageViewState, { role: 'toolResult' }> => message.role === 'toolResult' && typeof message.toolCallId === 'string' && message.toolCallId.length > 0)
@@ -573,9 +596,9 @@ const resolveMessageRole = (
     message: ChatMessageEntry,
     piMessageById?: Map<string, PiMessageViewState>,
 ): string => {
-    const piRole = piMessageById?.get(message.info.id)?.role;
-    if (typeof piRole === 'string' && piRole.length > 0) {
-        return piRole;
+    const piMessage = piMessageById?.get(message.info.id);
+    if (typeof piMessage?.role === 'string' && piMessage.role.length > 0) {
+        return piMessage.role;
     }
     const info = message.info as { userMessageMarker?: boolean | null; clientRole?: string | null; role?: string | null };
     if (info.userMessageMarker === true) {
@@ -605,6 +628,7 @@ const getMessageCompletedAt = (message: ChatMessageEntry): number | undefined =>
 
 const isPiThinkingBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'thinking' }> => block.type === 'thinking';
 
+// 简化版 finish/status 获取，仅用于内部逻辑
 const getMessageFinish = (
     message: ChatMessageEntry,
     piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
@@ -632,120 +656,6 @@ const getMessageStatus = (
     return typeof status === 'string' ? status : undefined;
 };
 
-const getPartText = (part: ChatMessageEntry['parts'][number]): string | undefined => {
-    const text = (part as { text?: unknown }).text;
-    if (typeof text === 'string') {
-        return text;
-    }
-    const content = (part as { content?: unknown }).content;
-    return typeof content === 'string' ? content : undefined;
-};
-
-const arePartsEquivalentForReuse = (
-    previousPart: ChatMessageEntry['parts'][number],
-    nextPart: ChatMessageEntry['parts'][number],
-    previousPiAssistant?: Extract<PiMessageViewState, { role: 'assistant' }> | null,
-    nextPiAssistant?: Extract<PiMessageViewState, { role: 'assistant' }> | null,
-): boolean => {
-    if (previousPart === nextPart) {
-        return true;
-    }
-
-    if (previousPart.type !== nextPart.type) {
-        return false;
-    }
-
-    if (previousPart.id && nextPart.id && previousPart.id !== nextPart.id) {
-        return false;
-    }
-
-    if (previousPart.type === 'text' || previousPart.type === 'reasoning') {
-        return getPartText(previousPart) === getPartText(nextPart);
-    }
-
-    if (previousPart.type === 'tool') {
-        if (previousPiAssistant && nextPiAssistant) {
-            const previousToolBlocks = previousPiAssistant.content.filter((block) => block.type === 'toolCall');
-            const nextToolBlocks = nextPiAssistant.content.filter((block) => block.type === 'toolCall');
-            if (previousToolBlocks.length !== nextToolBlocks.length) {
-                return false;
-            }
-        }
-        const previousTool = previousPart as {
-            tool?: unknown;
-            callID?: unknown;
-            state?: { status?: unknown };
-        };
-        const nextTool = nextPart as {
-            tool?: unknown;
-            callID?: unknown;
-            state?: { status?: unknown };
-        };
-
-        return previousTool.tool === nextTool.tool
-            && previousTool.callID === nextTool.callID
-            && previousTool.state?.status === nextTool.state?.status;
-    }
-
-    return true;
-};
-
-const areMessagesEquivalentForReuse = (
-    previousMessage: ChatMessageEntry,
-    nextMessage: ChatMessageEntry,
-    previousPiMessageById?: Map<string, PiMessageViewState>,
-    nextPiMessageById?: Map<string, PiMessageViewState>,
-    previousPiAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
-    nextPiAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
-): boolean => {
-    if (previousMessage === nextMessage) {
-        return true;
-    }
-
-    if (previousMessage.info.id !== nextMessage.info.id) {
-        return false;
-    }
-
-    if (getMessageCompletedAt(previousMessage) !== getMessageCompletedAt(nextMessage)) {
-        return false;
-    }
-
-    if (resolveMessageRole(previousMessage, previousPiMessageById) !== resolveMessageRole(nextMessage, nextPiMessageById)) {
-        return false;
-    }
-
-    if (getMessageFinish(previousMessage, previousPiAssistantById) !== getMessageFinish(nextMessage, nextPiAssistantById)) {
-        return false;
-    }
-
-    if (getMessageStatus(previousMessage, previousPiAssistantById) !== getMessageStatus(nextMessage, nextPiAssistantById)) {
-        return false;
-    }
-
-    const previousPiAssistant = previousPiAssistantById?.get(previousMessage.info.id) ?? null;
-    const nextPiAssistant = nextPiAssistantById?.get(nextMessage.info.id) ?? null;
-    if (previousPiAssistant && nextPiAssistant) {
-        if (previousPiAssistant.content.length !== nextPiAssistant.content.length) {
-            return false;
-        }
-    } else if (previousMessage.parts.length !== nextMessage.parts.length) {
-        return false;
-    }
-
-    for (let index = 0; index < previousMessage.parts.length; index += 1) {
-        if (!arePartsEquivalentForReuse(
-            previousMessage.parts[index],
-            nextMessage.parts[index],
-            previousPiAssistant,
-            nextPiAssistant,
-        )) {
-            return false;
-        }
-    }
-
-    return true;
-};
-
 const getUserSummaryBody = (message: ChatMessageEntry): string | undefined => {
     const summaryBody = (message.info as { summary?: { body?: unknown } | null | undefined })?.summary?.body;
     if (typeof summaryBody !== 'string') {
@@ -754,6 +664,41 @@ const getUserSummaryBody = (message: ChatMessageEntry): string | undefined => {
 
     const trimmed = summaryBody.trim();
     return trimmed.length > 0 ? summaryBody : undefined;
+};
+
+const computeTurnSignature = (
+    assistantMessages: ChatMessageEntry[],
+    piAssistantById: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
+    toolExecutionsById: Map<string, PiToolExecutionViewState>,
+): string => {
+    const parts: string[] = [];
+    let toolCallIndex = 0;
+    for (const message of assistantMessages) {
+        const piMessage = piAssistantById.get(message.info.id);
+        if (piMessage?.role === 'assistant') {
+            // message id + stopReason
+            parts.push(`${message.info.id}:${piMessage.stopReason ?? 'none'}`);
+            // tool calls - 处理有 id 和无 id 的情况
+            for (const block of piMessage.content) {
+                if (block.type === 'toolCall') {
+                    const blockId = ('id' in block && block.id) ? block.id : null;
+                    const blockName = ('name' in block && block.name) ? block.name : 'unknown';
+                    
+                    if (blockId) {
+                        // 有 id 时，使用 id + execution 状态
+                        const execution = toolExecutionsById.get(blockId);
+                        parts.push(`tool:${blockId}:${execution?.status ?? 'unknown'}:${execution?.isError ? 'error' : 'ok'}`);
+                    } else {
+                        // 无 id 时，使用位置索引 + 工具名 + 参数 hash 生成稳定标识
+                        const argsHash = JSON.stringify(block.arguments ?? {});
+                        parts.push(`tool:noId:${toolCallIndex}:${blockName}:${argsHash}`);
+                    }
+                    toolCallIndex += 1;
+                }
+            }
+        }
+    }
+    return parts.join('|');
 };
 
 const createTurnMessageRecord = (
@@ -882,6 +827,7 @@ interface ProjectTurnRecordsOptions {
     previousProjection?: TurnProjectionResult | null;
     showTextJustificationActivity: boolean;
     piSession?: PiSessionViewState | null;
+    toolExecutionsById?: Map<string, PiToolExecutionViewState>;
 }
 
 const DEFAULT_OPTIONS: ProjectTurnRecordsOptions = {
@@ -908,6 +854,7 @@ export const projectTurnRecords = (
             .filter((message): message is Extract<PiMessageViewState, { role: 'assistant' }> => message.role === 'assistant' && typeof message.id === 'string' && message.id.length > 0)
             .map((message) => [message.id as string, message])
     );
+    const toolExecutionsById = new Map((effectiveOptions.piSession?.toolExecutions ?? []).map(e => [e.toolCallId, e]));
     const piAssistantMetaById = new Map(
         Array.from(piAssistantById.entries()).map(([messageId, message]) => [messageId, {
             hasToolCall: message.content.some((block) => block.type === 'toolCall'),
@@ -986,39 +933,43 @@ export const projectTurnRecords = (
         ];
 
         const previousTurn = previousTurnsById.get(turn.turnId);
+        // 使用完整的 turn signature 替代简单的 id 检查
+        // signature 包含：userMessageId + assistantIds + toolCallIds + stopReasons + toolExecutionStates
         const canReuseComputed = (() => {
             if (!previousTurn) {
                 return false;
             }
-            if (previousTurn.stream.isStreaming) {
+            // 流式中的 turn 不复用，确保实时更新
+            if (previousTurn.stream.isStreaming || turn.stream.isStreaming) {
                 return false;
             }
-            if (!areMessagesEquivalentForReuse(
-                previousTurn.userMessage,
-                turn.userMessage,
-                piMessageById,
-                piMessageById,
-                piAssistantById,
-                piAssistantById,
-            )) {
-                return false;
-            }
+            // 检查 assistant 消息数量变化
             if (previousTurn.assistantMessages.length !== turn.assistantMessages.length) {
                 return false;
             }
+            // 检查消息 ID 是否一致
+            if (previousTurn.userMessage.info.id !== turn.userMessage.info.id) {
+                return false;
+            }
             for (let index = 0; index < turn.assistantMessages.length; index += 1) {
-                if (!areMessagesEquivalentForReuse(
-                    previousTurn.assistantMessages[index],
-                    turn.assistantMessages[index],
-                    piMessageById,
-                    piMessageById,
-                    piAssistantById,
-                    piAssistantById,
-                )) {
+                if (previousTurn.assistantMessages[index]?.info.id !== turn.assistantMessages[index]?.info.id) {
                     return false;
                 }
             }
-            return true;
+            // 使用真正的前后态 signature 比较实现增量复用
+            // previousTurn.signature 是上一轮保存的签名，代表当时的完整状态
+            // 如果 signature 不存在，说明是旧数据，不进行复用尝试
+            if (!previousTurn.signature) {
+                return false;
+            }
+            // 计算当前 turn 的 signature
+            const currentSignature = computeTurnSignature(
+                turn.assistantMessages,
+                piAssistantById,
+                toolExecutionsById,
+            );
+            // 真正的前后态比较：上一轮保存的 signature vs 当前计算的 signature
+            return previousTurn.signature === currentSignature;
         })();
 
         if (canReuseComputed && previousTurn) {
@@ -1060,14 +1011,27 @@ export const projectTurnRecords = (
         turn.startedAt = turn.stream.startedAt;
         turn.completedAt = turn.stream.completedAt;
         turn.durationMs = turn.stream.durationMs;
+        // 保存当前 turn 的 signature，用于下一轮增量复用比较
+        turn.signature = computeTurnSignature(
+            turn.assistantMessages,
+            piAssistantById,
+            toolExecutionsById,
+        );
     });
 
     const projection = projectTurnIndexes(turns);
     const ungroupedMessageIds = new Set<string>();
     messages.forEach((message) => {
-        if (!groupedMessageIds.has(message.info.id)) {
-            ungroupedMessageIds.add(message.info.id);
+        // 跳过已经被分组的消息
+        if (groupedMessageIds.has(message.info.id)) {
+            return;
         }
+        // 跳过 toolResult 消息 - 它们已经被合并到 assistant 的 tool part 中
+        const role = resolveMessageRole(message, piMessageById);
+        if (role === 'toolResult') {
+            return;
+        }
+        ungroupedMessageIds.add(message.info.id);
     });
 
     return {

@@ -578,6 +578,10 @@ const TurnBlock: React.FC<TurnBlockProps> = ({
         if (chatRenderMode === 'live') {
             return turn.assistantMessages;
         }
+        // sorted 模式下，如果是最后一个正在流式的 turn，显示所有消息
+        if (isLastTurn && sessionIsWorking) {
+            return turn.assistantMessages;
+        }
         const completed = turn.assistantMessages.filter((message) => isAssistantMessageCompleted(message, piSession));
         if (completed.length === turn.assistantMessages.length) {
             return turn.assistantMessages;
@@ -587,39 +591,47 @@ const TurnBlock: React.FC<TurnBlockProps> = ({
         }
         const firstAssistant = turn.assistantMessages[0];
         return firstAssistant ? [firstAssistant] : [];
-    }, [chatRenderMode, piSession, turn.assistantMessages]);
+    }, [chatRenderMode, isLastTurn, piSession, sessionIsWorking, turn.assistantMessages]);
 
     const completedAssistantMessages = React.useMemo(() => {
         if (chatRenderMode !== 'sorted') {
             return turn.assistantMessages;
         }
+        // sorted 模式下，如果是最后一个正在流式的 turn，不过滤 completed
+        if (isLastTurn && sessionIsWorking) {
+            return turn.assistantMessages;
+        }
         return turn.assistantMessages.filter((message) => isAssistantMessageCompleted(message, piSession));
-    }, [chatRenderMode, piSession, turn.assistantMessages]);
+    }, [chatRenderMode, isLastTurn, piSession, sessionIsWorking, turn.assistantMessages]);
 
-    const visibleAssistantIds = React.useMemo(() => {
-        const ids = new Map<string, number>();
-        visibleAssistantMessages.forEach((assistant, index) => {
-            ids.set(assistant.info.id, index);
-        });
-        return ids;
-    }, [visibleAssistantMessages]);
+    // 简化：直接内联计算，不使用 useMemo
+    const visibleAssistantIds = new Map<string, number>();
+    visibleAssistantMessages.forEach((assistant, index) => {
+        visibleAssistantIds.set(assistant.info.id, index);
+    });
 
-    const completedAssistantIdSet = React.useMemo(() => {
-        return new Set(completedAssistantMessages.map((assistant) => assistant.info.id));
-    }, [completedAssistantMessages]);
+    const completedAssistantIdSet = new Set(completedAssistantMessages.map((assistant) => assistant.info.id));
 
     const visibleActivityParts = React.useMemo(() => {
         if (chatRenderMode !== 'sorted') {
+            return turn.activityParts;
+        }
+        // sorted 模式下，如果是最后一个正在流式的 turn，显示所有 activity
+        if (isLastTurn && sessionIsWorking) {
             return turn.activityParts;
         }
         if (completedAssistantMessages.length === turn.assistantMessages.length) {
             return turn.activityParts;
         }
         return turn.activityParts.filter((activity) => completedAssistantIdSet.has(activity.messageId));
-    }, [chatRenderMode, completedAssistantIdSet, completedAssistantMessages.length, turn.activityParts, turn.assistantMessages.length]);
+    }, [chatRenderMode, completedAssistantIdSet, completedAssistantMessages.length, isLastTurn, sessionIsWorking, turn.activityParts, turn.assistantMessages.length]);
 
     const visibleActivitySegments = React.useMemo(() => {
         if (chatRenderMode !== 'sorted') {
+            return turn.activitySegments;
+        }
+        // sorted 模式下，如果是最后一个正在流式的 turn，显示所有 activity
+        if (isLastTurn && sessionIsWorking) {
             return turn.activitySegments;
         }
         if (completedAssistantMessages.length === turn.assistantMessages.length) {
@@ -644,7 +656,7 @@ const TurnBlock: React.FC<TurnBlockProps> = ({
                 };
             })
             .filter((segment): segment is NonNullable<typeof segment> => segment !== null);
-    }, [chatRenderMode, completedAssistantIdSet, completedAssistantMessages.length, turn.activitySegments, turn.assistantMessages.length]);
+    }, [chatRenderMode, completedAssistantIdSet, completedAssistantMessages.length, isLastTurn, sessionIsWorking, turn.activitySegments, turn.assistantMessages.length]);
 
     const turnGroupingContextBase = React.useMemo(() => {
         const userCreatedAt = (turn.userMessage.info.time as { created?: number } | undefined)?.created;
@@ -1196,12 +1208,46 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
         disabled: disableStaging,
     });
 
-    const stagedEntries = React.useMemo(() => {
+    // 拆分历史 entries 和 live tail
+    // 如果最后一个 entry 是流式中的 turn，把它从虚拟列表中拆分出去，常驻真实 DOM
+    const { historyEntries, liveTailEntry } = React.useMemo(() => {
         if (staging.stageStartIndex <= 0) {
-            return renderEntries;
+            // staging 未激活时，检查最后一个 entry 是否是流式的
+            if (renderEntries.length === 0) {
+                return { historyEntries: renderEntries, liveTailEntry: null };
+            }
+            const lastEntry = renderEntries[renderEntries.length - 1];
+            // 只有当最后一个 entry 是 turn 且处于流式状态时才拆分
+            if (
+                lastEntry.kind === 'turn' &&
+                lastEntry.isLastTurn &&
+                sessionIsWorking
+            ) {
+                return {
+                    historyEntries: renderEntries.slice(0, -1),
+                    liveTailEntry: lastEntry,
+                };
+            }
+            return { historyEntries: renderEntries, liveTailEntry: null };
         }
-        return renderEntries.slice(staging.stageStartIndex);
-    }, [renderEntries, staging.stageStartIndex]);
+        // staging 激活时，live tail 已经在 staged entries 中
+        const staged = renderEntries.slice(staging.stageStartIndex);
+        if (staged.length === 0) {
+            return { historyEntries: staged, liveTailEntry: null };
+        }
+        const lastEntry = staged[staged.length - 1];
+        if (
+            lastEntry.kind === 'turn' &&
+            lastEntry.isLastTurn &&
+            sessionIsWorking
+        ) {
+            return {
+                historyEntries: staged.slice(0, -1),
+                liveTailEntry: lastEntry,
+            };
+        }
+        return { historyEntries: staged, liveTailEntry: null };
+    }, [renderEntries, staging.stageStartIndex, sessionIsWorking]);
 
     const currentUserOrder = React.useMemo(() => {
         if (currentPiSession) {
@@ -1256,11 +1302,11 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
         // The ref-based animatedIds set is reset on session switch.
     }, []);
 
-    const shouldVirtualize = Boolean(resolveScrollContainer()) && stagedEntries.length >= MESSAGE_VIRTUALIZE_THRESHOLD;
+    const shouldVirtualize = Boolean(resolveScrollContainer()) && historyEntries.length >= MESSAGE_VIRTUALIZE_THRESHOLD;
 
     const estimateEntrySize = React.useCallback(
         (index: number): number => {
-            const entry = stagedEntries[index];
+            const entry = historyEntries[index];
             if (!entry) {
                 return 220;
             }
@@ -1274,40 +1320,26 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
             const role = resolveMessageRole(entry.message, currentPiSession);
             return role === 'user' ? 100 : 220;
         },
-        [stagedEntries]
+        [historyEntries, currentPiSession]
     );
 
     const virtualizer = useMessageListVirtualizer<Element>({
-        count: stagedEntries.length,
+        count: historyEntries.length,
         getScrollElement: resolveScrollContainer,
         estimateSize: estimateEntrySize,
         overscan: isMobile ? MESSAGE_VIRTUAL_OVERSCAN_MOBILE : MESSAGE_VIRTUAL_OVERSCAN_DESKTOP,
-        getItemKey: (index: number) => stagedEntries[index]?.key ?? index,
+        getItemKey: (index: number) => historyEntries[index]?.key ?? index,
         enabled: shouldVirtualize,
         useFlushSync: false,
     });
 
     const isVirtualRowInRange = React.useCallback(
-        (row: VirtualItem) => row.index >= 0 && row.index < stagedEntries.length,
-        [stagedEntries.length],
+        (row: VirtualItem) => row.index >= 0 && row.index < historyEntries.length,
+        [historyEntries.length],
     );
 
     const virtualRows = shouldVirtualize ? virtualizer.getVirtualItems().filter(isVirtualRowInRange) : [];
-    const lastNonEmptyVirtualRowsRef = React.useRef<VirtualItem[]>([]);
-    if (shouldVirtualize && virtualRows.length > 0) {
-        lastNonEmptyVirtualRowsRef.current = virtualRows;
-    } else if (!shouldVirtualize && lastNonEmptyVirtualRowsRef.current.length > 0) {
-        lastNonEmptyVirtualRowsRef.current = [];
-    }
-
-    const fallbackVirtualRows = shouldVirtualize
-        ? lastNonEmptyVirtualRowsRef.current.filter(isVirtualRowInRange)
-        : [];
-
-    const effectiveVirtualRows = shouldVirtualize
-        ? (virtualRows.length > 0 ? virtualRows : fallbackVirtualRows)
-        : [];
-
+    const effectiveVirtualRows = virtualRows;
     const renderVirtualized = shouldVirtualize && effectiveVirtualRows.length > 0;
 
     const scrollVirtualizerToIndex = React.useCallback((index: number, behavior: ScrollBehavior = 'auto') => {
@@ -1318,32 +1350,42 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
         virtualizer.scrollToIndex(index, { align: 'start', behavior: normalizedBehavior });
     }, [virtualizer]);
 
-    const messageIndexMap = React.useMemo(() => {
-        const indexMap = new Map<string, number>();
-
-        stagedEntries.forEach((entry, index) => {
-            if (entry.kind === 'ungrouped') {
-                indexMap.set(entry.message.info.id, index);
-                return;
-            }
-            indexMap.set(entry.turn.userMessage.info.id, index);
-            entry.turn.assistantMessages.forEach((message) => {
-                indexMap.set(message.info.id, index);
-            });
+    // 简化：直接内联计算索引 Map，不使用 useMemo
+    // 注意：索引 Map 只包含 history entries，live tail 单独处理
+    const messageIndexMap = new Map<string, number>();
+    historyEntries.forEach((entry, index) => {
+        if (entry.kind === 'ungrouped') {
+            messageIndexMap.set(entry.message.info.id, index);
+            return;
+        }
+        messageIndexMap.set(entry.turn.userMessage.info.id, index);
+        entry.turn.assistantMessages.forEach((message) => {
+            messageIndexMap.set(message.info.id, index);
         });
+    });
 
-        return indexMap;
-    }, [stagedEntries]);
+    const turnIndexMap = new Map<string, number>();
+    historyEntries.forEach((entry, index) => {
+        if (entry.kind === 'turn') {
+            turnIndexMap.set(entry.turn.turnId, index);
+        }
+    });
 
-    const turnIndexMap = React.useMemo(() => {
-        const indexMap = new Map<string, number>();
-        stagedEntries.forEach((entry, index) => {
-            if (entry.kind === 'turn') {
-                indexMap.set(entry.turn.turnId, index);
-            }
-        });
-        return indexMap;
-    }, [stagedEntries]);
+    // 检查消息/turn 是否属于 live tail（虚拟列表外的常驻 DOM 元素）
+    const isLiveTailMessage = React.useCallback((messageId: string): boolean => {
+        if (!liveTailEntry || liveTailEntry.kind !== 'turn') {
+            return false;
+        }
+        const turn = liveTailEntry.turn;
+        if (turn.userMessage.info.id === messageId) {
+            return true;
+        }
+        return turn.assistantMessages.some((m) => m.info.id === messageId);
+    }, [liveTailEntry]);
+
+    const isLiveTailTurn = React.useCallback((turnId: string): boolean => {
+        return liveTailEntry?.kind === 'turn' && liveTailEntry.turn.turnId === turnId;
+    }, [liveTailEntry]);
 
     const findMessageElement = React.useCallback((messageId: string): HTMLElement | null => {
         const container = resolveScrollContainer();
@@ -1380,6 +1422,17 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
             scrollToTurnId: (turnId: string, options?: { behavior?: ScrollBehavior }) => {
                 const behavior = options?.behavior ?? 'auto';
                 const index = turnIndexMap.get(turnId);
+                
+                // Live tail 中的 turn 直接通过 DOM 滚动
+                if (index === undefined && isLiveTailTurn(turnId)) {
+                    const container = resolveScrollContainer();
+                    if (!container) return false;
+                    const turnElement = container.querySelector<HTMLElement>(`[data-turn-id="${turnId}"]`);
+                    if (!turnElement) return false;
+                    turnElement.scrollIntoView({ behavior, block: 'start' });
+                    return true;
+                }
+                
                 if (index === undefined) {
                     return false;
                 }
@@ -1416,6 +1469,12 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
             scrollToMessageId: (messageId: string, options?: { behavior?: ScrollBehavior }) => {
                 const behavior = options?.behavior ?? 'auto';
                 const index = messageIndexMap.get(messageId);
+                
+                // Live tail 中的消息常驻真实 DOM，直接滚动
+                if (index === undefined && isLiveTailMessage(messageId)) {
+                    return scrollMessageElementIntoView(messageId, behavior);
+                }
+                
                 if (index === undefined) {
                     return false;
                 }
@@ -1475,11 +1534,13 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
                 }
 
                 const index = messageIndexMap.get(anchor.messageId);
-                if (index === undefined) {
+                
+                // Live tail 中的消息不在虚拟列表中，直接处理 DOM
+                if (index === undefined && !isLiveTailMessage(anchor.messageId)) {
                     return false;
                 }
 
-                if (shouldVirtualize) {
+                if (shouldVirtualize && index !== undefined) {
                     scrollVirtualizerToIndex(index, 'auto');
                 }
 
@@ -1570,7 +1631,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
                             style={{ height: `${virtualizer.getTotalSize()}px` }}
                         >
                             {effectiveVirtualRows.map((virtualRow: VirtualItem) => {
-                                const entry = stagedEntries[virtualRow.index];
+                                const entry = historyEntries[virtualRow.index];
                                 if (!entry) {
                                     return null;
                                 }
@@ -1606,7 +1667,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
                         <div className="relative w-full">
                         <MessageListContent
                             piSession={currentPiSession}
-                            entries={stagedEntries}
+                            entries={historyEntries}
                             onMessageContentChange={stableOnMessageContentChange}
                             getAnimationHandlers={stableGetAnimationHandlers}
                             scrollToBottom={stableScrollToBottom}
@@ -1619,6 +1680,27 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
                             shouldAnimateUserMessage={shouldAnimateUserMessage}
                             onUserAnimationConsumed={onUserAnimationConsumed}
                         />
+                        </div>
+                    )}
+
+                    {/* Live Tail：流式中的最新 turn，常驻真实 DOM，不参与虚拟化 */}
+                    {liveTailEntry && (
+                        <div className="relative w-full">
+                            <MessageListEntry
+                                piSession={currentPiSession}
+                                entry={liveTailEntry}
+                                onMessageContentChange={stableOnMessageContentChange}
+                                getAnimationHandlers={stableGetAnimationHandlers}
+                                scrollToBottom={stableScrollToBottom}
+                                stickyUserHeader={stickyUserHeader}
+                                sessionIsWorking={sessionIsWorking}
+                                defaultActivityExpanded={defaultActivityExpanded}
+                                turnUiStates={turnUiStates}
+                                onToggleTurnGroup={toggleTurnGroup}
+                                chatRenderMode={chatRenderMode}
+                                shouldAnimateUserMessage={shouldAnimateUserMessage}
+                                onUserAnimationConsumed={onUserAnimationConsumed}
+                            />
                         </div>
                     )}
                 </FadeInDisabledProvider>
