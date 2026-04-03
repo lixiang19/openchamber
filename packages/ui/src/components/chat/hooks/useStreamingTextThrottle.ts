@@ -36,12 +36,18 @@ export const useStreamingTextThrottle = ({
 }: UseStreamingTextThrottleInput): string => {
     const [throttledText, setThrottledText] = React.useState(text);
     const latestTextRef = React.useRef(text);
+    const emittedTextRef = React.useRef(text);
 
     const stateRef = React.useRef<StreamingThrottleState>({
         timer: null,
         pendingText: text,
         lastEmitAt: 0,
     });
+
+    const commitText = React.useCallback((nextText: string) => {
+        emittedTextRef.current = nextText;
+        setThrottledText((previousText) => (previousText === nextText ? previousText : nextText));
+    }, []);
 
     React.useEffect(() => {
         latestTextRef.current = text;
@@ -52,18 +58,19 @@ export const useStreamingTextThrottle = ({
         clearTimer(state);
         state.pendingText = latestTextRef.current;
         state.lastEmitAt = 0;
-        setThrottledText(latestTextRef.current);
-    }, [identityKey]);
+        commitText(latestTextRef.current);
+    }, [commitText, identityKey]);
 
     React.useEffect(() => {
         const state = stateRef.current;
         state.pendingText = text;
-        const stableText = isStreaming && throttledText.length > text.length ? throttledText : text;
+        const currentText = emittedTextRef.current;
+        const stableText = isStreaming && currentText.length > text.length ? currentText : text;
 
         if (!isStreaming) {
             clearTimer(state);
             state.lastEmitAt = Date.now();
-            setThrottledText(stableText);
+            commitText(stableText);
             return;
         }
 
@@ -73,7 +80,7 @@ export const useStreamingTextThrottle = ({
         if (remaining <= 0) {
             clearTimer(state);
             state.lastEmitAt = now;
-            setThrottledText(stableText);
+            commitText(stableText);
             return;
         }
 
@@ -81,18 +88,16 @@ export const useStreamingTextThrottle = ({
         state.timer = setTimeout(() => {
             state.timer = null;
             state.lastEmitAt = Date.now();
-            setThrottledText((prev) => {
-                if (isStreaming && prev.length > state.pendingText.length) {
-                    return prev;
-                }
-                return state.pendingText;
-            });
+            const nextText = emittedTextRef.current.length > state.pendingText.length
+                ? emittedTextRef.current
+                : state.pendingText;
+            commitText(nextText);
         }, remaining);
 
         return () => {
             clearTimer(state);
         };
-    }, [isStreaming, text, throttleMs, throttledText]);
+    }, [commitText, isStreaming, text, throttleMs]);
 
     React.useEffect(() => {
         const state = stateRef.current;

@@ -2,6 +2,7 @@ import type {
   PiAgentEventPayload,
   PiAssistantStreamEvent,
   PiContentBlock,
+  PiInteractiveRequestViewState,
   PiMessageViewState,
   PiNormalizedMessage,
   PiServerEvent,
@@ -10,6 +11,7 @@ import type {
   PiToolExecutionViewState,
   PiWidgetEntry,
 } from './types';
+import { getPiInteractiveRequestIdentity } from './types';
 
 export interface PiClientSessionState extends PiSessionViewState {
   sequence: number;
@@ -40,6 +42,11 @@ const createMessageId = (session: PiClientSessionState, prefix: string) => {
   session.runtime.nextMessageOrdinal += 1;
   return id;
 };
+
+const isSameInteractiveRequest = (
+  left: Pick<PiInteractiveRequestViewState, 'sessionId' | 'id'>,
+  right: Pick<PiInteractiveRequestViewState, 'sessionId' | 'id'>,
+) => getPiInteractiveRequestIdentity(left) === getPiInteractiveRequestIdentity(right);
 
 const isTextBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'text' }> => (
   block.type === 'text' && 'text' in block
@@ -591,12 +598,14 @@ const applyUiEvent = (session: PiClientSessionState, event: Extract<PiServerEven
   switch (payload.kind) {
     case 'interactive_request':
       session.interactiveRequests = [
-        ...session.interactiveRequests.filter((request) => request.id !== payload.request.id),
+        ...session.interactiveRequests.filter((request) => !isSameInteractiveRequest(request, payload.request)),
         payload.request,
       ].sort((a, b) => a.createdAt - b.createdAt);
       break;
     case 'interactive_request_resolved':
-      session.interactiveRequests = session.interactiveRequests.filter((request) => request.id !== payload.requestId);
+      session.interactiveRequests = session.interactiveRequests.filter((request) => (
+        !isSameInteractiveRequest(request, { sessionId: event.sessionId, id: payload.requestId })
+      ));
       break;
     case 'status':
       session.statusEntries = upsertStatusEntry(session.statusEntries, payload.key, payload.text);
@@ -640,7 +649,7 @@ const applySystemEvent = (session: PiClientSessionState, event: Extract<PiServer
     session.isStreaming = payload.status === 'streaming' || payload.status === 'retrying' || payload.status === 'compacting';
     // 只有在流真正结束时才清空 activeAssistantMessageId
     // retrying/compacting 期间流尚未真正结束，不能清空，否则后续 delta 会接到新 assistant 上
-    const isStreamingFinished = payload.status === 'idle' || payload.status === 'completed' || payload.status === 'error';
+    const isStreamingFinished = payload.status === 'idle' || payload.status === 'error';
     if (isStreamingFinished) {
       session.runtime.activeAssistantMessageId = payload.status === 'error' ? session.runtime.activeAssistantMessageId : null;
     }

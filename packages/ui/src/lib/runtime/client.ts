@@ -16,6 +16,7 @@ import type {
 } from "@/lib/runtime/types";
 import type { PermissionRequest } from "@/types/permission";
 import type { PiAgentInfo, PiInteractiveRequestViewState, PiServerEvent, PiSessionViewState } from "@/lib/pi/types";
+import { getPiInteractiveRequestIdentity } from "@/lib/pi/types";
 import {
   projectPiSessionStatusToRuntimeStatus,
   projectPiSessionToRuntimeSession,
@@ -477,10 +478,12 @@ class RuntimeService {
     return this.fetchPi<PiSessionViewState>(`/sessions/${encodeURIComponent(sessionId)}`);
   }
 
-  private async findPiInteractiveRequest(requestId: string): Promise<PiInteractiveRequestViewState | null> {
+  private async findPiInteractiveRequest(sessionId: string, requestId: string): Promise<PiInteractiveRequestViewState | null> {
     const sessions = await this.listPiSessions().catch(() => []);
     for (const session of sessions) {
-      const request = session.interactiveRequests.find((entry) => entry.id === requestId);
+      const request = session.interactiveRequests.find((entry) => (
+        getPiInteractiveRequestIdentity(entry) === `${sessionId}:${requestId}`
+      ));
       if (request) {
         return request;
       }
@@ -1235,10 +1238,10 @@ class RuntimeService {
   }
 
   // Questions ("ask" tool)
-  async replyToQuestion(requestId: string, answers: string[] | string[][]): Promise<boolean> {
-    const request = await this.findPiInteractiveRequest(requestId);
+  async replyToQuestion(sessionId: string, requestId: string, answers: string[] | string[][]): Promise<boolean> {
+    const request = await this.findPiInteractiveRequest(sessionId, requestId);
     if (!request) {
-      throw new Error(`Interactive request not found: ${requestId}`);
+      throw new Error(`Interactive request not found: ${sessionId}:${requestId}`);
     }
     if (request.method !== 'question') {
       throw new Error(`Invalid request method: ${request.method}, expected: question`);

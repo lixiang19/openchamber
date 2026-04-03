@@ -529,16 +529,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     );
 
     const displayParts = React.useMemo(() => {
-        if (isUser) {
-            return visibleParts;
-        }
-
-        if (!isMessageCompleted && chatRenderMode === 'sorted') {
-            return [];
-        }
-
         return visibleParts;
-    }, [chatRenderMode, isMessageCompleted, isUser, visibleParts]);
+    }, [visibleParts]);
 
 
     const assistantTextParts = React.useMemo(() => {

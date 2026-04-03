@@ -751,6 +751,32 @@ const buildTurnStreamState = (
     };
 };
 
+const mergeAssistantChainParts = (assistantMessages: ChatMessageEntry[]): Part[] => {
+    const mergedParts: Part[] = [];
+    const partIndexById = new Map<string, number>();
+
+    assistantMessages.forEach((message) => {
+        message.parts.forEach((part) => {
+            const partId = typeof part.id === 'string' && part.id.length > 0 ? part.id : null;
+            if (!partId) {
+                mergedParts.push(part);
+                return;
+            }
+
+            const existingIndex = partIndexById.get(partId);
+            if (typeof existingIndex === 'number') {
+                mergedParts[existingIndex] = part;
+                return;
+            }
+
+            partIndexById.set(partId, mergedParts.length);
+            mergedParts.push(part);
+        });
+    });
+
+    return mergedParts;
+};
+
 const mergeAssistantMessageChain = (
     turnId: string,
     assistantMessages: ChatMessageEntry[],
@@ -792,7 +818,7 @@ const mergeAssistantMessageChain = (
                 ...(typeof completedAt === 'number' ? { completed: completedAt } : {}),
             },
         } as Message,
-        parts: assistantMessages.flatMap((message) => message.parts),
+        parts: mergeAssistantChainParts(assistantMessages),
     };
 };
 

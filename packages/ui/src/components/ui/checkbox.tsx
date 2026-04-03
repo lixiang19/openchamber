@@ -43,17 +43,19 @@ export const Checkbox = React.memo<CheckboxProps>(function Checkbox({
   );
 
   return (
-    <button
-      type="button"
+    <span
+      role="checkbox"
+      tabIndex={disabled ? -1 : 0}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
-      disabled={disabled}
-      aria-pressed={checked}
+      aria-checked={checked}
+      aria-disabled={disabled}
       aria-label={ariaLabel}
       className={cn(
         'flex size-5 shrink-0 items-center justify-center rounded',
         'text-muted-foreground hover:text-foreground',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+        !disabled && 'cursor-pointer',
         disabled && 'cursor-not-allowed opacity-50',
         className
       )}
@@ -63,6 +65,6 @@ export const Checkbox = React.memo<CheckboxProps>(function Checkbox({
       ) : (
         <RiCheckboxBlankLine className={cn('size-4', iconClassName)} />
       )}
-    </button>
+    </span>
   );
 });

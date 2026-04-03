@@ -833,7 +833,7 @@ export const useSessionStore = create<SessionStore>()(
 
                 respondToQuestion: async (sessionId: string, requestId: string, answers: string[] | string[][]) => {
                     const directory = get().getDirectoryForSession(sessionId);
-                    await runtimeClient.withDirectory(directory, () => runtimeClient.replyToQuestion(requestId, answers));
+                    await runtimeClient.withDirectory(directory, () => runtimeClient.replyToQuestion(sessionId, requestId, answers));
                     set((state) => {
                         const next = new Map(state.interactiveRequests);
                         const current = next.get(sessionId) ?? [];

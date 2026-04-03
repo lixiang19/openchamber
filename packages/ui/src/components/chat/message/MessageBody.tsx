@@ -710,8 +710,6 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
     const isSortedRenderMode = chatRenderMode === 'sorted';
     const collapsedPreviewCount = 7;
     const isLastAssistantInTurn = turnGroupingContext?.isLastAssistantInTurn ?? false;
-    const hasStopFinish = messageFinish === 'stop';
-
     // TTS for message playback
     const { isPlaying: isTTSPlaying, play: playTTS, stop: stopTTS } = useMessageTTS();
     const showMessageTTSButtons = useConfigStore((state) => state.showMessageTTSButtons);
@@ -1182,10 +1180,6 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
 
             if (part.type === 'text') {
                 const activity = activityByPart.get(part);
-                if (isSortedRenderMode && !hasStopFinish) {
-                    i += 1;
-                    continue;
-                }
                 if (activity?.kind === 'justification') {
                     i += 1;
                     continue;
@@ -1206,10 +1200,6 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
 
             if (part.type === 'reasoning') {
                 const activity = activityByPart.get(part);
-                if (isSortedRenderMode && !hasStopFinish) {
-                    i += 1;
-                    continue;
-                }
                 if (activity?.kind === 'reasoning') {
                     i += 1;
                     continue;
@@ -1339,7 +1329,6 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
         collapsedPreviewCount,
         expandedTools,
         hasRenderedSubtaskCard,
-        hasStopFinish,
         isMobile,
         isSortedRenderMode,
         messageId,

@@ -49,6 +49,10 @@ export interface PiInteractiveRequestViewState {
   createdAt: number;
 }
 
+export const getPiInteractiveRequestIdentity = (request: Pick<PiInteractiveRequestViewState, 'sessionId' | 'id'>): string => (
+  `${request.sessionId}:${request.id}`
+);
+
 export interface PiStatusEntry {
   key: string;
   text: string;

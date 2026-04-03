@@ -12,6 +12,7 @@ import TurnItem from './components/TurnItem';
 import TurnList from './components/TurnList';
 import type { PermissionRequest } from '@/types/permission';
 import type { PiInteractiveRequestViewState, PiMessageViewState, PiSessionViewState } from '@/lib/pi/types';
+import { getPiInteractiveRequestIdentity } from '@/lib/pi/types';
 import type { AnimationHandlers, ContentChangeReason } from '@/hooks/useChatScrollManager';
 import { useCurrentSessionActivity } from '@/hooks/useSessionActivity';
 import { filterSyntheticParts } from '@/lib/messages/synthetic';
@@ -143,23 +144,6 @@ const resolveMessageRole = (message: ChatMessageEntry, piSession?: PiSessionView
     return (typeof info.clientRole === 'string' ? info.clientRole : null)
         ?? (typeof info.role === 'string' ? info.role : null)
         ?? null;
-};
-
-const isAssistantMessageCompleted = (message: ChatMessageEntry, piSession?: PiSessionViewState | null): boolean => {
-    const rawPiMessage = findPiMessageById(piSession, getMessageId(message));
-    if (rawPiMessage?.role === 'assistant') {
-        return Boolean(rawPiMessage.stopReason && rawPiMessage.stopReason !== 'toolUse');
-    }
-    const info = message.info as { time?: { completed?: unknown }; status?: unknown };
-    const completed = info.time?.completed;
-    const status = info.status;
-    if (typeof completed !== 'number' || completed <= 0) {
-        return false;
-    }
-    if (typeof status === 'string') {
-        return status === 'completed';
-    }
-    return true;
 };
 
 const isUserSubtaskMessage = (message: ChatMessageEntry | undefined, piSession?: PiSessionViewState | null): boolean => {
@@ -575,34 +559,8 @@ const TurnBlock: React.FC<TurnBlockProps> = ({
     }, [turn.assistantMessages, turn.userMessage]);
 
     const visibleAssistantMessages = React.useMemo(() => {
-        if (chatRenderMode === 'live') {
-            return turn.assistantMessages;
-        }
-        // sorted 模式下，如果是最后一个正在流式的 turn，显示所有消息
-        if (isLastTurn && sessionIsWorking) {
-            return turn.assistantMessages;
-        }
-        const completed = turn.assistantMessages.filter((message) => isAssistantMessageCompleted(message, piSession));
-        if (completed.length === turn.assistantMessages.length) {
-            return turn.assistantMessages;
-        }
-        if (completed.length > 0) {
-            return completed;
-        }
-        const firstAssistant = turn.assistantMessages[0];
-        return firstAssistant ? [firstAssistant] : [];
-    }, [chatRenderMode, isLastTurn, piSession, sessionIsWorking, turn.assistantMessages]);
-
-    const completedAssistantMessages = React.useMemo(() => {
-        if (chatRenderMode !== 'sorted') {
-            return turn.assistantMessages;
-        }
-        // sorted 模式下，如果是最后一个正在流式的 turn，不过滤 completed
-        if (isLastTurn && sessionIsWorking) {
-            return turn.assistantMessages;
-        }
-        return turn.assistantMessages.filter((message) => isAssistantMessageCompleted(message, piSession));
-    }, [chatRenderMode, isLastTurn, piSession, sessionIsWorking, turn.assistantMessages]);
+        return turn.assistantMessages;
+    }, [turn.assistantMessages]);
 
     // 简化：直接内联计算，不使用 useMemo
     const visibleAssistantIds = new Map<string, number>();
@@ -610,53 +568,13 @@ const TurnBlock: React.FC<TurnBlockProps> = ({
         visibleAssistantIds.set(assistant.info.id, index);
     });
 
-    const completedAssistantIdSet = new Set(completedAssistantMessages.map((assistant) => assistant.info.id));
-
     const visibleActivityParts = React.useMemo(() => {
-        if (chatRenderMode !== 'sorted') {
-            return turn.activityParts;
-        }
-        // sorted 模式下，如果是最后一个正在流式的 turn，显示所有 activity
-        if (isLastTurn && sessionIsWorking) {
-            return turn.activityParts;
-        }
-        if (completedAssistantMessages.length === turn.assistantMessages.length) {
-            return turn.activityParts;
-        }
-        return turn.activityParts.filter((activity) => completedAssistantIdSet.has(activity.messageId));
-    }, [chatRenderMode, completedAssistantIdSet, completedAssistantMessages.length, isLastTurn, sessionIsWorking, turn.activityParts, turn.assistantMessages.length]);
+        return turn.activityParts;
+    }, [turn.activityParts]);
 
     const visibleActivitySegments = React.useMemo(() => {
-        if (chatRenderMode !== 'sorted') {
-            return turn.activitySegments;
-        }
-        // sorted 模式下，如果是最后一个正在流式的 turn，显示所有 activity
-        if (isLastTurn && sessionIsWorking) {
-            return turn.activitySegments;
-        }
-        if (completedAssistantMessages.length === turn.assistantMessages.length) {
-            return turn.activitySegments;
-        }
-        return turn.activitySegments
-            .map((segment) => {
-                const parts = segment.parts.filter((activity) => completedAssistantIdSet.has(activity.messageId));
-                if (parts.length === 0) {
-                    return null;
-                }
-                const anchorMessageId = completedAssistantIdSet.has(segment.anchorMessageId)
-                    ? segment.anchorMessageId
-                    : parts[0]?.messageId;
-                if (!anchorMessageId) {
-                    return null;
-                }
-                return {
-                    ...segment,
-                    anchorMessageId,
-                    parts,
-                };
-            })
-            .filter((segment): segment is NonNullable<typeof segment> => segment !== null);
-    }, [chatRenderMode, completedAssistantIdSet, completedAssistantMessages.length, isLastTurn, sessionIsWorking, turn.activitySegments, turn.assistantMessages.length]);
+        return turn.activitySegments;
+    }, [turn.activitySegments]);
 
     const turnGroupingContextBase = React.useMemo(() => {
         const userCreatedAt = (turn.userMessage.info.time as { created?: number } | undefined)?.created;
@@ -1708,7 +1626,7 @@ const MessageList = React.forwardRef<MessageListHandle, MessageListProps>(({
                 {(interactiveRequests.length > 0 || permissions.length > 0) && (
                     <div>
                         {interactiveRequests.map((request) => (
-                            <QuestionCard key={request.id} request={request} />
+                            <QuestionCard key={getPiInteractiveRequestIdentity(request)} request={request} />
                         ))}
                         {permissions.map((permission) => (
                             <PermissionCard key={permission.id} permission={permission} />
