@@ -35,13 +35,6 @@ export interface TurnDiffStats {
     files: number;
 }
 
-export interface TurnActivityGroup {
-    id: string;
-    anchorMessageId: string;
-    afterToolPartId: string | null;
-    parts: TurnActivityRecord[];
-}
-
 export interface TurnSummaryRecord {
     text?: string;
     sourceMessageId?: string;
@@ -64,13 +57,8 @@ export interface TurnRecord {
     messages: TurnMessageRecord[];
     assistantMessageIds: string[];
     assistantMessages: ChatMessageEntry[];
-    activityParts: TurnActivityRecord[];
-    activitySegments: TurnActivityGroup[];
     summary: TurnSummaryRecord;
     summaryText?: string;
-    hasTools: boolean;
-    hasReasoning: boolean;
-    diffStats?: TurnDiffStats;
     stream: TurnStreamState;
     startedAt?: number;
     completedAt?: number;
@@ -120,16 +108,8 @@ export interface TurnGroupingContext {
     turnId: string;
     isFirstAssistantInTurn: boolean;
     isLastAssistantInTurn: boolean;
-    summaryBody?: string;
-    activityParts?: TurnActivityRecord[];
-    activityGroupSegments?: TurnActivityGroup[];
     headerMessageId?: string;
-    hasTools: boolean;
-    hasReasoning: boolean;
-    diffStats?: TurnDiffStats;
     userMessageCreatedAt?: number;
     userMessageVariant?: string;
     isWorking: boolean;
-    isGroupExpanded?: boolean;
-    toggleGroup?: () => void;
 }

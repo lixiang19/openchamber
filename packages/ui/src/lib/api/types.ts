@@ -541,7 +541,6 @@ export interface SettingsPayload {
   showExpandedBashTools?: boolean;
   showExpandedEditTools?: boolean;
   chatRenderMode?: 'sorted' | 'live';
-  activityRenderMode?: 'collapsed' | 'summary';
   mermaidRenderingMode?: 'svg' | 'ascii';
   fontSize?: number;
   terminalFontSize?: number;

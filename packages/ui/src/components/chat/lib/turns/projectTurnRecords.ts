@@ -1,8 +1,7 @@
 import type { PiContentBlock, PiMessageViewState, PiSessionViewState, PiToolExecutionViewState } from '@/lib/pi/types';
 import type { Message, Part } from '@/lib/runtime/types';
-import { projectTurnActivity } from './projectTurnActivity';
 import { projectTurnIndexes } from './projectTurnIndexes';
-import { buildPiAssistantTextById, projectTurnDiffStats, projectTurnSummary } from './projectTurnSummary';
+import { buildPiAssistantTextById, projectTurnSummary } from './projectTurnSummary';
 import type {
     ChatMessageEntry,
     TurnMessageRecord,
@@ -626,36 +625,6 @@ const getMessageCompletedAt = (message: ChatMessageEntry): number | undefined =>
     return typeof completed === 'number' ? completed : undefined;
 };
 
-const isPiThinkingBlock = (block: PiContentBlock): block is Extract<PiContentBlock, { type: 'thinking' }> => block.type === 'thinking';
-
-// 简化版 finish/status 获取，仅用于内部逻辑
-const getMessageFinish = (
-    message: ChatMessageEntry,
-    piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
-): string | undefined => {
-    const piMessage = piAssistantById?.get(message.info.id);
-    if (piMessage?.stopReason === 'stop' || piMessage?.stopReason === 'endTurn') {
-        return 'stop';
-    }
-    if (piMessage?.stopReason === 'toolUse') {
-        return 'tool';
-    }
-    const finish = (message.info as { finish?: unknown }).finish;
-    return typeof finish === 'string' ? finish : undefined;
-};
-
-const getMessageStatus = (
-    message: ChatMessageEntry,
-    piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
-): string | undefined => {
-    const piMessage = piAssistantById?.get(message.info.id);
-    if (piMessage) {
-        return piMessage.stopReason && piMessage.stopReason !== 'toolUse' ? 'completed' : 'streaming';
-    }
-    const status = (message.info as { status?: unknown }).status;
-    return typeof status === 'string' ? status : undefined;
-};
-
 const getUserSummaryBody = (message: ChatMessageEntry): string | undefined => {
     const summaryBody = (message.info as { summary?: { body?: unknown } | null | undefined })?.summary?.body;
     if (typeof summaryBody !== 'string') {
@@ -680,9 +649,9 @@ const computeTurnSignature = (
             parts.push(`${message.info.id}:${piMessage.stopReason ?? 'none'}`);
             // tool calls - 处理有 id 和无 id 的情况
             for (const block of piMessage.content) {
-                if (block.type === 'toolCall') {
-                    const blockId = ('id' in block && block.id) ? block.id : null;
-                    const blockName = ('name' in block && block.name) ? block.name : 'unknown';
+                if (isPiToolCallBlock(block)) {
+                    const blockId = block.id ? block.id : null;
+                    const blockName = block.name ? block.name : 'unknown';
                     
                     if (blockId) {
                         // 有 id 时，使用 id + execution 状态
@@ -751,114 +720,14 @@ const buildTurnStreamState = (
     };
 };
 
-const mergeAssistantChainParts = (assistantMessages: ChatMessageEntry[]): Part[] => {
-    const mergedParts: Part[] = [];
-    const partIndexById = new Map<string, number>();
-
-    assistantMessages.forEach((message) => {
-        message.parts.forEach((part) => {
-            const partId = typeof part.id === 'string' && part.id.length > 0 ? part.id : null;
-            if (!partId) {
-                mergedParts.push(part);
-                return;
-            }
-
-            const existingIndex = partIndexById.get(partId);
-            if (typeof existingIndex === 'number') {
-                mergedParts[existingIndex] = part;
-                return;
-            }
-
-            partIndexById.set(partId, mergedParts.length);
-            mergedParts.push(part);
-        });
-    });
-
-    return mergedParts;
-};
-
-const mergeAssistantMessageChain = (
-    turnId: string,
-    assistantMessages: ChatMessageEntry[],
-    piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
-): ChatMessageEntry => {
-    if (assistantMessages.length <= 1) {
-        return assistantMessages[0];
-    }
-
-    const firstMessage = assistantMessages[0];
-    const lastMessage = assistantMessages[assistantMessages.length - 1];
-    const createdAt = assistantMessages
-        .map((message) => getMessageCreatedAt(message))
-        .find((value): value is number => typeof value === 'number');
-    const completedAt = [...assistantMessages]
-        .reverse()
-        .map((message) => getMessageCompletedAt(message))
-        .find((value): value is number => typeof value === 'number');
-    const finish = getMessageFinish(lastMessage, piAssistantById);
-    const status = getMessageStatus(lastMessage, piAssistantById);
-    const sessionID = (firstMessage.info as { sessionID?: unknown }).sessionID
-        ?? (lastMessage.info as { sessionID?: unknown }).sessionID;
-    const mergedMessageId = `${turnId}:assistant:${firstMessage.info.id}:${lastMessage.info.id}`;
-
-    return {
-        info: {
-            ...firstMessage.info,
-            ...lastMessage.info,
-            id: mergedMessageId,
-            sessionID,
-            role: 'assistant',
-            clientRole: 'assistant',
-            piMergedAssistant: true,
-            sourceMessageIds: assistantMessages.map((message) => message.info.id),
-            ...(finish ? { finish } : {}),
-            ...(status ? { status } : {}),
-            time: {
-                ...(typeof createdAt === 'number' ? { created: createdAt } : {}),
-                ...(typeof completedAt === 'number' ? { completed: completedAt } : {}),
-            },
-        } as Message,
-        parts: mergeAssistantChainParts(assistantMessages),
-    };
-};
-
-const collapseAssistantMessageChains = (
-    turnId: string,
-    assistantMessages: ChatMessageEntry[],
-    piAssistantById?: Map<string, Extract<PiMessageViewState, { role: 'assistant' }>>,
-): ChatMessageEntry[] => {
-    if (assistantMessages.length <= 1) {
-        return assistantMessages;
-    }
-
-    const collapsed: ChatMessageEntry[] = [];
-    let currentChain: ChatMessageEntry[] = [];
-
-    assistantMessages.forEach((message, index) => {
-        currentChain.push(message);
-        const finish = getMessageFinish(message, piAssistantById);
-        const isLastMessage = index === assistantMessages.length - 1;
-        if (finish === 'tool' && !isLastMessage) {
-            return;
-        }
-
-        collapsed.push(mergeAssistantMessageChain(turnId, currentChain, piAssistantById));
-        currentChain = [];
-    });
-
-    return collapsed;
-};
-
 interface ProjectTurnRecordsOptions {
     previousProjection?: TurnProjectionResult | null;
-    showTextJustificationActivity: boolean;
     piSession?: PiSessionViewState | null;
     toolExecutionsById?: Map<string, PiToolExecutionViewState>;
 }
 
 const DEFAULT_OPTIONS: ProjectTurnRecordsOptions = {
     previousProjection: null,
-    showTextJustificationActivity: false,
 };
 
 export const projectTurnRecords = (
@@ -881,12 +750,6 @@ export const projectTurnRecords = (
             .map((message) => [message.id as string, message])
     );
     const toolExecutionsById = new Map((effectiveOptions.piSession?.toolExecutions ?? []).map(e => [e.toolCallId, e]));
-    const piAssistantMetaById = new Map(
-        Array.from(piAssistantById.entries()).map(([messageId, message]) => [messageId, {
-            hasToolCall: message.content.some((block) => block.type === 'toolCall'),
-            hasReasoning: message.content.some((block) => isPiThinkingBlock(block) && block.thinking.trim().length > 0),
-        }])
-    );
 
     const turns: TurnRecord[] = [];
     const turnByUserId = new Map<string, TurnRecord>();
@@ -906,13 +769,8 @@ export const projectTurnRecords = (
                 messages: [createTurnMessageRecord(message, index, piMessageById)],
                 assistantMessageIds: [],
                 assistantMessages: [],
-                activityParts: [],
-                activitySegments: [],
                 summary: {},
                 summaryText: undefined,
-                hasTools: false,
-                hasReasoning: false,
-                diffStats: undefined,
                 stream: {
                     isStreaming: false,
                     isRetrying: false,
@@ -950,7 +808,6 @@ export const projectTurnRecords = (
     });
 
     turns.forEach((turn) => {
-        turn.assistantMessages = collapseAssistantMessageChains(turn.turnId, turn.assistantMessages, piAssistantById);
         turn.assistantMessageIds = turn.assistantMessages.map((message) => message.info.id);
         turn.headerMessageId = turn.assistantMessages[0]?.info.id;
         turn.messages = [
@@ -1001,11 +858,6 @@ export const projectTurnRecords = (
         if (canReuseComputed && previousTurn) {
             turn.summary = previousTurn.summary;
             turn.summaryText = previousTurn.summaryText;
-            turn.diffStats = previousTurn.diffStats;
-            turn.activityParts = previousTurn.activityParts;
-            turn.activitySegments = previousTurn.activitySegments;
-            turn.hasTools = previousTurn.hasTools;
-            turn.hasReasoning = previousTurn.hasReasoning;
             turn.stream = previousTurn.stream;
             turn.startedAt = previousTurn.startedAt;
             turn.completedAt = previousTurn.completedAt;
@@ -1018,20 +870,6 @@ export const projectTurnRecords = (
             piAssistantById,
         });
         turn.summaryText = turn.summary.text ?? getUserSummaryBody(turn.userMessage);
-        turn.diffStats = projectTurnDiffStats(turn.userMessage);
-
-        const activity = projectTurnActivity({
-            turnId: turn.turnId,
-            assistantMessages: turn.assistantMessages,
-            summarySourceMessageId: turn.summary.sourceMessageId,
-            showTextJustificationActivity: effectiveOptions.showTextJustificationActivity,
-            piAssistantMetaById,
-            piAssistantById,
-        });
-        turn.activityParts = activity.activityParts;
-        turn.activitySegments = activity.activitySegments;
-        turn.hasTools = activity.hasTools;
-        turn.hasReasoning = activity.hasReasoning;
 
         turn.stream = buildTurnStreamState(turn.userMessage, turn.assistantMessages, piAssistantById);
         turn.startedAt = turn.stream.startedAt;

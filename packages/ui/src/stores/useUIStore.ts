@@ -12,7 +12,6 @@ export type ContextPanelMode = 'diff' | 'file' | 'context' | 'plan' | 'chat';
 export type MermaidRenderingMode = 'svg' | 'ascii';
 export type UserMessageRenderingMode = 'markdown' | 'plain';
 export type ChatRenderMode = 'sorted' | 'live';
-export type ActivityRenderMode = 'collapsed' | 'summary';
 
 type ContextPanelTab = {
   id: string;
@@ -501,7 +500,6 @@ interface UIStore {
   eventStreamHint: string | null;
   showReasoningTraces: boolean;
   chatRenderMode: ChatRenderMode;
-  activityRenderMode: ActivityRenderMode;
   showDeletionDialog: boolean;
   autoDeleteEnabled: boolean;
   autoDeleteAfterDays: number;
@@ -618,7 +616,6 @@ interface UIStore {
   setEventStreamStatus: (status: EventStreamStatus, hint?: string | null) => void;
   setShowReasoningTraces: (value: boolean) => void;
   setChatRenderMode: (value: ChatRenderMode) => void;
-  setActivityRenderMode: (value: ActivityRenderMode) => void;
   setShowDeletionDialog: (value: boolean) => void;
   setAutoDeleteEnabled: (value: boolean) => void;
   setAutoDeleteAfterDays: (days: number) => void;
@@ -730,7 +727,6 @@ export const useUIStore = create<UIStore>()(
         eventStreamHint: null,
         showReasoningTraces: true,
         chatRenderMode: 'live',
-        activityRenderMode: 'summary',
         showDeletionDialog: true,
         autoDeleteEnabled: false,
         autoDeleteAfterDays: 30,
@@ -1303,10 +1299,6 @@ export const useUIStore = create<UIStore>()(
           set({ chatRenderMode: value });
         },
 
-        setActivityRenderMode: (value) => {
-          set({ activityRenderMode: value });
-        },
-
         setShowDeletionDialog: (value) => {
           set({ showDeletionDialog: value });
         },
@@ -1861,7 +1853,6 @@ export const useUIStore = create<UIStore>()(
           // Note: isSettingsDialogOpen intentionally NOT persisted
           showReasoningTraces: state.showReasoningTraces,
           chatRenderMode: state.chatRenderMode,
-          activityRenderMode: state.activityRenderMode,
           showDeletionDialog: state.showDeletionDialog,
           autoDeleteEnabled: state.autoDeleteEnabled,
           autoDeleteAfterDays: state.autoDeleteAfterDays,

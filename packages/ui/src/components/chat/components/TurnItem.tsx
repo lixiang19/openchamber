@@ -7,9 +7,19 @@ interface TurnItemProps {
     turn: Turn;
     stickyUserHeader?: boolean;
     renderMessage: (message: ChatMessageEntry) => React.ReactNode;
+    chatRenderMode: 'sorted' | 'live';
+    isStreaming: boolean;
+    isCollapsedHistoryExpanded: boolean;
 }
 
-const TurnItem: React.FC<TurnItemProps> = ({ turn, stickyUserHeader = true, renderMessage }) => {
+const TurnItem: React.FC<TurnItemProps> = ({
+    turn,
+    stickyUserHeader = true,
+    renderMessage,
+    chatRenderMode,
+    isStreaming,
+    isCollapsedHistoryExpanded,
+}) => {
     return (
         <section
             className="relative w-full"
@@ -31,7 +41,13 @@ const TurnItem: React.FC<TurnItemProps> = ({ turn, stickyUserHeader = true, rend
                 renderMessage(turn.userMessage)
             )}
 
-            <TurnAssistantBlock assistantMessages={turn.assistantMessages} renderMessage={renderMessage} />
+            <TurnAssistantBlock
+                assistantMessages={turn.assistantMessages}
+                renderMessage={renderMessage}
+                chatRenderMode={chatRenderMode}
+                isStreaming={isStreaming}
+                isCollapsedHistoryExpanded={isCollapsedHistoryExpanded}
+            />
         </section>
     );
 };

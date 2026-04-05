@@ -12,6 +12,7 @@ import ScrollToBottomButton from './components/ScrollToBottomButton';
 import { ScrollShadow } from '@/components/ui/ScrollShadow';
 import { useChatScrollManager } from '@/hooks/useChatScrollManager';
 import { useChatTimelineController } from './hooks/useChatTimelineController';
+import { usePiNativeTurns } from './hooks/usePiNativeTurns';
 import { useChatTurnNavigation } from './hooks/useChatTurnNavigation';
 import { useDeviceInfo } from '@/lib/device';
 import { Button } from '@/components/ui/button';
@@ -111,6 +112,7 @@ export const ChatContainer: React.FC = () => {
             [currentSessionId]
         )
     );
+    const { projection: currentTurnProjection } = usePiNativeTurns(currentPiSession);
 
 
     const sessions = useSessionStore((state) => state.sessions);
@@ -241,7 +243,7 @@ export const ChatContainer: React.FC = () => {
 
     const timelineController = useChatTimelineController({
         sessionId: currentSessionId,
-        session: currentPiSession,
+        projection: currentTurnProjection,
         historyMeta,
         scrollRef,
         messageListRef,
@@ -497,6 +499,7 @@ export const ChatContainer: React.FC = () => {
                             <MessageList
                                 ref={messageListRef}
                                 sessionKey={currentSessionId}
+                                projection={currentTurnProjection}
                                 turnStart={timelineController.turnStart}
                                 disableStaging={timelineController.pendingRevealWork}
                                 messages={timelineController.renderedMessages}

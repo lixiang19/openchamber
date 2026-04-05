@@ -1,79 +1,55 @@
-历史线
+# sort 和 live
 
-早期铺垫阶段
-在 5228cd54 和 8a84e4ee 这一段，还没有今天这么完整的 sorted/live 双模式，主要是在补 reasoning 和 justification 的显示逻辑，为后面的“整理视图”做基础。
+当前只保留 3 个明确状态，不再引入 activity group、activity summary、过程态额外分组这些中间层。
 
-真正引入双模式的节点是 53004442
-这个提交最关键，提交说明里直接写了 add sorted chat mode with progressive activity rendering。
-当时的设计差异是明确的：
-在 useUIStore.ts 这一支历史版本里，默认模式是 sorted，不是现在的 live。
-在 MessageBody.tsx 的 53004442 版本里，活动区开关是：
-shouldRenderActivityGroup = isSortedRenderMode && ...
-也就是只有 sorted 才进 TurnActivity，live 不进。
-在 MessageList.tsx 的 53004442 版本里，sorted 还会做“完成态过滤”：
-只显示 completed assistant
-只保留 completed assistant 对应的 activity
-showTextJustificationActivity 也只在 sorted 开启
+## 1. live 实时态
 
-这说明当时的产品定义大概是：
-live = 原始流式时间线
-sorted = 按 turn 整理后的完成态视图
+- assistant 消息按原始到达顺序直接显示
+- 文本消息、工具消息、task 消息都一样处理
+- 对话进行中不折叠，不替换，不整理
 
-85713a9e 把默认值改成了 live
-这个提交本身和聊天模式设计没什么强关联，提交名是“完成微信接入”，但它把 useUIStore.ts 里的默认值从 sorted 改成了 live。
-关键点在于：
-默认模式变了
-但 MessageBody.tsx 当时仍然保留了 only sorted 才进 activity group 的门槛
-也就是说，这一步只是把默认入口换成了 live，模式定义本身还没混。
+也就是说，live 的过程就是“来了什么就显示什么”。
 
-真正把两者拉近的是 9d24bcc9
-这个提交很关键。
-在它之前，MessageBody 里还是：
-shouldRenderActivityGroup = isSortedRenderMode && ...
-到了这个提交，变成了：
-shouldRenderActivityGroup = activityGroupSegmentsForMessage.length > 0 && ...
-也就是 live 也开始进入活动区了。
-这一步基本把“live 是自然时间线、sorted 是整理视图”这条分界线打穿了。
+## 2. sorted 实时态
 
-b409fe11 又继续统一了活动区表现
-这个提交主要是统一 tool row、折叠行为、路径截断和 spacing。
-它没有重新拉开模式差异，而是在 activity 渲染层继续做一致化。
-从这一步开始，两种模式更像“同一套 turn/activity 渲染，加一点局部差异”。
+- assistant 区只保留一个显示槽位
+- 不管新来的是文本还是工具，都是最新一条 assistant 消息直接替换当前槽位
+- 过程中不显示旧的 assistant 消息链
 
-所以它俩现在到底还有什么区别
-结合当前代码，真正还算“有意义”的差异只剩这几个：
+也就是说，sorted 的过程就是“永远只看当前最新一步”。
 
-sorted 会生成 justification activity
-入口在 MessageList.tsx，只在 sorted 传入 showTextJustificationActivity。
+## 3. 对话完成态 / 恢复态
 
-sorted 更弱化流式感
-在 AssistantTextPart.tsx 里，sorted 会禁用 streaming text animation。
-在 ReasoningPart.tsx 里，sorted 不显示 duration。
+两种模式最终完全一致：
 
-reasoning 的视觉呈现不同
-在 MessageBody.tsx 里，sorted 用正式的 ReasoningPart block，live 则更像轻量内联 thinking 文本。
+- 只展开显示该 turn 最后一条有可见文本的 assistant 消息
+- 更早的 assistant 消息全部收进同一个折叠区
+- 折叠区不是逐条摘要，而是一条总入口
+- 入口文案形态为：`———————— 13 条消息 ————————`
+- 点击后展开的内容，必须等于 live 过程中看到的原始 assistant 消息流
 
-但这些都属于“弱差异”，不是“信息架构差异”。
+如果该 turn 没有任何文本消息：
 
-我的判断
-如果按 git 历史倒推，原始设计其实是：
+- 最后一条 assistant 消息作为展开消息
+- 其它 assistant 消息进入总折叠区
 
-live：时间流优先，过程直接铺开
-sorted：结果优先，把过程整理进 activity，正文更偏完成态
-后来发生了三件事，把它们搞得越来越像：
+## 4. 恢复对话规则
 
-默认模式改成了 live
-live 也开始走 activity grouping
-我这次又把 sorted 的内容过滤去掉了
-说明：
-这一步不是把差异抹平，而是把错误移除。因为“模式切换导致模型头、工具数量、正文消失”属于渲染 bug，不属于设计差异。
-所以现在的真实状态可以概括成一句话：
+- 重新打开会话或切回会话时，已完成 turn 一律恢复为默认折叠终态
+- 不记住上次临时展开状态
 
-这两个模式曾经是“信息组织不同”，现在基本退化成“同一套渲染骨架上的几个显示细节开关”。
+## 5. 实现约束
 
-如果你要，我下一步可以直接按历史意图把它们重新拉开，而且不是拍脑袋，是按这条历史线恢复成更自洽的定义：
+- 不再生成 activityParts / activitySegments
+- 不再做 assistant chain merge
+- 不再让 chatRenderMode 影响文本、reasoning、工具的样式
+- chatRenderMode 只影响 streaming 阶段 assistant 消息的可见策略
 
-live 回到纯时间流，不进活动区
-sorted 保留 activity 整理视图，但不再丢内容
-两者在视觉和信息结构上重新形成明显差异
-如果你点头，我就直接按这个方向改。
+## 6. 性能方向
+
+这次改造的目标不是再加一层“整理逻辑”，而是删掉多余层：
+
+- turn projection 只保留原始 turn 数据
+- MessageList 只做可见性决策，不再做 activity 聚合
+- ChatContainer 统一构建一次 projection，列表和时间线共享
+- 恢复态直接渲染终态，不再重新推导历史展示结构

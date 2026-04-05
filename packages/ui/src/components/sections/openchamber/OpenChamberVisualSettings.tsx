@@ -126,24 +126,11 @@ const CHAT_RENDER_MODE_OPTIONS: Option<'sorted' | 'live'>[] = [
     },
 ];
 
-const ACTIVITY_RENDER_MODE_OPTIONS: Option<'collapsed' | 'summary'>[] = [
-    {
-        id: 'collapsed',
-        label: 'Collapsed',
-        description: 'Keep Activity collapsed by default.',
-    },
-    {
-        id: 'summary',
-        label: 'Expanded',
-        description: 'Expand Activity by default.',
-    },
-];
-
 const normalizeUserMessageRenderingMode = (mode: unknown): 'markdown' | 'plain' => {
     return mode === 'markdown' ? 'markdown' : 'plain';
 };
 
-export type VisibleSetting = 'theme' | 'pwaInstallName' | 'fontSize' | 'terminalFontSize' | 'spacing' | 'inputBarOffset' | 'mermaidRendering' | 'userMessageRendering' | 'chatRenderMode' | 'activityRenderMode' | 'stickyUserHeader' | 'diffLayout' | 'mobileStatusBar' | 'dotfiles' | 'reasoning' | 'showToolFileIcons' | 'expandedTools' | 'queueMode' | 'terminalQuickKeys' | 'persistDraft' | 'inputSpellcheck';
+export type VisibleSetting = 'theme' | 'pwaInstallName' | 'fontSize' | 'terminalFontSize' | 'spacing' | 'inputBarOffset' | 'mermaidRendering' | 'userMessageRendering' | 'chatRenderMode' | 'stickyUserHeader' | 'diffLayout' | 'mobileStatusBar' | 'dotfiles' | 'reasoning' | 'showToolFileIcons' | 'expandedTools' | 'queueMode' | 'terminalQuickKeys' | 'persistDraft' | 'inputSpellcheck';
 
 interface OpenChamberVisualSettingsProps {
     /** Which settings to show. If undefined, shows all. */
@@ -165,8 +152,6 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
     const setStickyUserHeader = useUIStore(state => state.setStickyUserHeader);
     const chatRenderMode = useUIStore(state => state.chatRenderMode);
     const setChatRenderMode = useUIStore(state => state.setChatRenderMode);
-    const activityRenderMode = useUIStore(state => state.activityRenderMode);
-    const setActivityRenderMode = useUIStore(state => state.setActivityRenderMode);
     const fontSize = useUIStore(state => state.fontSize);
     const setFontSize = useUIStore(state => state.setFontSize);
     const terminalFontSize = useUIStore(state => state.terminalFontSize);
@@ -248,11 +233,6 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
         void updateDesktopSettings({ chatRenderMode: mode });
     }, [setChatRenderMode]);
 
-    const handleActivityRenderModeChange = React.useCallback((mode: 'collapsed' | 'summary') => {
-        setActivityRenderMode(mode);
-        void updateDesktopSettings({ activityRenderMode: mode });
-    }, [setActivityRenderMode]);
-
     const handleMermaidRenderingModeChange = React.useCallback((mode: 'svg' | 'ascii') => {
         setMermaidRenderingMode(mode);
         void updateDesktopSettings({ mermaidRenderingMode: mode });
@@ -314,7 +294,6 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
     const hasBehaviorSettings = shouldShow('mermaidRendering')
         || shouldShow('userMessageRendering')
         || shouldShow('chatRenderMode')
-        || (shouldShow('activityRenderMode') && chatRenderMode === 'sorted')
         || shouldShow('stickyUserHeader')
         || shouldShow('diffLayout')
         || (shouldShow('mobileStatusBar') && isMobile)
@@ -726,7 +705,7 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
 
 
 
-                            {(shouldShow('userMessageRendering') || shouldShow('mermaidRendering') || shouldShow('chatRenderMode') || (shouldShow('activityRenderMode') && chatRenderMode === 'sorted') || (shouldShow('diffLayout') && !isVSCode)) && (
+                            {(shouldShow('userMessageRendering') || shouldShow('mermaidRendering') || shouldShow('chatRenderMode') || (shouldShow('diffLayout') && !isVSCode)) && (
                                 <div className="grid grid-cols-1 gap-y-2 md:grid-cols-[minmax(0,16rem)_minmax(0,16rem)] md:justify-start md:gap-x-2">
                                     {shouldShow('chatRenderMode') && (
                                         <section className="p-2 md:col-span-2">
@@ -806,42 +785,6 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
                                                                 )}
                                                             </div>
                                                         </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </section>
-                                    )}
-
-                                    {shouldShow('activityRenderMode') && chatRenderMode === 'sorted' && (
-                                        <section className="p-2 md:col-span-2">
-                                            <h4 className="typography-ui-header font-medium text-foreground">活动默认</h4>
-                                            <div role="radiogroup" aria-label="活动默认模式" className="mt-0.5 space-y-0">
-                                                {ACTIVITY_RENDER_MODE_OPTIONS.map((option) => {
-                                                    const selected = activityRenderMode === option.id;
-                                                    return (
-                                                        <div
-                                                            key={option.id}
-                                                            role="button"
-                                                            tabIndex={0}
-                                                            aria-pressed={selected}
-                                                            onClick={() => handleActivityRenderModeChange(option.id)}
-                                                            onKeyDown={(event) => {
-                                                                if (event.key === ' ' || event.key === 'Enter') {
-                                                                    event.preventDefault();
-                                                                    handleActivityRenderModeChange(option.id);
-                                                                }
-                                                            }}
-                                                            className="flex w-full items-center gap-2 py-0 text-left"
-                                                        >
-                                                            <Radio
-                                                                checked={selected}
-                                                                onChange={() => handleActivityRenderModeChange(option.id)}
-                                                                ariaLabel={`Activity default mode: ${option.label}`}
-                                                            />
-                                                            <span className={cn('typography-ui-label font-normal', selected ? 'text-foreground' : 'text-foreground/50')}>
-                                                                {option.label}
-                                                            </span>
-                                                        </div>
                                                     );
                                                 })}
                                             </div>

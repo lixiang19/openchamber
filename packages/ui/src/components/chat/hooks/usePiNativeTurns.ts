@@ -4,10 +4,6 @@ import { projectPiSessionToTurnRecords } from '../lib/turns/projectTurnRecords';
 import { stabilizeTurnProjection } from '../lib/turns/stabilizeTurnProjection';
 import type { TurnProjectionResult } from '../lib/turns/types';
 
-interface UsePiNativeTurnsOptions {
-    showTextJustificationActivity?: boolean;
-}
-
 export interface UsePiNativeTurnsResult {
     projection: TurnProjectionResult | null;
     isLoading: boolean;
@@ -19,7 +15,6 @@ export interface UsePiNativeTurnsResult {
  */
 export const usePiNativeTurns = (
     session: PiSessionViewState | null,
-    options?: UsePiNativeTurnsOptions,
 ): UsePiNativeTurnsResult => {
     const previousProjectionRef = React.useRef<TurnProjectionResult | null>(null);
     const previousSessionIdRef = React.useRef<string | null>(null);
@@ -39,13 +34,12 @@ export const usePiNativeTurns = (
 
         const rawProjection = projectPiSessionToTurnRecords(session, {
             previousProjection: previousProjectionRef.current,
-            showTextJustificationActivity: options?.showTextJustificationActivity ?? false,
         });
 
         const stabilizedProjection = stabilizeTurnProjection(rawProjection, previousProjectionRef.current);
         previousProjectionRef.current = stabilizedProjection;
         return stabilizedProjection;
-    }, [session, options?.showTextJustificationActivity]);
+    }, [session]);
 
     return {
         projection,

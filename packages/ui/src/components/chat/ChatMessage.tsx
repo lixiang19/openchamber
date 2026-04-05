@@ -166,6 +166,7 @@ interface ChatMessageProps {
     animationHandlers?: AnimationHandlers;
     scrollToBottom?: (options?: { instant?: boolean; force?: boolean }) => void;
     turnGroupingContext?: TurnGroupingContext;
+    afterHeaderContent?: React.ReactNode;
     animateUserOnMount?: boolean;
     onUserAnimationConsumed?: (messageId: string) => void;
 }
@@ -178,6 +179,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     onContentChange,
     animationHandlers,
     turnGroupingContext,
+    afterHeaderContent,
     animateUserOnMount = false,
     onUserAnimationConsumed,
 }) => {
@@ -228,11 +230,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     const currentPiSession = piSession ?? fallbackPiSession;
 
     const providers = useConfigStore((state) => state.providers);
-    const { showReasoningTraces, stickyUserHeader, chatRenderMode, showExpandedBashTools, showExpandedEditTools } = useUIStore(
+    const { showReasoningTraces, stickyUserHeader, showExpandedBashTools, showExpandedEditTools } = useUIStore(
         useShallow((state) => ({
             showReasoningTraces: state.showReasoningTraces,
             stickyUserHeader: state.stickyUserHeader,
-            chatRenderMode: state.chatRenderMode,
             showExpandedBashTools: state.showExpandedBashTools,
             showExpandedEditTools: state.showExpandedEditTools,
         }))
@@ -548,24 +549,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         return filtered;
     }, [isUser, visibleParts]);
 
-    const turnActivityToolParts = React.useMemo(() => {
-        if (isUser) {
-            return [] as Part[];
-        }
-        const records = turnGroupingContext?.activityParts ?? [];
-        return records
-            .filter((record) => record.kind === 'tool')
-            .map((record) => record.part)
-            .filter((part): part is Part => part.type === 'tool');
-    }, [isUser, turnGroupingContext?.activityParts]);
-
     const defaultOpenToolIds = React.useMemo(() => {
         if (!showExpandedBashTools && !showExpandedEditTools) {
             return new Set<string>();
         }
 
         const next = new Set<string>();
-        for (const part of [...toolParts, ...turnActivityToolParts]) {
+        for (const part of toolParts) {
             const toolId = typeof part?.id === 'string' ? part.id : '';
             if (!toolId) continue;
             const toolName = normalizeToolName((part as { tool?: string }).tool);
@@ -581,7 +571,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         }
 
         return next;
-    }, [showExpandedBashTools, showExpandedEditTools, toolParts, turnActivityToolParts]);
+    }, [showExpandedBashTools, showExpandedEditTools, toolParts]);
 
     const effectiveExpandedTools = React.useMemo(() => {
         if (defaultOpenToolIds.size === 0 && collapsedTools.size === 0) {
@@ -1230,6 +1220,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                     isDarkTheme={isDarkTheme}
                                 />
                             )}
+                            {afterHeaderContent}
 
                             <MessageBody
                                 messageId={message.info.id}

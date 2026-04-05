@@ -1,8 +1,6 @@
 import React from 'react';
 
-import type { PiSessionViewState } from '@/lib/pi/types';
 import type { ChatMessageEntry, TurnProjectionResult } from '../lib/turns/types';
-import { projectPiSessionToTurnRecords } from '../lib/turns/projectTurnRecords';
 import type { MessageListHandle } from '../MessageList';
 import { TURN_WINDOW_DEFAULTS } from '../lib/turns/constants';
 import {
@@ -30,7 +28,7 @@ type ViewportAnchor = { messageId: string; offsetTop: number };
 
 interface UseChatTimelineControllerOptions {
     sessionId: string | null;
-    session: PiSessionViewState | null;
+    projection: TurnProjectionResult | null;
     historyMeta: SessionHistoryMeta | null;
     scrollRef: React.RefObject<HTMLDivElement | null>;
     messageListRef: React.RefObject<MessageListHandle | null>;
@@ -63,7 +61,7 @@ export interface UseChatTimelineControllerResult {
 
 export const useChatTimelineController = ({
     sessionId,
-    session,
+    projection,
     historyMeta,
     scrollRef,
     messageListRef,
@@ -72,24 +70,15 @@ export const useChatTimelineController = ({
     isPinned,
     isOverflowing,
 }: UseChatTimelineControllerOptions): UseChatTimelineControllerResult => {
-    // Pi-native: 直接从 Pi session 构建 turn 记录
-    const piNativeTurnRecords = React.useMemo<TurnProjectionResult | null>(() => {
-        if (!session) return null;
-        return projectPiSessionToTurnRecords(session, {
-            showTextJustificationActivity: false,
-        });
-    }, [session]);
-
-    // 从 Pi-native turn 记录展开为消息列表
     const messages = React.useMemo(() => {
-        if (!piNativeTurnRecords?.turns) {
+        if (!projection?.turns) {
             return [] as ChatMessageEntry[];
         }
-        return piNativeTurnRecords.turns.flatMap((turn) => [
+        return projection.turns.flatMap((turn) => [
             turn.userMessage,
             ...turn.assistantMessages,
         ]);
-    }, [piNativeTurnRecords]);
+    }, [projection]);
 
     const turnWindowModel = React.useMemo(() => buildTurnWindowModel(messages), [messages]);
 

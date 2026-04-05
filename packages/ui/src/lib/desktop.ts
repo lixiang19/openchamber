@@ -123,7 +123,6 @@ export type DesktopSettings = {
   showExpandedBashTools?: boolean;
   showExpandedEditTools?: boolean;
   chatRenderMode?: 'sorted' | 'live';
-  activityRenderMode?: 'collapsed' | 'summary';
   mermaidRenderingMode?: 'svg' | 'ascii';
   userMessageRenderingMode?: 'markdown' | 'plain';
   stickyUserHeader?: boolean;

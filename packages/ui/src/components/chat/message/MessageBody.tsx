@@ -33,8 +33,7 @@ import { toast } from '@/components/ui';
 import { formatTimestampForDisplay } from './timeFormat';
 import { ToolRevealOnMount } from './parts/ToolRevealOnMount';
 import { StaticToolRow } from './parts/ProgressiveGroup';
-import { isExpandableTool, isStandaloneTool } from './parts/toolRenderUtils';
-import TurnActivity from '../components/TurnActivity';
+import { isExpandableTool } from './parts/toolRenderUtils';
 
 type SubtaskPartLike = Part & {
     type: 'subtask';
@@ -605,7 +604,6 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
     const isMessageCopied = Boolean(copiedMessage);
     const isTouchContext = Boolean(hasTouchInput ?? isMobile);
     const awaitingMessageCompletion = !isMessageCompleted;
-    const animateActivityRows = awaitingMessageCompletion || Boolean(turnGroupingContext?.isWorking);
 
     const visibleParts = React.useMemo(() => {
         return parts
@@ -652,26 +650,8 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
             ids.add(toolPart.id);
         }
 
-        const activitySegments = turnGroupingContext?.activityGroupSegments;
-        if (Array.isArray(activitySegments)) {
-            for (const segment of activitySegments) {
-                if (segment.anchorMessageId !== messageId) {
-                    continue;
-                }
-                for (const activity of segment.parts) {
-                    if (activity.kind !== 'tool') {
-                        continue;
-                    }
-                    const toolId = (activity.part as { id?: unknown }).id;
-                    if (typeof toolId === 'string' && toolId.length > 0) {
-                        ids.add(toolId);
-                    }
-                }
-            }
-        }
-
         return Array.from(ids);
-    }, [messageId, toolParts, turnGroupingContext?.activityGroupSegments]);
+    }, [toolParts]);
     const shouldAnimateNewToolMount = Boolean(turnGroupingContext?.isWorking && toolRevealReadyRef.current);
     const persistedToolIds = toolRevealStateRef.current.persistedToolIds;
     const animatedToolIds = toolRevealStateRef.current.animatedToolIds;
@@ -706,9 +686,6 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
 
     const createSessionFromAssistantMessage = useSessionStore((state) => state.createSessionFromAssistantMessage);
     const openMultiRunLauncherWithPrompt = useUIStore((state) => state.openMultiRunLauncherWithPrompt);
-    const chatRenderMode = useUIStore((state) => state.chatRenderMode);
-    const isSortedRenderMode = chatRenderMode === 'sorted';
-    const collapsedPreviewCount = 7;
     const isLastAssistantInTurn = turnGroupingContext?.isLastAssistantInTurn ?? false;
     // TTS for message playback
     const { isPlaying: isTTSPlaying, play: playTTS, stop: stopTTS } = useMessageTTS();
@@ -1084,113 +1061,21 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
         };
     }, [clearCopyHintTimeout]);
 
-    const shouldUseActivityGrouping = Boolean(turnGroupingContext?.toggleGroup)
-        && (turnGroupingContext?.activityParts?.length ?? 0) > 0;
-
-    const activityPartsForTurn = React.useMemo(() => {
-        const all = turnGroupingContext?.activityParts;
-        if (!shouldUseActivityGrouping || !all) {
-            return [];
-        }
-        return all;
-    }, [shouldUseActivityGrouping, turnGroupingContext?.activityParts]);
-
-    const activityGroupSegmentsForMessage = React.useMemo(() => {
-        const all = turnGroupingContext?.activityGroupSegments;
-        if (!shouldUseActivityGrouping || !all) {
-            return [];
-        }
-        return all.filter((segment) => segment.anchorMessageId === messageId);
-    }, [shouldUseActivityGrouping, messageId, turnGroupingContext?.activityGroupSegments]);
-
-    const activityByPart = React.useMemo(() => {
-        const byRef = new Map<Part, (typeof activityPartsForTurn)[number]>();
-        const byId = new Map<string, (typeof activityPartsForTurn)[number]>();
-        activityPartsForTurn.forEach((activity) => {
-            byRef.set(activity.part, activity);
-            const partId = (activity.part as { id?: unknown }).id;
-            if (typeof partId === 'string' && partId.length > 0) {
-                byId.set(partId, activity);
-            }
-        });
-
-        return {
-            get: (part: Part) => {
-                const direct = byRef.get(part);
-                if (direct) {
-                    return direct;
-                }
-                const partId = (part as { id?: unknown }).id;
-                if (typeof partId === 'string' && partId.length > 0) {
-                    return byId.get(partId);
-                }
-                return undefined;
-            },
-        };
-    }, [activityPartsForTurn]);
-
-    const toggleActivityGroup = turnGroupingContext?.toggleGroup;
-
-    const shouldRenderActivityGroup = activityGroupSegmentsForMessage.length > 0
-        && Boolean(toggleActivityGroup);
-
-
     const renderedParts = React.useMemo(() => {
         const rendered: React.ReactNode[] = [];
 
-        if (shouldRenderActivityGroup && toggleActivityGroup) {
-            activityGroupSegmentsForMessage.forEach((segment) => {
-                const visibleSegmentParts = showReasoningTraces
-                    ? segment.parts
-                    : segment.parts.filter((activity) => activity.kind !== 'reasoning');
-                if (visibleSegmentParts.length === 0) {
-                    return;
-                }
-                rendered.push(
-                    <div key={`progressive-group-${segment.id}`} className="mb-3">
-                        <TurnActivity
-                            parts={visibleSegmentParts}
-                            isExpanded={turnGroupingContext.isGroupExpanded === true}
-                            collapsedPreviewCount={collapsedPreviewCount}
-                            onToggle={toggleActivityGroup}
-                            syntaxTheme={syntaxTheme}
-                            isMobile={isMobile}
-                            expandedTools={expandedTools}
-                            onToggleTool={onToggleTool}
-                            onShowPopup={onShowPopup}
-                            onContentChange={onContentChange}
-                            streamPhase={streamPhase}
-                            showHeader={true}
-                            animateRows={animateActivityRows}
-                            animatedToolIds={animatedToolIdsLookup}
-                            diffStats={turnGroupingContext.diffStats}
-                        />
-                    </div>
-                );
-            });
-        }
-
         // Flat rendering: iterate parts in natural order.
-        // Group consecutive static tools (read, grep, glob, etc.) into compact rows.
-        // Expandable tools (bash, edit, task) get individual rows.
-        // Text and reasoning render inline at their natural position.
         let i = 0;
         while (i < visibleParts.length) {
             const part = visibleParts[i] as any;
 
             if (part.type === 'text') {
-                const activity = activityByPart.get(part);
-                if (activity?.kind === 'justification') {
-                    i += 1;
-                    continue;
-                }
                 rendered.push(
                     <AssistantTextPart
                         key={`assistant-text-${messageId}-${i}`}
                         part={part}
                         messageId={messageId}
                         streamPhase={streamPhase}
-                        chatRenderMode={chatRenderMode}
                         onContentChange={onContentChange}
                     />
                 );
@@ -1199,33 +1084,15 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
             }
 
             if (part.type === 'reasoning') {
-                const activity = activityByPart.get(part);
-                if (activity?.kind === 'reasoning') {
-                    i += 1;
-                    continue;
-                }
                 if (showReasoningTraces) {
-                    if (isSortedRenderMode) {
-                        rendered.push(
-                            <ReasoningPart
-                                key={`reasoning-${messageId}-${i}`}
-                                part={part}
-                                messageId={messageId}
-                                onContentChange={onContentChange}
-                            />
-                        );
-                    } else {
-                        const partText = (part as { text?: string }).text;
-                        if (partText && partText.trim().length > 0) {
-                            rendered.push(
-                                <FadeInOnReveal key={`reasoning-${messageId}-${i}`}>
-                                    <div className="my-0.5 text-sm text-muted-foreground/60 italic leading-relaxed whitespace-pre-wrap">
-                                        {partText}
-                                    </div>
-                                </FadeInOnReveal>
-                            );
-                        }
-                    }
+                    rendered.push(
+                        <ReasoningPart
+                            key={`reasoning-${messageId}-${i}`}
+                            part={part}
+                            messageId={messageId}
+                            onContentChange={onContentChange}
+                        />
+                    );
                 }
                 i++;
                 continue;
@@ -1245,14 +1112,8 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
                 const toolPart = part as ToolPartType;
                 const toolName = toolPart.tool?.toLowerCase() ?? '';
 
-                if (toolName === 'task' && hasRenderedSubtaskCard && !isSortedRenderMode) {
+                if (toolName === 'task' && hasRenderedSubtaskCard) {
                     i++;
-                    continue;
-                }
-
-                const activity = activityByPart.get(part);
-                if (activity?.kind === 'tool' && (!isStandaloneTool(toolName) || shouldRenderActivityGroup)) {
-                    i += 1;
                     continue;
                 }
 
@@ -1261,56 +1122,47 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
                     continue;
                 }
 
-                // Expandable tools: bash, edit, write, task, question — individual rows
-                // Sorted 模式默认交给 TurnActivity；若当前消息没有 Activity 分组，则内联渲染 task
                 if (isExpandableTool(toolName)) {
-                    const shouldRenderInlineExpandableTool = !isSortedRenderMode
-                        || (isStandaloneTool(toolName) && !shouldRenderActivityGroup);
-                    if (shouldRenderInlineExpandableTool) {
-                        rendered.push(
-                            <FadeInOnReveal key={`tool-${toolPart.id}`}>
-                                <ToolRevealOnMount animate={animatedToolIdsLookup.has(toolPart.id)} wipe>
-                                    <ToolPart
-                                        part={toolPart}
-                                        isExpanded={expandedTools.has(toolPart.id)}
-                                        onToggle={onToggleTool}
-                                        syntaxTheme={syntaxTheme}
-                                        isMobile={isMobile}
-                                        onContentChange={onContentChange}
-                                        onShowPopup={onShowPopup}
-                                        animateTailText={animatedToolIdsLookup.has(toolPart.id)}
-                                    />
-                                </ToolRevealOnMount>
-                            </FadeInOnReveal>
-                        );
-                    }
-                    i++;
-                    continue;
-                }
-                // Static tools: one row per tool call (no grouping)
-                // In sorted render mode, these are already rendered via TurnActivity, so skip
-                if (!isSortedRenderMode) {
                     rendered.push(
-                        <FadeInOnReveal key={`static-tools-${toolPart.id}`}>
+                        <FadeInOnReveal key={`tool-${toolPart.id}`}>
                             <ToolRevealOnMount animate={animatedToolIdsLookup.has(toolPart.id)} wipe>
-                                <StaticToolRow
-                                    toolName={toolName}
-                                    activities={[
-                                        {
-                                            id: toolPart.id,
-                                            turnId: '',
-                                            messageId,
-                                            partIndex: 0,
-                                            part: toolPart,
-                                            kind: 'tool' as const,
-                                        },
-                                    ]}
+                                <ToolPart
+                                    part={toolPart}
+                                    isExpanded={expandedTools.has(toolPart.id)}
+                                    onToggle={onToggleTool}
+                                    syntaxTheme={syntaxTheme}
+                                    isMobile={isMobile}
+                                    onContentChange={onContentChange}
+                                    onShowPopup={onShowPopup}
                                     animateTailText={animatedToolIdsLookup.has(toolPart.id)}
                                 />
                             </ToolRevealOnMount>
                         </FadeInOnReveal>
                     );
+                    i++;
+                    continue;
                 }
+
+                rendered.push(
+                    <FadeInOnReveal key={`static-tools-${toolPart.id}`}>
+                        <ToolRevealOnMount animate={animatedToolIdsLookup.has(toolPart.id)} wipe>
+                            <StaticToolRow
+                                toolName={toolName}
+                                activities={[
+                                    {
+                                        id: toolPart.id,
+                                        turnId: '',
+                                        messageId,
+                                        partIndex: 0,
+                                        part: toolPart,
+                                        kind: 'tool' as const,
+                                    },
+                                ]}
+                                animateTailText={animatedToolIdsLookup.has(toolPart.id)}
+                            />
+                        </ToolRevealOnMount>
+                    </FadeInOnReveal>
+                );
                 i++;
                 continue;
             }
@@ -1321,27 +1173,18 @@ const AssistantMessageBody: React.FC<Omit<MessageBodyProps, 'isUser'>> = ({
 
         return rendered;
     }, [
-        activityByPart,
-        activityGroupSegmentsForMessage,
         animatedToolIdsLookup,
-        animateActivityRows,
-        chatRenderMode,
-        collapsedPreviewCount,
         expandedTools,
         hasRenderedSubtaskCard,
         isMobile,
-        isSortedRenderMode,
         messageId,
         onContentChange,
         onShowPopup,
         onToggleTool,
-        shouldRenderActivityGroup,
         shouldShowTool,
         streamPhase,
         showReasoningTraces,
         syntaxTheme,
-        toggleActivityGroup,
-        turnGroupingContext,
         visibleParts,
     ]);
 

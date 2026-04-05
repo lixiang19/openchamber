@@ -5,7 +5,6 @@ import { RiArrowDownSLine, RiArrowRightSLine, RiBrainAi3Line, RiChatAi3Line } fr
 import { cn } from '@/lib/utils';
 import type { ContentChangeReason } from '@/hooks/useChatScrollManager';
 import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
-import { useUIStore } from '@/stores/useUIStore';
 import { useDurationTickerNow } from './useDurationTicker';
 
 type PartWithText = Part & { text?: string; content?: string; time?: { start?: number; end?: number } };
@@ -186,7 +185,6 @@ const ReasoningPart: React.FC<ReasoningPartProps> = ({
     onContentChange,
     messageId,
 }) => {
-    const chatRenderMode = useUIStore((state) => state.chatRenderMode);
     const partWithText = part as PartWithText;
     const rawText = partWithText.text || partWithText.content || '';
     const textContent = React.useMemo(() => cleanReasoningText(rawText), [rawText]);
@@ -205,7 +203,7 @@ const ReasoningPart: React.FC<ReasoningPartProps> = ({
             onContentChange={onContentChange}
             blockId={part.id || `${messageId}-reasoning`}
             time={time}
-            showDuration={chatRenderMode !== 'sorted'}
+            showDuration={true}
         />
     );
 };

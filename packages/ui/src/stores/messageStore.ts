@@ -820,7 +820,7 @@ const getPiNativeSessionMessages = (sessionId: string): Array<{ info: Message; p
     if (!snapshot) {
         return null;
     }
-    const turnResult = projectPiSessionToTurnRecords(snapshot, { showTextJustificationActivity: false });
+    const turnResult = projectPiSessionToTurnRecords(snapshot);
     if (turnResult?.turns) {
         return turnResult.turns.flatMap((turn: TurnRecord) => [turn.userMessage, ...turn.assistantMessages]);
     }
@@ -906,7 +906,7 @@ export const useMessageStore = create<MessageStore>()(
 
                             const revertMessageId = getSessionRevertMessageId(sessionId);
                             // Pi-native: 使用 turn 记录构建消息
-                            const turnResult = projectPiSessionToTurnRecords(session, { showTextJustificationActivity: false });
+                            const turnResult = projectPiSessionToTurnRecords(session);
                             const sessionMessages: { info: Message; parts: Part[] }[] = turnResult?.turns
                                 ? turnResult.turns.flatMap((turn: TurnRecord) => [turn.userMessage, ...turn.assistantMessages])
                                 : [];

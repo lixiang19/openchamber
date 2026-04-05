@@ -26,7 +26,6 @@ interface AssistantTextPartProps {
     part: Part;
     messageId: string;
     streamPhase: StreamPhase;
-    chatRenderMode?: 'sorted' | 'live';
     onContentChange?: (reason?: ContentChangeReason, messageId?: string) => void;
 }
 
@@ -48,7 +47,6 @@ const AssistantTextPart: React.FC<AssistantTextPartProps> = ({
     part,
     messageId,
     streamPhase,
-    chatRenderMode = 'live',
 }) => {
     const partWithText = part as PartWithText;
     const rawText = typeof partWithText.text === 'string' ? partWithText.text : '';
@@ -63,7 +61,7 @@ const AssistantTextPart: React.FC<AssistantTextPartProps> = ({
     }, '');
     const isStreamingPhase = streamPhase === 'streaming';
     const isCooldownPhase = streamPhase === 'cooldown';
-    const isStreaming = chatRenderMode === 'live' && (isStreamingPhase || isCooldownPhase);
+    const isStreaming = isStreamingPhase || isCooldownPhase;
 
     const throttledTextContent = useStreamingTextThrottle({
         text: textContent,
@@ -125,7 +123,7 @@ const AssistantTextPart: React.FC<AssistantTextPartProps> = ({
 
     return (
         <div
-            className={`group/assistant-text relative break-words ${chatRenderMode === 'live' ? 'my-1' : ''}`}
+            className="group/assistant-text relative my-1 break-words"
             key={part.id || `${messageId}-text`}
         >
             {isPiCustomMessage ? (
@@ -149,7 +147,7 @@ const AssistantTextPart: React.FC<AssistantTextPartProps> = ({
                     messageId={messageId}
                     isAnimated={false}
                     isStreaming={isStreaming}
-                    disableStreamAnimation={chatRenderMode === 'sorted'}
+                    disableStreamAnimation={false}
                     variant={part.type === 'reasoning' ? 'reasoning' : 'assistant'}
                 />
             ) : null}
